@@ -324,7 +324,7 @@ export const mapLearningDashboard = (
     examDate: readText(value.exam_date),
     focusMessage:
       readText(value.focus_message) ??
-      'Hoy conviene mantener el ritmo con una sesion adaptativa.',
+      'Hoy te conviene hacer una sesion clara y seguir desde ahi.',
   };
 };
 
@@ -399,7 +399,7 @@ export const mapLearningDashboardV2 = (
     recommendedTodayCount: readNumber(value.recommended_today_count),
     recommendedMode: mapPracticeMode(value.recommended_mode),
     focusMessage:
-      readText(value.focus_message) ?? 'La preparacion compuesta aun se esta estabilizando.',
+      readText(value.focus_message) ?? 'Todavia hace falta un poco mas para leer bien por donde seguir.',
     lawBreakdown: rawLawBreakdown.map((law: Record<string, unknown>) => {
       const rawBlocks = law.blocks ?? law.block_breakdown;
       const blocks = Array.isArray(rawBlocks)
@@ -466,7 +466,7 @@ export const mapPressureInsights = (
     overconfidenceRate: toNullableNumber(value.overconfidence_rate),
     recommendedMode: readText(value.recommended_mode) as PracticePressureInsights['recommendedMode'],
     pressureMessage:
-      readText(value.pressure_message) ?? 'Todavia no hay suficiente senal para leer la presion.',
+      readText(value.pressure_message) ?? 'Todavia hacen falta mas respuestas para ver con claridad como llegas cuando aprietas.',
   };
 };
 
@@ -492,6 +492,6 @@ export const mapPressureInsightsV2 = (
       value.recommended_mode,
     ) as PracticePressureInsightsV2['recommendedMode'],
     pressureMessage:
-      readText(value.pressure_message) ?? 'Todavia no hay suficiente senal para medir presion.',
+      readText(value.pressure_message) ?? 'Todavia hace falta un poco mas para saber como respondes cuando sube la exigencia.',
   };
 };

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -9,27 +9,61 @@ import {
   Zap,
 } from 'lucide-react';
 import { FinishedTestPayload, PracticeMode, Question } from '../types';
+import { buildReviewSurfaceCopy } from '../lib/coachCopyV2';
 import { useAppLocale } from '../lib/locale';
+import { getContinuityLine, storeSessionCloseSummary } from '../lib/continuity';
+import { trackDecision, trackEffect } from '../lib/telemetry';
+import { buildSessionEndDecision } from '../lib/sessionEndAdapter';
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
   questions: Question[];
   mode: PracticeMode;
+  curriculum: string;
+  username?: string | null;
   onRestart: () => void;
   onGoHome: () => void;
 }
 
-export default function PostTestStats({ payload, questions, mode, onRestart, onGoHome }: PostTestStatsProps) {
+export default function PostTestStats({
+  payload,
+  questions,
+  mode,
+  curriculum,
+  username,
+  onRestart,
+  onGoHome,
+}: PostTestStatsProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const { score, answers } = payload;
-  const total = questions.length;
+  const total = Math.max(questions.length, 1);
   const percentage = Math.round((score / total) * 100);
   const failed = total - score;
   const avgTimeMs = answers.length > 0
     ? answers.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answers.length
     : 0;
   const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
+
+  const continuityLine = getContinuityLine(locale, curriculum);
+  const didReturnAfterGap = Boolean(continuityLine);
+
+  const sessionEndDecision = buildSessionEndDecision({
+    locale,
+    payload,
+    questionsCount: questions.length,
+    mode,
+    curriculum,
+    username,
+    didReturnAfterGap,
+  });
+
+  const reviewCopy = buildReviewSurfaceCopy({
+    locale,
+    failedCount: failed,
+    curriculum,
+    username,
+  });
 
   const lawStats = questions.reduce((acc, q) => {
     const law = (q.category ?? '').trim() || (isBasque ? 'Beste arauak' : 'Otras normas');
@@ -81,6 +115,45 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
     return reviewItems.filter((item) => !item.isCorrect);
   }, [reviewItems, showOnlyIncorrect]);
 
+  const summaryLine = isBasque
+    ? `${questions.length} galderatik ${score} asmatu dituzu.`
+    : `Has acertado ${score} de ${questions.length} preguntas.`;
+
+  const speedMessage = Number(avgTimeSec) < 30
+    ? isBasque
+      ? 'Erritmo ona izan duzu. Merezi du horri eustea.'
+      : 'Has ido con buen ritmo. Merece la pena mantenerlo.'
+    : isBasque
+      ? 'Erritmo ona da, baina errazetan denbora pixka bat gehiago aurreztu dezakezu.'
+      : 'El ritmo es bueno, pero aun puedes ahorrar tiempo en las faciles.';
+
+  useEffect(() => {
+    trackDecision({
+      surface: 'session_end',
+      curriculum,
+      dominantState: sessionEndDecision.dominantState,
+      primaryAction: 'restart',
+      visibleCta: sessionEndDecision.primaryCta,
+      context: {
+        mode,
+        score,
+        total: questions.length,
+        percentage,
+      },
+    });
+
+    storeSessionCloseSummary({
+      timestamp: new Date().toISOString(),
+      curriculum,
+      mode,
+      dominantState: sessionEndDecision.dominantState,
+      thesis: sessionEndDecision.dominantTitle,
+      nextCta: sessionEndDecision.primaryCta,
+      score,
+      total: questions.length,
+    });
+  }, [curriculum, mode, percentage, questions.length, score, sessionEndDecision.dominantState, sessionEndDecision.dominantTitle, sessionEndDecision.primaryCta]);
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20">
       <div className="relative overflow-hidden bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-12">
@@ -103,25 +176,33 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-5xl font-black text-slate-800">{percentage}%</span>
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
-              {isBasque ? 'Puntuazioa' : 'Puntuacion'}
+              {isBasque ? 'Emaitza' : 'Resultado'}
             </span>
           </div>
         </div>
 
         <div className="flex-1 space-y-6 text-center md:text-left">
           <div>
-            <h2 className="text-4xl font-black text-slate-800 mb-2">
-              {percentage >= 70
-                ? isBasque ? 'Lan bikaina!' : 'Excelente trabajo!'
-                : percentage >= 50
-                  ? isBasque ? 'Saiakera ona' : 'Buen intento'
-                  : isBasque ? 'Errepasoa behar duzu' : 'Necesitas repasar'}
-            </h2>
+            {continuityLine ? (
+              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-indigo-700 mb-5">
+                <Zap size={14} />
+                {continuityLine}
+              </div>
+            ) : null}
+            <h2 className="text-4xl font-black text-slate-800 mb-2">{sessionEndDecision.dominantTitle}</h2>
             <p className="text-xl text-slate-500 font-medium leading-relaxed">
-              {isBasque
-                ? `${total} galderako testa osatu duzu eta ${score} asmatu dituzu.`
-                : `Has completado el test de ${total} preguntas con un total de ${score} aciertos.`}
+              {sessionEndDecision.dominantBody || summaryLine}
             </p>
+            {sessionEndDecision.microReward ? (
+              <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                  {isBasque ? 'Aurrerapen txikia' : 'Progreso de proceso'}
+                </div>
+                <div className="mt-2 text-sm font-black text-slate-900">{sessionEndDecision.microReward.title}</div>
+                <div className="mt-1 text-sm font-medium text-slate-500">{sessionEndDecision.microReward.detail}</div>
+              </div>
+            ) : null}
+            <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-4">{summaryLine}</p>
           </div>
 
           <div className="flex flex-wrap gap-4 justify-center md:justify-start">
@@ -135,7 +216,7 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
             </div>
             <div className="flex items-center gap-2 px-5 py-3 bg-indigo-50 text-indigo-700 rounded-2xl font-bold border border-indigo-100">
               <Clock size={20} />
-              {avgTimeSec}s / {isBasque ? 'gal.' : 'preg'}
+              {avgTimeSec}s / {isBasque ? 'gal.' : 'preg.'}
             </div>
           </div>
         </div>
@@ -145,7 +226,7 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
         <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Errendimendua arauaren arabera' : 'Rendimiento por ley'}
+              {isBasque ? 'Nola joan den legez lege' : 'Como ha ido por ley'}
             </h3>
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
               <BarChart3 size={24} />
@@ -154,17 +235,17 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
           {lawsSeen.length === 0 ? (
             <div className="mb-8 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-medium text-slate-600">
               {isBasque
-                ? 'Ez dago legerik erabilgarri saio honetan (sinkronizazioaren zain).'
-                : 'Leyes no disponibles en esta sesion (pendiente de sincronizacion).'}
+                ? 'Saio honetan ez da legeka irakurketa argirik atera.'
+                : 'En esta sesion no se ha podido sacar una lectura por ley.'}
             </div>
           ) : (
             <div className="mb-8 rounded-2xl border border-slate-100 bg-slate-50 overflow-hidden">
               <div className="px-6 py-4 flex items-center justify-between">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {isBasque ? 'Aztertutako araua' : 'Ley estudiada'}
+                  {isBasque ? 'Landutako legea' : 'Ley trabajada'}
                 </div>
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {isBasque ? 'Asmatzea' : 'Acierto'}
+                  {isBasque ? 'Acierto' : 'Acierto'}
                 </div>
               </div>
               <div className="divide-y divide-slate-100">
@@ -197,7 +278,7 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
         <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Erantzun-abiadura' : 'Velocidad de respuesta'}
+              {isBasque ? 'Galdera bakoitzeko denbora' : 'Tiempo por pregunta'}
             </h3>
             <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
               <Zap size={24} />
@@ -209,22 +290,14 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
               <span className="text-7xl font-black text-slate-800">{avgTimeSec}</span>
               <span className="text-2xl font-bold text-slate-400 ml-2">{isBasque ? 'segundo' : 'segundos'}</span>
               <p className="text-slate-500 font-medium mt-2">
-                {isBasque ? 'Galdera bakoitzeko batez besteko denbora' : 'Tiempo medio por pregunta'}
+                {isBasque ? 'Galdera bakoitzeko batez bestekoa' : 'Media por pregunta'}
               </p>
             </div>
 
             <div className={`p-6 rounded-[2rem] w-full text-center border-2 ${
               Number(avgTimeSec) < 30 ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'
             }`}>
-              <p className="font-bold">
-                {Number(avgTimeSec) < 30
-                  ? isBasque
-                    ? 'Azterketa-erritmo bikaina! Mantendu abiadura hau.'
-                    : 'Ritmo de examen excelente! Manten esta velocidad.'
-                  : isBasque
-                    ? 'Erritmo ona da, baina saiatu galdera errazetan denbora murrizten.'
-                    : 'Buen ritmo, pero intenta reducir el tiempo en las preguntas faciles.'}
-              </p>
+              <p className="font-bold">{speedMessage}</p>
             </div>
           </div>
         </div>
@@ -235,12 +308,10 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div>
               <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-                {isBasque ? 'Simulakroaren berrikuspena' : 'Revision del simulacro'}
+                {isBasque ? 'Orain zer berrikusi komeni den' : 'Lo que conviene revisar ahora'}
               </h3>
               <p className="text-slate-500 font-medium mt-1">
-                {isBasque
-                  ? 'Ez da feedbackik erakutsi egiten zen bitartean. Hemen duzu desglose osoa.'
-                  : 'No se mostro feedback durante la realizacion. Aqui tienes el desglose completo.'}
+                {reviewCopy.line2 ?? reviewCopy.line1}
               </p>
             </div>
 
@@ -253,7 +324,7 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
                     : 'border-slate-100 bg-white text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {isBasque ? 'Denak' : 'Todas'}
+                {isBasque ? 'Denak' : 'Ver todo'}
               </button>
               <button
                 onClick={() => setShowOnlyIncorrect(true)}
@@ -263,7 +334,7 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
                     : 'border-slate-100 bg-white text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {isBasque ? 'Hutsegindakoak bakarrik' : 'Solo falladas'}
+                {isBasque ? 'Bakarrik hutsak' : 'Solo lo fallado'}
               </button>
             </div>
           </div>
@@ -332,20 +403,31 @@ export default function PostTestStats({ payload, questions, mode, onRestart, onG
         </div>
       ) : null}
 
-      <div className="flex flex-col sm:flex-row gap-4 pt-4">
+      <div className="flex flex-col sm:flex-row gap-4 pt-4 items-stretch">
         <button
-          onClick={onRestart}
+          onClick={() => {
+            trackEffect({
+              surface: 'session_end',
+              curriculum,
+              action: 'cta_clicked',
+              context: { cta: sessionEndDecision.primaryCta, mode },
+            });
+            onRestart();
+          }}
           className="flex-1 py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 hover:-translate-y-1"
         >
           <RotateCcw size={24} />
-          {isBasque ? 'Testa errepikatu' : 'Repetir test'}
+          {sessionEndDecision.primaryCta}
         </button>
         <button
-          onClick={onGoHome}
-          className="flex-1 py-5 bg-white text-slate-700 rounded-[2rem] font-black text-xl shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-3 hover:-translate-y-1"
+          onClick={() => {
+            trackEffect({ surface: 'session_end', curriculum, action: 'go_home', context: { mode } });
+            onGoHome();
+          }}
+          className="py-4 px-6 bg-white text-slate-600 rounded-[2rem] font-black text-base shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
         >
           <LayoutDashboard size={24} />
-          {isBasque ? 'Hasierara itzuli' : 'Volver al inicio'}
+          {isBasque ? 'Panela berriz ikusi' : 'Volver al panel'}
         </button>
       </div>
     </div>

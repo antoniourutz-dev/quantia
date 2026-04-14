@@ -25,6 +25,7 @@ import StatsDashboard from './components/StatsDashboard';
 import PostTestStats from './components/PostTestStats';
 import StudyExplorer from './components/StudyExplorer';
 import SettingsPanel from './components/SettingsPanel';
+import TelemetryDebugPanel from './components/TelemetryDebugPanel';
 import Dashboard from './components/dashboard/Dashboard';
 import { supabaseConfigError } from './lib/supabaseConfig';
 import { getSafeSupabaseSession, supabase } from './lib/supabaseClient';
@@ -49,7 +50,17 @@ import {
   type CurriculumOption,
   type DashboardBundle,
 } from './lib/quantiaApi';
-import { buildCoachPlanV2, buildCoachTwoLineMessageV2 } from './lib/coach';
+import { buildCoachPlanV2 } from './lib/coach';
+import { getContinuityLine } from './lib/continuity';
+import { trackDecisionOnce, trackEffect } from './lib/telemetry';
+import {
+  buildCoachCopySeed,
+  buildHeaderStatusCopy,
+  buildWeakAreaCopy,
+  buildWeeklyDeltaLabel,
+  getSurfaceCopy,
+  resolveCoachSurfaceState,
+} from './lib/coachCopyV2';
 import {
   LocaleProvider,
   getLocaleForCurriculum,
@@ -77,7 +88,8 @@ type View =
   | 'test-active'
   | 'stats'
   | 'test-results'
-  | 'settings';
+  | 'settings'
+  | 'telemetry';
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const curriculumHasActivity = (option: CurriculumOption) =>
@@ -216,6 +228,25 @@ export default function App() {
       setSidebarOpen(false);
     }
   }, [currentView]);
+
+  const telemetryEnabled = useMemo(() => {
+    if (bundle?.identity.is_admin) return true;
+    try {
+      if (window.localStorage.getItem('quantia.debug.telemetry') === '1') return true;
+    } catch {
+    }
+    try {
+      return new URLSearchParams(window.location.search).get('telemetry') === '1';
+    } catch {
+      return false;
+    }
+  }, [bundle?.identity.is_admin]);
+
+  useEffect(() => {
+    if (currentView !== 'telemetry') return;
+    if (telemetryEnabled) return;
+    setCurrentView('dashboard');
+  }, [currentView, telemetryEnabled]);
 
   const refreshDashboard = useCallback(async () => {
     if (!session) return;
@@ -415,11 +446,89 @@ export default function App() {
       batchSize: 20,
     });
   }, [bundle]);
-
-  const coachMessage = useMemo(
-    () => (coachPlan ? buildCoachTwoLineMessageV2(coachPlan) : null),
-    [coachPlan],
+  const coachSurfaceState = useMemo(
+    () => resolveCoachSurfaceState(coachPlan, bundle),
+    [bundle, coachPlan],
   );
+  const coachCopySeed = useMemo(
+    () =>
+      buildCoachCopySeed({
+        curriculum,
+        username: bundle?.identity.current_username,
+        state: coachSurfaceState,
+        extra: coachPlan?.primaryAction ?? 'base',
+      }),
+    [bundle?.identity.current_username, coachPlan?.primaryAction, coachSurfaceState, curriculum],
+  );
+  const heroCopy = useMemo(
+    () =>
+      getSurfaceCopy({
+        state: coachSurfaceState,
+        surface: 'homeHero',
+        locale,
+        seed: `${coachCopySeed}:hero`,
+      }),
+    [coachCopySeed, coachSurfaceState, locale],
+  );
+  const homeCardCopy = useMemo(
+    () =>
+      getSurfaceCopy({
+        state: coachSurfaceState,
+        surface: 'homeCard',
+        locale,
+        seed: `${coachCopySeed}:home-card`,
+      }),
+    [coachCopySeed, coachSurfaceState, locale],
+  );
+  const statsSurfaceCopy = useMemo(
+    () =>
+      getSurfaceCopy({
+        state: coachSurfaceState,
+        surface: 'statsSummary',
+        locale,
+        seed: `${coachCopySeed}:stats`,
+      }),
+    [coachCopySeed, coachSurfaceState, locale],
+  );
+  const continuityLine = useMemo(() => getContinuityLine(locale, curriculum), [curriculum, locale]);
+
+  useEffect(() => {
+    if (!bundle) return;
+    const confidence =
+      bundle.practiceState.learningDashboardV2?.examReadinessConfidenceFlag ??
+      bundle.practiceState.pressureInsightsV2?.confidenceFlag ??
+      null;
+
+    if (currentView === 'dashboard') {
+      trackDecisionOnce(
+        `home:${curriculum}:${coachSurfaceState}:${coachPlan?.primaryAction ?? ''}:${heroCopy.cta ?? ''}`,
+        {
+          surface: 'home',
+          curriculum,
+          dominantState: coachSurfaceState,
+          primaryAction: coachPlan?.primaryAction ?? null,
+          tone: coachPlan?.tone ?? null,
+          visibleCta: heroCopy.cta ?? null,
+          confidence,
+        },
+      );
+    }
+
+    if (currentView === 'stats') {
+      trackDecisionOnce(
+        `stats:${curriculum}:${coachSurfaceState}:${coachPlan?.primaryAction ?? ''}`,
+        {
+          surface: 'stats',
+          curriculum,
+          dominantState: coachSurfaceState,
+          primaryAction: coachPlan?.primaryAction ?? null,
+          tone: coachPlan?.tone ?? null,
+          visibleCta: t('Hacer sesion recomendada', 'Gomendatutako saioa egin'),
+          confidence,
+        },
+      );
+    }
+  }, [bundle, coachPlan?.primaryAction, coachPlan?.tone, coachSurfaceState, currentView, curriculum, heroCopy.cta, t]);
 
   const statsResults = useMemo<TestResult[]>(() => {
     if (!bundle) return [];
@@ -443,10 +552,10 @@ export default function App() {
         weakAreasBadge: undefined as string | undefined,
         weeklyInsightData: weekdayLabels.map((label) => ({ name: label, questions: 0 })),
         weeklyInsightSummary: t(
-          'Todavia no hay suficiente actividad para construir una lectura semanal.',
-          'Oraindik ez dago nahikoa jarduerarik asteko irakurketa osatzeko.',
+          'Todavia no hay movimiento suficiente para sacar una lectura util de la semana.',
+          'Oraindik ez dago nahikoa mugimendurik astearen irakurketa erabilgarria egiteko.',
         ),
-        weeklyInsightDelta: t('Actividad inicial', 'Hasierako jarduera'),
+        weeklyInsightDelta: t('Semana por arrancar', 'Astea hasteko dago'),
       };
     }
 
@@ -490,13 +599,6 @@ export default function App() {
       }
     }
 
-    const deltaValue =
-      previousWeekQuestions <= 0
-        ? currentWeekQuestions > 0
-          ? 100
-          : 0
-        : Math.round(((currentWeekQuestions - previousWeekQuestions) / previousWeekQuestions) * 100);
-
     const learningV2 = bundle.practiceState.learningDashboardV2;
     const pressureV2 = bundle.practiceState.pressureInsightsV2;
     const observedOk = Boolean(learningV2?.observedAccuracySampleOk) && (learningV2?.observedAccuracyN ?? 0) >= 15;
@@ -519,51 +621,26 @@ export default function App() {
           ? t(`${bundle.weakCategories.length} temas`, `${bundle.weakCategories.length} gai`)
           : undefined,
       weeklyInsightData: perDay,
-      weeklyInsightSummary: isBasque
-        ? currentWeekQuestions > 0
-          ? `${currentWeekQuestions} galdera landu dituzu azken zazpi egunetan.`
-          : 'Oraindik ez dago nahikoa jarduerarik asteko irakurketa osatzeko.'
-        : coachPlan?.reasons[0] ??
-          bundle.practiceState.learningDashboardV2?.focusMessage ??
-          'La semana ya deja una primera foto de uso y rendimiento.',
-      weeklyInsightDelta:
-        previousWeekQuestions > 0
-          ? t(
-              `${deltaValue >= 0 ? '+' : ''}${deltaValue}% vs semana anterior`,
-              `${deltaValue >= 0 ? '+' : ''}${deltaValue}% aurreko astearekin alderatuta`,
-            )
-          : currentWeekQuestions > 0
-            ? t('Primera semana con actividad', 'Lehen aste aktiboa')
-            : t('Sin actividad reciente', 'Ez dago azken jarduerarik'),
+      weeklyInsightSummary: [statsSurfaceCopy.line1, statsSurfaceCopy.line2].filter(Boolean).join(' '),
+      weeklyInsightDelta: buildWeeklyDeltaLabel({
+        locale,
+        currentWeekQuestions,
+        previousWeekQuestions,
+      }),
     };
-  }, [bundle, coachPlan, isBasque, t, weekdayLabels]);
-
-  const primaryCardTitle =
-    coachPlan?.primaryAction === 'review'
-      ? t('Consolidar antes de seguir', 'Aurrera egin aurretik sendotu')
-      : coachPlan?.primaryAction === 'recovery'
-        ? t('Recuperar ritmo', 'Erritmoa berreskuratu')
-        : coachPlan?.primaryAction === 'simulacro'
-          ? t('Medir nivel real', 'Benetako maila neurtu')
-          : coachPlan?.primaryAction === 'anti_trap'
-            ? t('Afinar lectura', 'Irakurketa doitu')
-            : coachPlan?.primaryAction === 'push'
-              ? t('Subir exigencia', 'Exijentzia igo')
-              : t('Continuidad limpia', 'Jarraitutasun garbia');
+  }, [bundle, locale, statsSurfaceCopy.line1, statsSurfaceCopy.line2, t, weekdayLabels]);
 
   const weakCategory = bundle?.weakCategories[0] ?? null;
-  const weakTitle = weakCategory
-    ? t(`Area mas fragil: ${weakCategory.category}`, `Ahulgunerik handiena: ${weakCategory.category}`)
-    : t('Sin alertas dominantes', 'Ez dago alerta nagusirik');
-  const weakDescription = weakCategory
-    ? t(
-        'Esta categoria concentra mas riesgo que tu media actual. Un bloque corto aqui puede mover el panel rapido.',
-        'Kategoria honek zure uneko batezbestekoa baino arrisku handiagoa du. Hemen bloke labur batek panela azkar mugitu dezake.',
-      )
-    : t(
-        'No aparecen categorias con riesgo dominante. Puedes repartir practica con mas libertad.',
-        'Ez da arrisku nagusirik duen kategoriarik ageri. Praktika askatasun handiagoz banatu dezakezu.',
-      );
+  const weakAreaCopy = useMemo(
+    () =>
+      buildWeakAreaCopy({
+        locale,
+        category: weakCategory?.category ?? null,
+        state: coachSurfaceState,
+        seed: `${coachCopySeed}:weak`,
+      }),
+    [coachCopySeed, coachSurfaceState, locale, weakCategory?.category],
+  );
 
   const handleLogin = useCallback(async (username: string, password: string) => {
     setAuthLoading(true);
@@ -637,6 +714,13 @@ export default function App() {
             ),
           );
         }
+
+        trackEffect({
+          surface: 'test',
+          curriculum,
+          action: 'session_started',
+          context: { mode: resolvedMode, syllabus: syllabus ?? null, count: batchSize },
+        });
 
         const session: ActivePracticeSession = {
           id: crypto.randomUUID(),
@@ -789,6 +873,17 @@ export default function App() {
       setSyncingSession(true);
       setDataError(null);
       try {
+        trackEffect({
+          surface: 'session_end',
+          curriculum,
+          action: 'session_completed',
+          context: {
+            mode: activeSession.mode,
+            score: payload.score,
+            total: activeSession.questions.length,
+            finishedAt: new Date().toISOString(),
+          },
+        });
         await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
         await refreshDashboard();
         setCurrentView('test-results');
@@ -820,9 +915,9 @@ export default function App() {
       learningV2?.observedAccuracySampleOk && (learningV2?.observedAccuracyN ?? 0) >= 15
         ? learningV2.retentionSeenConfidenceFlag ?? 'medium'
         : pressureV2?.confidenceFlag ?? 'low';
-
     const confidenceLabel =
       confidence === 'high' ? 'Alta' : confidence === 'medium' ? 'Media' : 'Baja';
+
     const dotClass =
       confidence === 'high'
         ? 'bg-emerald-500'
@@ -843,14 +938,23 @@ export default function App() {
       learningV2?.observedAccuracySampleOk || pressureV2?.sampleOk
         ? t(`Senal: ${localizedConfidenceLabel}`, `Seinalea: ${localizedConfidenceLabel}`)
         : t('Sin senal', 'Seinalerik ez');
+    const headerCopy = buildHeaderStatusCopy({
+      locale,
+      readiness,
+      hasReliableReading:
+        Boolean(learningV2?.observedAccuracySampleOk) || Boolean(pressureV2?.sampleOk),
+      confidence,
+    });
 
     return {
       readiness,
       signalLabel: resolvedSignalLabel,
+      readingLabel: headerCopy.readingLabel,
+      readinessLabel: headerCopy.readinessLabel,
       dotClass,
       sessions: bundle?.practiceState.recentSessions.length ?? 0,
     };
-  }, [bundle, t]);
+  }, [bundle, locale, t]);
 
   const activeCurriculumLabel = useMemo(
     () =>
@@ -1366,7 +1470,11 @@ export default function App() {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${isTesting ? 'p-4 sm:p-6 lg:p-16' : 'p-5 sm:p-8 lg:p-16'}`}>
+      <main className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${
+        isTesting
+          ? 'p-3 sm:p-4 lg:p-10'
+          : 'p-5 sm:p-8 lg:p-12 xl:p-16 [@media(max-height:800px)]:p-4 [@media(max-height:800px)]:sm:p-6 [@media(max-height:800px)]:lg:p-10'
+      }`}>
         {!isTesting && (
           <header className="mb-10 lg:mb-16 flex flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000">
             <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
@@ -1431,7 +1539,7 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="flex items-center gap-2 border-r border-indigo-200 pr-4">
                         <div className={`w-2 h-2 ${headerStatus.dotClass} rounded-full`} />
-                        {headerStatus.signalLabel}
+                        {headerStatus.readingLabel}
                       </div>
                       <div className="flex items-center gap-2 border-r border-indigo-200 pr-4 min-w-0">
                         <GraduationCap size={16} className="text-indigo-600 shrink-0" />
@@ -1442,9 +1550,7 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <Trophy size={16} className="text-amber-500" />
                         <span className="font-black">
-                          {headerStatus.readiness == null
-                            ? t('Preparacion: -', 'Prestaketa: -')
-                            : `${t('Preparacion', 'Prestaketa')}: ${headerStatus.readiness}%`}
+                          {headerStatus.readinessLabel}
                         </span>
                       </div>
                     </div>
@@ -1476,49 +1582,35 @@ export default function App() {
 
         {!dataLoading && bundle && currentView === 'dashboard' ? (
           <Dashboard
-            coachLabel={
-              isBasque ? 'Gaurko coacha' : `Coach ${coachPlan?.tone ?? 'activo'}`
-            }
-            coachTitle={
-              isBasque
-                ? primaryCardTitle
-                : coachMessage?.line1 ?? 'Tu panel ya esta conectado.'
-            }
-            coachDescription={
-              isBasque
-                ? dashboardMetrics.weeklyInsightSummary
-                : coachMessage?.line2 ??
-                  bundle.practiceState.learningDashboardV2?.focusMessage ??
-                  'La lectura del coach aparecerá aqui en cuanto haya datos suficientes.'
-            }
-            coachCtaLabel={
-              coachPlan?.primaryAction === 'simulacro'
-                ? t('Practicar especifico', 'Espezifikoa landu')
-                : t('Practicar ahora', 'Orain praktikatu')
-            }
+            coachLabel={heroCopy.eyebrow ?? t('Sugerencia de hoy', 'Gaurko proposamena')}
+            coachTitle={heroCopy.line1}
+            coachDescription={`${continuityLine ? `${continuityLine} ` : ''}${heroCopy.line2 ?? dashboardMetrics.weeklyInsightSummary}`}
+            coachCtaLabel={heroCopy.cta ?? t('Practicar ahora', 'Orain praktikatu')}
             commonProgress={dashboardMetrics.commonProgress}
             specificProgress={dashboardMetrics.specificProgress}
             weeklyQuestions={dashboardMetrics.weeklyQuestions}
             accuracyRate={dashboardMetrics.accuracyRate}
-            primaryCardTitle={primaryCardTitle}
-            primaryCardDescription={
-              isBasque
-                ? dashboardMetrics.weeklyInsightSummary
-                : coachPlan?.reasons[0] ??
-                  bundle.practiceState.learningDashboardV2?.focusMessage ??
-                  'Empieza una sesion para generar una senal mas limpia.'
-            }
-            primaryCardProgressLabel={t('Cobertura global', 'Estaldura globala')}
+            primaryCardTitle={homeCardCopy.line1}
+            primaryCardDescription={homeCardCopy.line2 ?? dashboardMetrics.weeklyInsightSummary}
+            primaryCardCtaLabel={homeCardCopy.cta ?? t('Seguir por aqui', 'Hemendik jarraitu')}
+            primaryCardProgressLabel={t('Temario visto', 'Ikusitako temarioa')}
             primaryCardProgressValue={Math.round(
               (bundle.practiceState.learningDashboardV2?.coverageRate ?? 0) * 100,
             )}
-            weakTitle={weakTitle}
-            weakDescription={weakDescription}
+            weakTitle={weakAreaCopy.title}
+            weakDescription={weakAreaCopy.description}
+            weakCardCtaLabel={weakAreaCopy.cta ?? t('Corregir esto', 'Hori zuzendu')}
             weakAreasBadge={dashboardMetrics.weakAreasBadge}
             weeklyInsightData={dashboardMetrics.weeklyInsightData}
             weeklyInsightSummary={dashboardMetrics.weeklyInsightSummary}
             weeklyInsightDelta={dashboardMetrics.weeklyInsightDelta}
             onCoachAction={() => {
+              trackEffect({
+                surface: 'home',
+                curriculum,
+                action: 'cta_clicked',
+                context: { cta: heroCopy.cta ?? null, primaryAction: coachPlan?.primaryAction ?? null },
+              });
               void handleStartCoachSession();
             }}
             onStartTest={(syllabus) => {
@@ -1557,7 +1649,19 @@ export default function App() {
             saving={settingsSaving}
             notice={settingsNotice}
             onSave={handleSaveExamTarget}
+            isAdmin={Boolean(bundle?.identity.is_admin)}
+            onOpenTelemetry={() => setCurrentView('telemetry')}
           />
+        ) : null}
+
+        {currentView === 'telemetry' ? (
+          telemetryEnabled ? (
+            <TelemetryDebugPanel
+              onClose={() => {
+                setCurrentView('settings');
+              }}
+            />
+          ) : null
         ) : null}
 
         {currentView === 'test-active' && activeSession ? (
@@ -1592,6 +1696,8 @@ export default function App() {
             payload={lastTestPayload}
             questions={activeSession.questions}
             mode={activeSession.mode}
+            curriculum={curriculum}
+            username={bundle?.identity.current_username ?? session?.user.email ?? null}
             onRestart={() => {
               if (selectedLawFilter) {
                 void handleStartLawTest(selectedLawFilter, activeSession.questions.length || 20);
@@ -1611,10 +1717,24 @@ export default function App() {
           <StatsDashboard
             results={statsResults}
             bundle={bundle}
+            curriculum={curriculum}
+            coachPlan={coachPlan}
+            onStartRecommended={() => {
+              trackEffect({
+                surface: 'stats',
+                curriculum,
+                action: 'cta_clicked',
+                context: {
+                  cta: t('Hacer sesion recomendada', 'Gomendatutako saioa egin'),
+                  primaryAction: coachPlan?.primaryAction ?? null,
+                },
+              });
+              void handleStartCoachSession();
+            }}
             levelLabel={
               coachPlan
                 ? formatModeLabel(coachPlan.primaryAction === 'review' ? 'mixed' : 'standard', locale)
-                : t('Preparacion activa', 'Prestaketa aktiboa')
+                : t('Ritmo actual', 'Uneko erritmoa')
             }
           />
         ) : null}

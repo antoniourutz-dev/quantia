@@ -18,28 +18,28 @@ export default function ProgressOverview({
   const isBasque = locale === 'eu';
   const stats = [
     {
-      label: isBasque ? 'Gai-zerrenda arrunta' : 'Temario comun',
+      label: isBasque ? 'Zati arrunta' : 'Parte comun',
       value: commonProgress == null ? '-' : `${commonProgress}%`,
       icon: BarChart3,
       bgColor: 'bg-indigo-50',
       textColor: 'text-indigo-600',
     },
     {
-      label: isBasque ? 'Gai-zerrenda espezifikoa' : 'Temario especifico',
+      label: isBasque ? 'Zati espezifikoa' : 'Parte especifica',
       value: specificProgress == null ? '-' : `${specificProgress}%`,
       icon: Target,
       bgColor: 'bg-emerald-50',
       textColor: 'text-emerald-600',
     },
     {
-      label: isBasque ? 'Galderak (7 egun)' : 'Preguntas (7 dias)',
+      label: isBasque ? 'Aste honetan' : 'Esta semana',
       value: weeklyQuestions,
       icon: Activity,
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
     },
     {
-      label: isBasque ? 'Doitasuna (lagina)' : 'Precision (muestra)',
+      label: isBasque ? 'Azken doitasuna' : 'Acierto reciente',
       value: accuracyRate == null ? '-' : `${accuracyRate}%`,
       icon: TrendingUp,
       bgColor: 'bg-rose-50',

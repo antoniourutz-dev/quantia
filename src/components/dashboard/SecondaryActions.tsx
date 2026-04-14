@@ -49,17 +49,17 @@ export default function SecondaryActions({
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <SecondaryActionItem
-        label={isBasque ? 'Praktika ausazkoa' : 'Practica aleatoria'}
+        label={isBasque ? 'Bloke libre bat' : 'Entrenar un bloque'}
         icon={<PlayCircle size={24} />}
         onAction={onSimulation}
       />
       <SecondaryActionItem
-        label={isBasque ? 'Estatistika osoak' : 'Estadisticas completas'}
+        label={isBasque ? 'Nola zoazen' : 'Ver como vas'}
         icon={<TrendingUp size={24} />}
         onAction={onStats}
       />
       <SecondaryActionItem
-        label={isBasque ? 'Hobetu beharreko arloak' : 'Areas de mejora'}
+        label={isBasque ? 'Berriz hartu beharrekoa' : 'Lo que te conviene revisar'}
         icon={<AlertCircle size={24} />}
         onAction={onWeakAreas}
         badge={weakAreasBadge}

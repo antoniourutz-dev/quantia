@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { getSafeSupabaseSession, supabase } from './supabaseClient';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -61,49 +61,23 @@ const missingCurriculumRpcs = new Set<string>();
 const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: DEFAULT_CURRICULUM, label: 'Administrativo' },
   { id: 'auxiliar_administrativo', label: 'Auxiliar administrativo' },
+  { id: 'general', label: 'General' },
+  { id: 'leyes_generales', label: 'Leyes Generales' },
   { id: 'goi-teknikaria', label: 'Goi-teknikaria' },
 ];
 
-const CURRICULUM_RPC_NAMES = [
-  'get_available_curriculums',
-  'list_available_curriculums',
-  'get_curriculum_catalog',
-  'list_curriculums',
-  'get_curriculums',
-  'list_oposiciones',
-  'get_oposiciones',
-];
+const CURRICULUM_RPC_NAMES: string[] = [];
 
 const CURRICULUM_TABLE_SOURCES: TableSource[] = [
   { schema: 'app', table: 'practice_profiles' },
   { schema: 'public', table: 'opposition_configs' },
-  { schema: 'app', table: 'curriculums' },
-  { schema: 'app', table: 'curricula' },
-  { schema: 'app', table: 'oposiciones' },
-  { schema: 'app', table: 'opposition_catalog' },
-  { schema: 'public', table: 'curriculums' },
-  { schema: 'public', table: 'curricula' },
-  { schema: 'public', table: 'oposiciones' },
-  { schema: 'public', table: 'opposition_catalog' },
 ];
 
 const QUESTION_TABLE_SOURCES: TableSource[] = [
   { schema: 'public', table: 'preguntas' },
-  { schema: 'app', table: 'preguntas' },
-  { schema: 'app', table: 'study_questions' },
-  { schema: 'app', table: 'questions' },
-  { schema: 'app', table: 'practice_questions' },
-  { schema: 'app', table: 'question_bank' },
-  { schema: 'app', table: 'oposicion_questions' },
-  { schema: 'public', table: 'study_questions' },
-  { schema: 'public', table: 'questions' },
-  { schema: 'public', table: 'practice_questions' },
-  { schema: 'public', table: 'question_bank' },
-  { schema: 'public', table: 'oposicion_questions' },
 ];
 
 const SESSION_TABLE_SOURCES: TableSource[] = [
-  { schema: 'public', table: 'practice_sessions' },
   { schema: 'app', table: 'practice_sessions' },
 ];
 
@@ -1060,13 +1034,51 @@ const getQuestionCountFromTables = async (curriculum: string) => {
   return 0;
 };
 
+const buildIdentityFromAuthUser = async (): Promise<AccountIdentity | null> => {
+  const session = await getSafeSupabaseSession().catch(() => null);
+  let user = session?.user ?? null;
+
+  if (!user) {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) return null;
+    user = data.user;
+  }
+
+  const metadata = user.user_metadata ?? {};
+  const email = readText(user.email);
+  const emailUsername = email?.split('@')[0]?.trim() ?? null;
+  const currentUsername =
+    readText((metadata as Record<string, unknown>).current_username) ??
+    readText((metadata as Record<string, unknown>).username) ??
+    readText((metadata as Record<string, unknown>).preferred_username) ??
+    emailUsername;
+
+  if (!currentUsername) return null;
+
+  return {
+    user_id: user.id,
+    current_username: currentUsername,
+    is_admin: Boolean((metadata as Record<string, unknown>).is_admin),
+    player_mode:
+      String((metadata as Record<string, unknown>).player_mode ?? '').trim().toLowerCase() === 'generic'
+        ? 'generic'
+        : 'advanced',
+    previous_usernames: [],
+  };
+};
+
 export const getMyAccountIdentity = async (): Promise<AccountIdentity> => {
   const { data, error } = await supabase.schema('app').rpc('get_my_account_identity').maybeSingle();
-  if (error) throw new Error(mapPracticeCloudError(error));
+  if (!error) {
+    const identity = mapAccountIdentity(data);
+    if (identity) return identity;
+  }
 
-  const identity = mapAccountIdentity(data);
-  if (!identity) throw new Error('No se ha podido cargar la identidad de la cuenta.');
-  return identity;
+  const fallbackIdentity = await buildIdentityFromAuthUser();
+  if (fallbackIdentity) return fallbackIdentity;
+
+  if (error) throw new Error(mapPracticeCloudError(error));
+  throw new Error('No se ha podido cargar la identidad de la cuenta.');
 };
 
 export const getMyPracticeState = async (
@@ -1436,6 +1448,15 @@ export const getStudyQuestionsSlice = async (
   offset = 0,
   curriculum = DEFAULT_CURRICULUM,
 ): Promise<Question[]> => {
+  const fallbackQuestions = await getQuestionsFromTables({
+    curriculum,
+    limit,
+    offset,
+  });
+  if (fallbackQuestions.length > 0) {
+    return fallbackQuestions.slice(0, limit);
+  }
+
   const rpcAttempts = [
     { p_curriculum: curriculum, p_limit: limit, p_offset: offset },
     { p_curriculum: curriculum, p_batch_size: limit, p_offset: offset },
@@ -1449,15 +1470,6 @@ export const getStudyQuestionsSlice = async (
         return questions.slice(0, limit);
       }
     }
-  }
-
-  const fallbackQuestions = await getQuestionsFromTables({
-    curriculum,
-    limit,
-    offset,
-  });
-  if (fallbackQuestions.length > 0) {
-    return fallbackQuestions.slice(0, limit);
   }
 
   return getRandomPracticeBatch(limit, curriculum, 'all');

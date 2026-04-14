@@ -11,10 +11,10 @@ interface CoachHeroProps {
 
 export default function CoachHero({
   onAction,
-  label = 'Recomendacion de hoy',
+  label = 'Sugerencia de hoy',
   title,
   description,
-  ctaLabel = 'Empezar sesion',
+  ctaLabel = 'Empezar por aqui',
 }: CoachHeroProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -58,17 +58,6 @@ export default function CoachHero({
             {ctaLabel}
             <ArrowRight size={22} className="group-hover:translate-x-2 transition-transform duration-500" />
           </button>
-
-          <div className="flex -space-x-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="w-10 h-10 rounded-full border-2 border-[#0a0a1a] bg-indigo-800 flex items-center justify-center text-[10px] font-bold">
-                {String.fromCharCode(64 + i)}
-              </div>
-            ))}
-            <div className="pl-6 text-sm font-bold text-indigo-300 uppercase tracking-widest">
-              {isBasque ? '+1.2k ikasle gaur' : '+1.2k alumnos hoy'}
-            </div>
-          </div>
         </div>
       </div>
     </section>

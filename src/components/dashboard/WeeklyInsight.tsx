@@ -50,7 +50,7 @@ export default function WeeklyInsight({ data, summary, deltaLabel: delta }: Week
 
         <div className="space-y-4">
           <h3 className="text-4xl font-black text-slate-900 tracking-tighter">
-            {isBasque ? 'Asteko analisia' : 'Analisis semanal'}
+            {isBasque ? 'Asteko irakurketa' : 'Lectura de la semana'}
           </h3>
           <p className="text-xl text-slate-500 font-medium leading-relaxed antialiased">
             {summary}
@@ -65,7 +65,7 @@ export default function WeeklyInsight({ data, summary, deltaLabel: delta }: Week
             {delta}
           </div>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] pl-2">
-            {isBasque ? 'Errendimendu algoritmoa aktibo' : 'Algoritmo de rendimiento activo'}
+            {isBasque ? 'Aste honetako erritmoa' : 'Ritmo de esta semana'}
           </p>
         </div>
       </div>

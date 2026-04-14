@@ -141,10 +141,10 @@ export default function TestInterface({ questions, mode, onFinish, onCancel }: T
   }
 
   return (
-    <div className={`max-w-6xl mx-auto space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all ${isFocusMode ? 'py-10' : ''}`}>
+    <div className={`max-w-6xl mx-auto space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all ${isFocusMode ? 'py-8' : ''}`}>
       {!isFocusMode && (
         <div className="animate-in slide-in-from-top-4 duration-500">
-          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100">
             <div className="flex items-center gap-6">
               {isSimulacro && (
                 <div className="flex items-center gap-2 text-slate-500 font-medium">
@@ -185,7 +185,7 @@ export default function TestInterface({ questions, mode, onFinish, onCancel }: T
             </div>
           </div>
 
-          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-4">
+          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-3">
             <div
               className="bg-indigo-600 h-full transition-all duration-500 ease-out"
               style={{ width: `${progress}%` }}

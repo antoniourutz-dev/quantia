@@ -8,6 +8,8 @@ interface SettingsPanelProps {
   saving: boolean;
   notice: { kind: 'success' | 'error'; text: string } | null;
   onSave: (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number }) => Promise<void>;
+  isAdmin?: boolean;
+  onOpenTelemetry?: () => void;
 }
 
 const clampInt = (value: number, min: number, max: number) => {
@@ -15,9 +17,21 @@ const clampInt = (value: number, min: number, max: number) => {
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
-export default function SettingsPanel({ examTarget, saving, notice, onSave }: SettingsPanelProps) {
+export default function SettingsPanel({ examTarget, saving, notice, onSave, isAdmin = false, onOpenTelemetry }: SettingsPanelProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
+  const telemetryEnabled = useMemo(() => {
+    if (isAdmin) return true;
+    try {
+      if (window.localStorage.getItem('quantia.debug.telemetry') === '1') return true;
+    } catch {
+    }
+    try {
+      return new URLSearchParams(window.location.search).get('telemetry') === '1';
+    } catch {
+      return false;
+    }
+  }, [isAdmin]);
   const initialExamDate = examTarget?.examDate ?? '';
   const initialDailyReview = examTarget?.dailyReviewCapacity ?? 35;
   const initialDailyNew = examTarget?.dailyNewCapacity ?? 10;
@@ -53,8 +67,8 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
             </h2>
             <p className="mt-2 text-slate-500 text-lg font-medium leading-relaxed">
               {isBasque
-                ? 'Honek coacha eta eguneroko gomendioak gidatzen ditu. Egokitu zure data eta benetako gaitasuna.'
-                : 'Esto guia el Coach y las recomendaciones diarias. Ajusta tu fecha y tu capacidad real.'}
+                ? 'Hemen jartzen duzu zure data eta egunean benetan egin dezakezun kopurua. Horrekin hobeto doitzen dira gomendioak.'
+                : 'Aqui ajustas la fecha y la cantidad real que puedes sostener cada dia. Con eso la app afina mejor lo que te conviene hacer.'}
             </p>
           </div>
           {notice ? (
@@ -93,8 +107,8 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
                     ? `Helburua: ${examDate}`
                     : `Objetivo: ${examDate}`
                   : isBasque
-                    ? 'Datarik gabe: sistemak jarraitutasuna optimizatzen du'
-                    : 'Sin fecha: el sistema optimiza por continuidad'}
+                    ? 'Datarik gabe: aplikazioak erritmo ona mantentzea lehenesten du'
+                    : 'Sin fecha: la app prioriza mantener buen ritmo'}
               </div>
             </div>
 
@@ -105,8 +119,8 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
               <div className="text-4xl font-black text-slate-900">{derived.total}</div>
               <div className="mt-2 text-sm font-medium text-slate-600 leading-relaxed">
                 {isBasque
-                  ? 'Errepasoa + berriak. Erabili eutsi diezaiokezun zenbaki errealista.'
-                  : 'Suma de repaso + nuevas. Usalo como numero realista que puedas sostener.'}
+                  ? 'Errepasoa + berriak. Erabili benetan eutsi diezaiokezun zenbaki bat.'
+                  : 'Repaso + nuevas. Usa un numero realista para no ir a tirones.'}
               </div>
             </div>
           </div>
@@ -125,7 +139,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
                 className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
               />
               <div className="mt-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                {isBasque ? 'Gomendatua ahazteagatik huts egiten baduzu.' : 'Recomendado si fallas por olvido.'}
+                {isBasque ? 'Igo ezazu gauzak pilatzen bazaizkizu errepasatzeko.' : 'Subelo si se te acumulan cosas por repasar.'}
               </div>
             </div>
 
@@ -142,7 +156,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
                 className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
               />
               <div className="mt-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                {isBasque ? 'Gomendatua estaldura baxua bada.' : 'Recomendado si tu cobertura es baja.'}
+                {isBasque ? 'Igo ezazu gai berria ireki badezakezu haria galdu gabe.' : 'Subelo si puedes abrir materia nueva sin perder el hilo.'}
               </div>
             </div>
           </div>
@@ -177,14 +191,23 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
               ? isBasque ? 'Gordetzen...' : 'Guardando...'
               : isBasque ? 'Doikuntzak gorde' : 'Guardar ajustes'}
           </button>
+          {telemetryEnabled && onOpenTelemetry ? (
+            <button
+              type="button"
+              onClick={onOpenTelemetry}
+              className="sm:w-auto px-6 py-5 rounded-[2rem] bg-white text-slate-700 font-black text-base shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+            >
+              {isBasque ? 'Telemetria' : 'Telemetría'}
+            </button>
+          ) : null}
           <div className="flex-1 rounded-[2rem] border border-slate-100 bg-white px-6 py-5">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
-              {isBasque ? 'Espero den eragina' : 'Impacto esperado'}
+              {isBasque ? 'Honek zer aldatzen duen' : 'Que cambia con esto'}
             </div>
             <div className="text-sm font-medium text-slate-600 leading-relaxed">
               {isBasque
-                ? 'Coachak errepasoa edo berriak lehenesten ditu zure estalduraren, hauskortasunaren eta presioaren arabera. Doikuntza koherenteek panelak hutsik ez agertzea laguntzen dute.'
-                : 'El Coach prioriza repaso vs nuevas segun tu cobertura, fragilidad y presion. Ajustes coherentes hacen que el panel deje de mostrar valores vacios.'}
+                ? 'Datu hauekin aplikazioak hobeto erabakitzen du noiz komeni zaizun errepasatzea, noiz aurrera egitea eta zenbat eskatu behar dizun. Zenbat eta errealistagoa izan, orduan eta erabilgarriagoak dira gomendioak.'
+                : 'Con estos datos la app decide mejor cuando te conviene repasar, cuando seguir avanzando y cuanto pedirte. Cuanto mas realista sea, mas utiles seran las recomendaciones.'}
             </div>
           </div>
         </div>

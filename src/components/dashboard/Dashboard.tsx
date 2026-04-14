@@ -18,10 +18,12 @@ interface DashboardProps {
   accuracyRate: number | null;
   primaryCardTitle: string;
   primaryCardDescription: string;
+  primaryCardCtaLabel: string;
   primaryCardProgressLabel?: string;
   primaryCardProgressValue?: number;
   weakTitle: string;
   weakDescription: string;
+  weakCardCtaLabel: string;
   weakAreasBadge?: string;
   weeklyInsightData: Array<{ name: string; questions: number }>;
   weeklyInsightSummary: string;
@@ -43,10 +45,12 @@ export default function Dashboard({
   accuracyRate,
   primaryCardTitle,
   primaryCardDescription,
+  primaryCardCtaLabel,
   primaryCardProgressLabel,
   primaryCardProgressValue,
   weakTitle,
   weakDescription,
+  weakCardCtaLabel,
   weakAreasBadge,
   weeklyInsightData,
   weeklyInsightSummary,
@@ -94,11 +98,11 @@ export default function Dashboard({
           <div>
             <p className="text-4xl font-black text-slate-800 mb-1">{accuracyRate == null ? '-' : `${accuracyRate}%`}</p>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
-              {isBasque ? 'Doitasuna (lagina)' : 'Precision (muestra)'}
+              {isBasque ? 'Azken doitasuna' : 'Acierto reciente'}
             </p>
           </div>
           <button className="text-indigo-600 font-black text-xs uppercase tracking-[0.2em] flex items-center gap-2 group-hover:gap-4 transition-all">
-            {isBasque ? 'Estatistikak ikusi' : 'Ver estadisticas'} <ArrowRight size={14} />
+            {isBasque ? 'Nola zoazen ikusi' : 'Ver como vas'} <ArrowRight size={14} />
           </button>
         </div>
 
@@ -109,7 +113,7 @@ export default function Dashboard({
             icon={<BookOpen size={32} />}
             progressLabel={primaryCardProgressLabel}
             progressValue={primaryCardProgressValue}
-            ctaText={isBasque ? 'Ikasten jarraitu' : 'Continuar estudiando'}
+            ctaText={primaryCardCtaLabel}
             onAction={() => onStartTest('common')}
             variant="indigo"
           />
@@ -120,7 +124,7 @@ export default function Dashboard({
             title={weakTitle}
             description={weakDescription}
             icon={<AlertCircle size={32} />}
-            ctaText={isBasque ? 'Akatsak zuzendu' : 'Corregir errores'}
+            ctaText={weakCardCtaLabel}
             onAction={onReviewErrors}
             variant="rose"
           />
@@ -130,7 +134,7 @@ export default function Dashboard({
           <div className="flex items-center gap-3 text-slate-400 px-2">
             <TrendingUp size={16} className="text-slate-400" />
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">
-              {isBasque ? 'Azken jarduera (7 egun)' : 'Actividad reciente (7 dias)'}
+              {isBasque ? 'Aste honetako mugimendua' : 'Lo que llevas esta semana'}
             </span>
           </div>
 
@@ -144,7 +148,7 @@ export default function Dashboard({
         <div className="flex items-center gap-3 text-slate-400 px-2">
           <Sparkles size={16} />
           <span className="text-[10px] font-black uppercase tracking-[0.3em]">
-            {isBasque ? 'Errendimendu handiko ekintzak' : 'Acciones de alto rendimiento'}
+            {isBasque ? 'Orain egitea komeni dena' : 'Lo que te conviene hacer ahora'}
           </span>
         </div>
 

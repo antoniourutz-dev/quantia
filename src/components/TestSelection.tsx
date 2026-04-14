@@ -135,7 +135,7 @@ export default function TestSelection({
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
         <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center gap-2">
           <Zap className="text-indigo-600 w-5 h-5" />
-          {isBasque ? 'Hautatu entrenamendu mota' : 'Selecciona el tipo de entrenamiento'}
+          {isBasque ? 'Nola praktikatu nahi duzu gaur?' : 'Como quieres practicar hoy'}
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
@@ -167,15 +167,15 @@ export default function TestSelection({
               <p className="text-sm font-medium text-slate-500 mt-2">
                 {usesLawSelection
                   ? isBasque
-                    ? 'Aukeratu landu nahi duzun legea'
-                    : 'Elige la ley que quieres estudiar'
+                      ? 'Aukeratu errepasatu nahi duzun legea'
+                    : 'Elige la ley que quieres repasar'
                   : usesSingleScope
                     ? isBasque
-                      ? 'Aukeratu galdera kopurua'
-                      : 'Elige cuantas preguntas quieres'
+                      ? 'Galdera kopurua baino ez duzu aukeratu behar'
+                      : 'Tu solo eliges cuantas preguntas'
                   : isBasque
-                    ? 'Kategoriaz egituratutako blokeak'
-                    : 'Bloques estructurados por categoria'}
+                    ? 'Blokea aukeratu eta lanean hasi'
+                    : 'Elige por bloque y ponte a ello'}
               </p>
             </div>
           </button>
@@ -192,9 +192,9 @@ export default function TestSelection({
               <Zap size={32} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">{isBasque ? 'Test azkarra' : 'Test rapido'}</p>
+              <p className="font-black text-xl text-slate-800">{isBasque ? 'Bloke laburra' : 'Bloque corto'}</p>
               <p className="text-sm font-medium text-slate-500 mt-2">
-                {isBasque ? '5 ausazko galdera flash' : '5 preguntas aleatorias flash'}
+                {isBasque ? 'Berriz sartzeko 5 galdera' : '5 preguntas para volver a entrar'}
               </p>
             </div>
           </button>
@@ -211,9 +211,9 @@ export default function TestSelection({
               <AlertCircle size={32} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">{isBasque ? 'Akatsen errepasoa' : 'Repaso de fallos'}</p>
+              <p className="font-black text-xl text-slate-800">{isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos'}</p>
               <p className="text-sm font-medium text-slate-500 mt-2">
-                {isBasque ? 'Zure ahulguneetan jarri arreta' : 'Enfocate en tus puntos debiles'}
+                {isBasque ? 'Zoaz gehien kostatzen zaizunera' : 'Ve justo a lo que mas se te resiste'}
               </p>
             </div>
           </button>
@@ -236,7 +236,7 @@ export default function TestSelection({
             <div>
               <p className="font-black text-xl text-slate-800">{isBasque ? 'Simulakroa' : 'Simulacro'}</p>
               <p className="text-sm font-medium text-slate-500 mt-2">
-                {isBasque ? 'Ez dago feedbackik amaierara arte' : 'Sin feedback hasta el final'}
+                {isBasque ? 'Erantzunak amaieran ikusiko dituzu' : 'Sin ver las respuestas hasta el final'}
               </p>
             </div>
           </button>
@@ -257,10 +257,10 @@ export default function TestSelection({
             </div>
             <div>
               <p className="font-black text-xl text-slate-800">
-                {isBasque ? 'Test pertsonalizatua' : 'Test personalizado'}
+                {isBasque ? 'Zure neurrira' : 'A tu medida'}
               </p>
               <p className="text-sm font-medium text-slate-500 mt-2">
-                {isBasque ? 'Aukeratu galdera-tartea' : 'Elige rango de preguntas'}
+                {isBasque ? 'Landu nahi duzun tartea aukeratu' : 'Escoge el tramo que quieres trabajar'}
               </p>
             </div>
           </button>
@@ -274,10 +274,10 @@ export default function TestSelection({
             {usesLawSelection
               ? isBasque
                 ? 'Hautatu legea'
-                : 'Selecciona la ley'
+                : 'Elige la ley'
               : isBasque
-                ? 'Hautatu temarioa'
-                : 'Selecciona el temario'}
+                ? 'Landu nahi duzun zatia aukeratu'
+                : 'Elige la parte que quieres trabajar'}
           </h2>
 
           {usesLawSelection ? (
@@ -312,7 +312,7 @@ export default function TestSelection({
                       : 'Cargando lista de leyes...'
                     : isBasque
                       ? 'Oraindik ez da legerik aurkitu oposizio honetarako.'
-                      : 'Todavia no se han encontrado leyes para esta oposicion.'}
+                      : 'Aun no aparecen leyes para esta oposicion.'}
                 </div>
               )}
             </div>
@@ -358,7 +358,7 @@ export default function TestSelection({
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
           <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center gap-2">
             <Hash className="text-indigo-600 w-5 h-5" />
-            {isBasque ? 'Galdera kopurua' : 'Cantidad de preguntas'}
+            {isBasque ? 'Zenbat galdera egin nahi dituzu?' : 'Cuantas preguntas quieres hacer'}
           </h2>
 
           <div className="grid grid-cols-3 gap-6">
@@ -383,13 +383,13 @@ export default function TestSelection({
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8">
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Timer className="text-slate-700 w-5 h-5" />
-            {isBasque ? 'Konfiguratu simulakroa' : 'Configura el simulacro'}
+            {isBasque ? 'Prestatu simulakroa' : 'Prepara el simulacro'}
           </h2>
 
           {!usesSingleScope ? (
             <div className="space-y-3">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                {isBasque ? 'Estaldura' : 'Cobertura'}
+                {isBasque ? 'Azterketaren zatia' : 'Parte del examen'}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <button
@@ -463,7 +463,7 @@ export default function TestSelection({
             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
               {isBasque
                 ? 'Simulakroan ez duzu erantzun zuzena ikusiko amaierara arte.'
-                : 'En simulacro no veras la respuesta correcta hasta el final.'}
+                : 'En simulacro veras todo el feedback al terminar.'}
             </div>
           </div>
         </div>
@@ -474,7 +474,7 @@ export default function TestSelection({
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <SlidersHorizontal className="text-violet-600 w-5 h-5" />
-              {isBasque ? 'Test pertsonalizatua' : 'Test personalizado'}
+              {isBasque ? 'Landu nahi duzun tartea' : 'Elige el tramo'}
             </h2>
             {customBounds ? (
               <div className="text-xs font-black text-slate-500">
@@ -518,7 +518,7 @@ export default function TestSelection({
 
           <div className="space-y-3">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {isBasque ? 'Ordena' : 'Orden'}
+              {isBasque ? 'Nola atera nahi dituzu?' : 'Como quieres que salgan'}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <button
@@ -578,22 +578,22 @@ export default function TestSelection({
                 ? 'Testa sortu'
               : 'Test blokea sortu'
             : usesLawSelection
-              ? 'Generar test por ley'
+              ? 'Empezar por esta ley'
               : usesSingleScope
-                ? 'Generar test'
-              : 'Generar bloque de test'
+                ? 'Empezar este test'
+              : 'Empezar este bloque'
           : selectionMode === 'quick'
             ? isBasque
-              ? 'Abiarazi test azkarra!'
-              : 'Lanzar test rapido!'
+              ? 'Bloke laburra egin'
+              : 'Hacer bloque corto'
             : selectionMode === 'errors'
               ? isBasque
-                ? 'Akats kritikoak berrikusi'
-                : 'Repasar errores criticos'
+                ? 'Nire hutsetara joan'
+                : 'Ir a mis fallos'
               : selectionMode === 'custom'
                 ? isBasque
-                  ? 'Test pertsonalizatua hasi'
-                  : 'Iniciar test personalizado'
+                  ? 'Tarte hau hasi'
+                  : 'Empezar este tramo'
                 : isBasque
                   ? 'Simulakroa hasi'
                   : 'Iniciar simulacro'}
