@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Calendar, CheckCircle2, AlertTriangle, Save } from 'lucide-react';
 import type { PracticeExamTarget } from '../types';
+import { useAppLocale } from '../lib/locale';
 
 interface SettingsPanelProps {
   examTarget: PracticeExamTarget | null;
@@ -15,6 +16,8 @@ const clampInt = (value: number, min: number, max: number) => {
 };
 
 export default function SettingsPanel({ examTarget, saving, notice, onSave }: SettingsPanelProps) {
+  const locale = useAppLocale();
+  const isBasque = locale === 'eu';
   const initialExamDate = examTarget?.examDate ?? '';
   const initialDailyReview = examTarget?.dailyReviewCapacity ?? 35;
   const initialDailyNew = examTarget?.dailyNewCapacity ?? 10;
@@ -43,11 +46,15 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
           <div>
             <div className="flex items-center gap-2 text-slate-400">
               <Calendar size={16} />
-              <span className="text-[10px] font-black uppercase tracking-[0.3em]">Objetivo</span>
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">{isBasque ? 'Helburua' : 'Objetivo'}</span>
             </div>
-            <h2 className="mt-3 text-3xl font-black text-slate-900 tracking-tight">Plan de examen</h2>
+            <h2 className="mt-3 text-3xl font-black text-slate-900 tracking-tight">
+              {isBasque ? 'Azterketa plana' : 'Plan de examen'}
+            </h2>
             <p className="mt-2 text-slate-500 text-lg font-medium leading-relaxed">
-              Esto guía el Coach y las recomendaciones diarias. Ajusta tu fecha y tu capacidad real.
+              {isBasque
+                ? 'Honek coacha eta eguneroko gomendioak gidatzen ditu. Egokitu zure data eta benetako gaitasuna.'
+                : 'Esto guia el Coach y las recomendaciones diarias. Ajusta tu fecha y tu capacidad real.'}
             </p>
           </div>
           {notice ? (
@@ -72,7 +79,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
           <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 space-y-6">
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
-                Fecha de examen
+                {isBasque ? 'Azterketa data' : 'Fecha de examen'}
               </div>
               <input
                 type="date"
@@ -81,17 +88,25 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
                 className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
               />
               <div className="mt-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                {examDate ? `Objetivo: ${examDate}` : 'Sin fecha: el sistema optimiza por continuidad'}
+                {examDate
+                  ? isBasque
+                    ? `Helburua: ${examDate}`
+                    : `Objetivo: ${examDate}`
+                  : isBasque
+                    ? 'Datarik gabe: sistemak jarraitutasuna optimizatzen du'
+                    : 'Sin fecha: el sistema optimiza por continuidad'}
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-100 bg-white px-6 py-5">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
-                Capacidad diaria total
+                {isBasque ? 'Eguneko gaitasun osoa' : 'Capacidad diaria total'}
               </div>
               <div className="text-4xl font-black text-slate-900">{derived.total}</div>
               <div className="mt-2 text-sm font-medium text-slate-600 leading-relaxed">
-                Suma de repaso + nuevas. Úsalo como número realista que puedas sostener.
+                {isBasque
+                  ? 'Errepasoa + berriak. Erabili eutsi diezaiokezun zenbaki errealista.'
+                  : 'Suma de repaso + nuevas. Usalo como numero realista que puedas sostener.'}
               </div>
             </div>
           </div>
@@ -99,7 +114,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
           <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 space-y-6">
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
-                Repaso (preguntas/día)
+                {isBasque ? 'Errepasoa (galdera/egun)' : 'Repaso (preguntas/dia)'}
               </div>
               <input
                 type="number"
@@ -110,13 +125,13 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
                 className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
               />
               <div className="mt-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Recomendado si fallas por olvido.
+                {isBasque ? 'Gomendatua ahazteagatik huts egiten baduzu.' : 'Recomendado si fallas por olvido.'}
               </div>
             </div>
 
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
-                Nuevas (preguntas/día)
+                {isBasque ? 'Berriak (galdera/egun)' : 'Nuevas (preguntas/dia)'}
               </div>
               <input
                 type="number"
@@ -127,7 +142,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
                 className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
               />
               <div className="mt-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Recomendado si tu cobertura es baja.
+                {isBasque ? 'Gomendatua estaldura baxua bada.' : 'Recomendado si tu cobertura es baja.'}
               </div>
             </div>
           </div>
@@ -158,15 +173,18 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave }: Se
             className="flex-1 flex items-center justify-center gap-3 rounded-[2rem] bg-indigo-600 px-6 py-5 text-white font-black text-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all hover:-translate-y-1 disabled:bg-slate-300 disabled:shadow-none"
           >
             <Save size={20} />
-            {saving ? 'Guardando…' : 'Guardar ajustes'}
+            {saving
+              ? isBasque ? 'Gordetzen...' : 'Guardando...'
+              : isBasque ? 'Doikuntzak gorde' : 'Guardar ajustes'}
           </button>
           <div className="flex-1 rounded-[2rem] border border-slate-100 bg-white px-6 py-5">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
-              Impacto esperado
+              {isBasque ? 'Espero den eragina' : 'Impacto esperado'}
             </div>
             <div className="text-sm font-medium text-slate-600 leading-relaxed">
-              El Coach prioriza repaso vs nuevas según tu cobertura, fragilidad y presión. Ajustes coherentes hacen que el
-              panel deje de mostrar valores “vacíos”.
+              {isBasque
+                ? 'Coachak errepasoa edo berriak lehenesten ditu zure estalduraren, hauskortasunaren eta presioaren arabera. Doikuntza koherenteek panelak hutsik ez agertzea laguntzen dute.'
+                : 'El Coach prioriza repaso vs nuevas segun tu cobertura, fragilidad y presion. Ajustes coherentes hacen que el panel deje de mostrar valores vacios.'}
             </div>
           </div>
         </div>

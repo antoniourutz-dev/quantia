@@ -8,36 +8,41 @@ type LoginFunctionResponse = {
   token_type: string;
 };
 
+const FALLBACK_EMAIL_DOMAINS = ['oposik.app', 'quantia.app'] as const;
+
 const getLoginFunctionUrl = () =>
   import.meta.env.VITE_LOGIN_WITH_USERNAME_FUNCTION_URL ||
   `${supabaseUrl}/functions/v1/login-with-username`;
 
-const buildLegacyInternalEmail = (usernameInput: string) => {
+const buildLegacyInternalEmails = (usernameInput: string) => {
   const normalized = usernameInput.trim().toLowerCase();
-  return normalized.includes('@') ? normalized : `${normalized}@quantia.app`;
+  if (!normalized) return [];
+  if (normalized.includes('@')) return [normalized];
+  return Array.from(new Set(FALLBACK_EMAIL_DOMAINS.map((domain) => `${normalized}@${domain}`)));
 };
-
-const canUseLegacyFallback =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_LEGACY_USERNAME_LOGIN_FALLBACK === '1';
 
 const signInWithLegacyEmail = async (username: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: buildLegacyInternalEmail(username),
-    password,
-  });
+  let lastMessage = 'No se ha podido iniciar sesion. Intentalo de nuevo.';
 
-  if (error || !data.session) {
-    throw new Error(
-      error?.message?.includes('Invalid login credentials')
-        ? 'Usuario o contrasena incorrectos. Revisa tus datos.'
-        : error?.message || 'No se ha podido iniciar sesion. Intentalo de nuevo.',
-    );
+  for (const email of buildLegacyInternalEmails(username)) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (!error && data.session) {
+      return data.session;
+    }
+
+    lastMessage = error?.message?.includes('Invalid login credentials')
+      ? 'Usuario o contrasena incorrectos. Revisa tus datos.'
+      : error?.message || lastMessage;
   }
 
-  return data.session;
+  throw new Error(lastMessage);
 };
 
-const tryLegacyFallback = async (username: string, password: string, prefixMessage: string) => {
+const tryLegacyFallback = async (username: string, password: string, prefixMessage?: string) => {
   try {
     return await signInWithLegacyEmail(username, password);
   } catch (legacyError) {
@@ -46,11 +51,20 @@ const tryLegacyFallback = async (username: string, password: string, prefixMessa
         ? legacyError.message
         : 'No se ha podido iniciar sesion. Intentalo de nuevo.';
 
-    throw new Error(`${prefixMessage} ${legacyMessage}`);
+    throw new Error(prefixMessage ? `${prefixMessage} ${legacyMessage}` : legacyMessage);
   }
 };
 
 export const loginWithUsername = async (username: string, password: string) => {
+  const normalizedUsername = username.trim();
+  if (normalizedUsername.includes('@')) {
+    return await tryLegacyFallback(
+      normalizedUsername,
+      password,
+      'No se ha podido validar el acceso por email.',
+    );
+  }
+
   try {
     const response = await fetch(getLoginFunctionUrl(), {
       method: 'POST',
@@ -66,21 +80,21 @@ export const loginWithUsername = async (username: string, password: string) => {
       | null;
 
     if (response.status === 404) {
-      if (canUseLegacyFallback) {
-        return await tryLegacyFallback(
-          username,
-          password,
-          'El servicio de acceso por usuario no esta disponible todavia. El acceso alternativo tambien ha fallado:',
-        );
-      }
-
-      throw new Error(
-        'No esta desplegado el servicio de acceso por usuario. Publica la funcion `login-with-username`.',
+      return await tryLegacyFallback(
+        normalizedUsername,
+        password,
+        'El servicio de acceso por usuario no esta disponible todavia. El acceso directo tambien ha fallado:',
       );
     }
 
     if (!response.ok || !payload?.access_token || !payload.refresh_token) {
-      throw new Error(payload?.message || 'Usuario o contrasena incorrectos. Revisa tus datos.');
+      return await tryLegacyFallback(
+        normalizedUsername,
+        password,
+        payload?.message
+          ? `${payload.message} El acceso directo tambien ha fallado:`
+          : 'El acceso por usuario no se ha podido resolver. El acceso directo tambien ha fallado:',
+      );
     }
 
     const { data, error } = await supabase.auth.setSession({
@@ -98,11 +112,11 @@ export const loginWithUsername = async (username: string, password: string) => {
       error instanceof TypeError ||
       (error instanceof Error && /fetch|network|failed to fetch/i.test(error.message));
 
-    if (canUseLegacyFallback && isNetworkLevelFailure) {
+    if (isNetworkLevelFailure) {
       return await tryLegacyFallback(
-        username,
+        normalizedUsername,
         password,
-        'El servicio de acceso por usuario no esta disponible en este momento. El acceso alternativo tambien ha fallado:',
+        'El servicio de acceso por usuario no esta disponible en este momento. El acceso directo tambien ha fallado:',
       );
     }
 

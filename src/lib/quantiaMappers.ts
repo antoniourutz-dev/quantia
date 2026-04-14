@@ -30,8 +30,10 @@ export const toNullableNumber = (value: unknown) => {
 
 export const normalizeQuestionScope = (value: unknown) => {
   const normalized = String(value ?? '').trim().toLowerCase();
-  if (normalized === 'common') return 'common' as const;
-  if (normalized === 'specific') return 'specific' as const;
+  if (normalized === 'common' || normalized === 'comun') return 'common' as const;
+  if (normalized === 'specific' || normalized === 'especifico' || normalized === 'específico') {
+    return 'specific' as const;
+  }
   return null;
 };
 
@@ -45,6 +47,7 @@ export const mapPracticeMode = (value: unknown): PracticeSessionSummary['mode'] 
     case 'mixed':
     case 'simulacro':
     case 'anti_trap':
+    case 'custom':
       return normalized;
     default:
       return 'standard';
@@ -73,16 +76,93 @@ const extractOptionsFromObject = (rawOptions: unknown) => {
   return Object.fromEntries(entries) as Record<(typeof OPTION_KEYS)[number], string>;
 };
 
+const extractOptionTextFromValue = (value: unknown) => {
+  if (typeof value === 'string') return readText(value);
+  if (!value || typeof value !== 'object') return null;
+
+  const source = value as Record<string, unknown>;
+  return (
+    readText(source.text) ??
+    readText(source.label) ??
+    readText(source.content) ??
+    readText(source.value) ??
+    readText(source.option) ??
+    readText(source.answer) ??
+    readText(source.descripcion)
+  );
+};
+
+const extractOptionsFromArray = (rawOptions: unknown) => {
+  if (!Array.isArray(rawOptions) || rawOptions.length < OPTION_KEYS.length) {
+    return null;
+  }
+
+  const entries = OPTION_KEYS.map((key, index) => [key, extractOptionTextFromValue(rawOptions[index])] as const);
+  if (entries.some(([, value]) => !value)) return null;
+
+  return Object.fromEntries(entries) as Record<(typeof OPTION_KEYS)[number], string>;
+};
+
 const extractOptions = (row: Record<string, unknown>) => {
   const nestedOptions =
-    extractOptionsFromObject(row.opciones) ?? extractOptionsFromObject(row.options);
+    extractOptionsFromObject(row.opciones) ??
+    extractOptionsFromObject(row.options) ??
+    extractOptionsFromArray(row.opciones) ??
+    extractOptionsFromArray(row.options) ??
+    extractOptionsFromArray(row.answers) ??
+    extractOptionsFromArray(row.choices) ??
+    extractOptionsFromArray(row.alternatives);
   if (nestedOptions) return nestedOptions;
 
   const aliases: Record<(typeof OPTION_KEYS)[number], string[]> = {
-    a: ['opcion_a', 'option_a', 'respuesta_a', 'a'],
-    b: ['opcion_b', 'option_b', 'respuesta_b', 'b'],
-    c: ['opcion_c', 'option_c', 'respuesta_c', 'c'],
-    d: ['opcion_d', 'option_d', 'respuesta_d', 'd'],
+    a: [
+      'opcion_a',
+      'option_a',
+      'respuesta_a',
+      'choice_a',
+      'answer_a',
+      'opcion1',
+      'opcion_1',
+      'respuesta1',
+      'respuesta_1',
+      'a',
+    ],
+    b: [
+      'opcion_b',
+      'option_b',
+      'respuesta_b',
+      'choice_b',
+      'answer_b',
+      'opcion2',
+      'opcion_2',
+      'respuesta2',
+      'respuesta_2',
+      'b',
+    ],
+    c: [
+      'opcion_c',
+      'option_c',
+      'respuesta_c',
+      'choice_c',
+      'answer_c',
+      'opcion3',
+      'opcion_3',
+      'respuesta3',
+      'respuesta_3',
+      'c',
+    ],
+    d: [
+      'opcion_d',
+      'option_d',
+      'respuesta_d',
+      'choice_d',
+      'answer_d',
+      'opcion4',
+      'opcion_4',
+      'respuesta4',
+      'respuesta_4',
+      'd',
+    ],
   };
 
   const entries = OPTION_KEYS.map((key) => [key, pickFirstText(row, aliases[key])] as const);
@@ -100,6 +180,11 @@ const extractCorrectOption = (
   options: Record<(typeof OPTION_KEYS)[number], string>,
 ) => {
   const rawCorrectValue =
+    row.correct_answer_index ??
+    row.correct_option_index ??
+    row.correct_index ??
+    row.answer_index ??
+    row.respuesta_correcta_indice ??
     row.respuesta_correcta ??
     row.correct_option ??
     row.correct_answer ??
@@ -108,6 +193,27 @@ const extractCorrectOption = (
 
   if (typeof rawCorrectValue === 'number' && Number.isFinite(rawCorrectValue)) {
     return mapNumericOption(rawCorrectValue);
+  }
+
+  if (rawCorrectValue && typeof rawCorrectValue === 'object') {
+    const source = rawCorrectValue as Record<string, unknown>;
+    const nestedText =
+      readText(source.id) ??
+      readText(source.key) ??
+      readText(source.value) ??
+      readText(source.text) ??
+      readText(source.label);
+    if (nestedText) {
+      const normalizedNested = normalizeComparable(nestedText);
+      if (OPTION_KEYS.includes(normalizedNested as (typeof OPTION_KEYS)[number])) {
+        return normalizedNested as (typeof OPTION_KEYS)[number];
+      }
+
+      const numericNested = Number(nestedText);
+      if (Number.isFinite(numericNested)) {
+        return mapNumericOption(numericNested);
+      }
+    }
   }
 
   const correctText = readText(rawCorrectValue);
@@ -131,7 +237,12 @@ const extractCorrectOption = (
 export const mapQuestion = (row: Record<string, unknown>): Question | null => {
   const statement = pickFirstText(row, [
     'pregunta',
+    'pregunta_texto',
     'question_text',
+    'statement',
+    'prompt',
+    'stem',
+    'enunciado_pregunta',
     'enunciado',
     'texto',
     'question',
@@ -144,17 +255,29 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
 
   const questionScope =
     normalizeQuestionScope(row.question_scope) ??
+    normalizeQuestionScope(row.question_scope_key) ??
     normalizeQuestionScope(row.raw_scope) ??
-    normalizeQuestionScope(row.scope);
+    normalizeQuestionScope(row.scope) ??
+    normalizeQuestionScope(row.scope_key) ??
+    normalizeQuestionScope(row.grupo);
 
   return {
-    id: readText(row.id) ?? crypto.randomUUID(),
-    number: toNullableNumber(row.numero ?? row.question_number ?? row.orden ?? row.order),
+    id: readText(row.id ?? row.question_id ?? row.uuid ?? row.slug) ?? crypto.randomUUID(),
+    number: toNullableNumber(
+      row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
+    ),
     text: statement,
     options: OPTION_KEYS.map((key) => ({ id: key, text: options[key] })),
     correctAnswer: correctOption,
     explanation:
-      pickFirstText(row, ['explicacion', 'explanation', 'justificacion']) ??
+      pickFirstText(row, [
+        'explicacion',
+        'explanation',
+        'justificacion',
+        'feedback',
+        'solution',
+        'rationale',
+      ]) ??
       'Sin explicacion disponible.',
     syllabus: questionScope ?? 'common',
     category: pickFirstText(row, [
@@ -168,6 +291,9 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
       'topic_label',
       'topicLabel',
       'tema_pregunta',
+      'topic_name',
+      'bloque',
+      'ley_referencia',
     ]),
     questionScope,
   };

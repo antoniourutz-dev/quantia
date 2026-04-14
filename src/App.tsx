@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
 import {
   ClipboardList,
@@ -6,12 +7,16 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Menu,
   Settings,
   TrendingUp,
   BookOpen,
   Flame,
   Star,
   Trophy,
+  ChevronDown,
+  Check,
+  X,
 } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import TestSelection from './components/TestSelection';
@@ -25,19 +30,36 @@ import { supabaseConfigError } from './lib/supabaseConfig';
 import { getSafeSupabaseSession, supabase } from './lib/supabaseClient';
 import { loginWithUsername } from './lib/auth';
 import {
+  buildFallbackCurriculumOptions,
   DEFAULT_CURRICULUM,
+  formatCurriculumLabel,
+  getAvailableCurriculums,
+  getCurriculumCategoryGroupLabel,
+  getCurriculumCategoryOptions,
+  getCurriculumQuestionNumberBounds,
+  getPracticeBatchByCategory,
   getRandomPracticeBatch,
+  getQuestionsByNumberRange,
   getStudyQuestionsSlice,
   getWeakPracticeBatch,
   loadDashboardBundle,
   recordPracticeSessionInCloud,
   signOut,
   updateMyExamTarget,
+  type CurriculumOption,
   type DashboardBundle,
 } from './lib/quantiaApi';
 import { buildCoachPlanV2, buildCoachTwoLineMessageV2 } from './lib/coach';
 import {
+  LocaleProvider,
+  getLocaleForCurriculum,
+  getWeekdayLabels,
+  isLawSelectionCurriculum as hasLawSelection,
+  isSingleScopeCurriculum,
+} from './lib/locale';
+import {
   ActivePracticeSession,
+  AccountIdentity,
   FinishedTestPayload,
   PracticeMode,
   Question,
@@ -57,13 +79,89 @@ type View =
   | 'test-results'
   | 'settings';
 
-const weekdayLabels = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const curriculumHasActivity = (option: CurriculumOption) =>
+  (option.sessionCount ?? 0) > 0 ||
+  (option.answeredCount ?? 0) > 0 ||
+  Boolean(option.lastStudiedAt);
+const normalizeUserIdentifier = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
+const normalizeCurriculumId = (value: string | null | undefined) =>
+  String(value ?? '').trim().toLowerCase().replace(/_/g, '-');
+const isGoiTeknikariaCurriculum = (value: string | null | undefined) => {
+  const normalized = normalizeCurriculumId(value);
+  return normalized === 'goi-teknikaria' || normalized.startsWith('goi-teknikaria-');
+};
+const getRestrictedCurriculumForIdentity = (
+  session: Session | null,
+  identity: AccountIdentity | null | undefined,
+) => {
+  const identifiers = new Set<string>();
+  const email = normalizeUserIdentifier(session?.user?.email);
+  if (email) {
+    identifiers.add(email);
+    const [localPart] = email.split('@');
+    if (localPart) identifiers.add(localPart);
+  }
+
+  const metadataUsername = normalizeUserIdentifier(
+    typeof session?.user?.user_metadata?.username === 'string'
+      ? session.user.user_metadata.username
+      : typeof session?.user?.user_metadata?.preferred_username === 'string'
+        ? session.user.user_metadata.preferred_username
+        : null,
+  );
+  if (metadataUsername) identifiers.add(metadataUsername);
+
+  const currentUsername = normalizeUserIdentifier(identity?.current_username);
+  if (currentUsername) identifiers.add(currentUsername);
+
+  for (const previous of identity?.previous_usernames ?? []) {
+    const normalized = normalizeUserIdentifier(previous);
+    if (normalized) identifiers.add(normalized);
+  }
+
+  if (identifiers.has('eneko@oposik.app') || identifiers.has('eneko')) {
+    return 'goi-teknikaria';
+  }
+
+  return null;
+};
+const GOI_TEKNIKARIA_FALLBACK_OPTION: CurriculumOption = {
+  id: 'goi-teknikaria',
+  label: 'Goi-teknikaria',
+};
+
+const CURRICULUM_STORAGE_KEY = 'quantia_curriculum';
+const LEGACY_CURRICULUM_STORAGE_KEY = 'osakitest_curriculum';
 
 export default function App() {
+  const [curriculum, setCurriculum] = useState<string>(() => {
+    try {
+      return (
+        window.localStorage.getItem(CURRICULUM_STORAGE_KEY) ||
+        window.localStorage.getItem(LEGACY_CURRICULUM_STORAGE_KEY) ||
+        DEFAULT_CURRICULUM
+      );
+    } catch {
+      // ignore
+    }
+    return DEFAULT_CURRICULUM;
+  });
+  const [curriculumOptions, setCurriculumOptions] = useState<CurriculumOption[]>(() =>
+    buildFallbackCurriculumOptions(curriculum),
+  );
+  const [curriculumOptionsLoading, setCurriculumOptionsLoading] = useState(false);
+  const [curriculumMenuOpen, setCurriculumMenuOpen] = useState(false);
+  const [curriculumMenuStyle, setCurriculumMenuStyle] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType | null>(null);
+  const [selectedLawFilter, setSelectedLawFilter] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -79,21 +177,63 @@ export default function App() {
   const [settingsNotice, setSettingsNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(
     null,
   );
+  const [discoveredLawOptions, setDiscoveredLawOptions] = useState<string[]>([]);
+  const [discoveredLawOptionsLoading, setDiscoveredLawOptionsLoading] = useState(false);
+  const curriculumMenuRef = useRef<HTMLDivElement | null>(null);
+  const curriculumTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const curriculumMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const locale = getLocaleForCurriculum(curriculum);
+  const isBasque = locale === 'eu';
+  const t = useCallback((es: string, eu: string) => (isBasque ? eu : es), [isBasque]);
+  const weekdayLabels = useMemo(() => getWeekdayLabels(locale), [locale]);
+  const isLawSelectionCurriculum = useMemo(() => hasLawSelection(curriculum), [curriculum]);
+  const isSingleScopePracticeCurriculum = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
+  const restrictedCurriculum = useMemo(
+    () => getRestrictedCurriculumForIdentity(session, bundle?.identity ?? null),
+    [bundle?.identity, session],
+  );
+  const visibleCurriculumOptions = useMemo(() => {
+    if (!restrictedCurriculum) return curriculumOptions;
+
+    const matches = curriculumOptions.filter((option) => isGoiTeknikariaCurriculum(option.id));
+    if (matches.length === 0) {
+      return [GOI_TEKNIKARIA_FALLBACK_OPTION];
+    }
+
+    const scored = [...matches].sort((left, right) => {
+      const score = (option: CurriculumOption) =>
+        (typeof option.questionCount === 'number' && option.questionCount > 0 ? 4 : 0) +
+        (curriculumHasActivity(option) ? 2 : 0) +
+        (isGoiTeknikariaCurriculum(option.id) ? 1 : 0);
+      return score(right) - score(left);
+    });
+
+    return [scored[0]];
+  }, [curriculumOptions, restrictedCurriculum]);
+
+  useEffect(() => {
+    if (currentView === 'test-active' || currentView === 'study-active') {
+      setSidebarOpen(false);
+    }
+  }, [currentView]);
 
   const refreshDashboard = useCallback(async () => {
     if (!session) return;
+    if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
     setDataLoading(true);
     setDataError(null);
     try {
-      const nextBundle = await loadDashboardBundle(DEFAULT_CURRICULUM);
+      const nextBundle = await loadDashboardBundle(curriculum);
       setBundle(nextBundle);
     } catch (error) {
-      setDataError(error instanceof Error ? error.message : 'No se ha podido cargar el panel.');
+      setDataError(
+        error instanceof Error ? error.message : t('No se ha podido cargar el panel.', 'Ezin izan da panela kargatu.'),
+      );
     } finally {
       setDataLoading(false);
     }
-  }, [session]);
+  }, [curriculum, restrictedCurriculum, session, t]);
 
   useEffect(() => {
     let disposed = false;
@@ -107,7 +247,9 @@ export default function App() {
       })
       .catch((error) => {
         if (!disposed) {
-          setAuthError(error instanceof Error ? error.message : 'No se ha podido leer la sesion.');
+          setAuthError(
+            error instanceof Error ? error.message : t('No se ha podido leer la sesion.', 'Ezin izan da saioa irakurri.'),
+          );
           setSessionReady(true);
         }
       });
@@ -119,6 +261,7 @@ export default function App() {
       setAuthError(null);
       if (!nextSession) {
         setBundle(null);
+        setCurriculumOptions(buildFallbackCurriculumOptions());
         setActiveSession(null);
         setCurrentView('dashboard');
       }
@@ -128,7 +271,128 @@ export default function App() {
       disposed = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [t]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    let disposed = false;
+    setCurriculumOptionsLoading(true);
+
+    getAvailableCurriculums(curriculum)
+      .then((options) => {
+        if (disposed) return;
+        setCurriculumOptions(options);
+      })
+      .catch(() => {
+        if (disposed) return;
+        setCurriculumOptions(buildFallbackCurriculumOptions(curriculum));
+      })
+      .finally(() => {
+        if (!disposed) {
+          setCurriculumOptionsLoading(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [curriculum, session]);
+
+  const bundleLawOptions = useMemo(() => {
+    const labels = (bundle?.practiceState.learningDashboardV2?.lawBreakdown ?? [])
+      .map((item) => getCurriculumCategoryGroupLabel(curriculum, item.ley_referencia))
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(labels)).sort((a, b) => a.localeCompare(b, locale === 'eu' ? 'eu' : 'es'));
+  }, [bundle, curriculum, locale]);
+
+  const lawOptions = useMemo(() => {
+    const labels = [...bundleLawOptions, ...discoveredLawOptions]
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(labels)).sort((a, b) => a.localeCompare(b, locale === 'eu' ? 'eu' : 'es'));
+  }, [bundleLawOptions, discoveredLawOptions, locale]);
+
+  useEffect(() => {
+    if (!session || !isLawSelectionCurriculum) {
+      setDiscoveredLawOptions([]);
+      setDiscoveredLawOptionsLoading(false);
+      return;
+    }
+
+    let disposed = false;
+    setDiscoveredLawOptionsLoading(true);
+
+    getCurriculumCategoryOptions(curriculum)
+      .then((options) => {
+        if (disposed) return;
+        setDiscoveredLawOptions(options);
+      })
+      .catch(() => {
+        if (disposed) return;
+        setDiscoveredLawOptions([]);
+      })
+      .finally(() => {
+        if (!disposed) {
+          setDiscoveredLawOptionsLoading(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [curriculum, isLawSelectionCurriculum, session]);
+
+  useEffect(() => {
+    if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) {
+      const nextCurriculum = visibleCurriculumOptions[0]?.id ?? restrictedCurriculum;
+      if (!nextCurriculum) return;
+      setCurriculum(nextCurriculum);
+      try {
+        window.localStorage.setItem(CURRICULUM_STORAGE_KEY, nextCurriculum);
+        window.localStorage.setItem(LEGACY_CURRICULUM_STORAGE_KEY, nextCurriculum);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (curriculumOptionsLoading) return;
+    if (visibleCurriculumOptions.length === 0) return;
+    const currentOption = visibleCurriculumOptions.find((option) => option.id === curriculum);
+    const availableOption =
+      visibleCurriculumOptions.find(
+        (option) => typeof option.questionCount === 'number' && option.questionCount > 0,
+      ) ??
+      visibleCurriculumOptions.find((option) => curriculumHasActivity(option)) ??
+      visibleCurriculumOptions[0];
+
+    if (
+      currentOption &&
+      (
+        currentOption.questionCount == null ||
+        currentOption.questionCount > 0 ||
+        curriculumHasActivity(currentOption)
+      )
+    ) {
+      return;
+    }
+
+    const nextCurriculum = availableOption?.id;
+    if (!nextCurriculum) return;
+    if (nextCurriculum === curriculum) return;
+
+    setCurriculum(nextCurriculum);
+    try {
+      window.localStorage.setItem(CURRICULUM_STORAGE_KEY, nextCurriculum);
+      window.localStorage.setItem(LEGACY_CURRICULUM_STORAGE_KEY, nextCurriculum);
+    } catch {
+      // ignore
+    }
+  }, [curriculum, curriculumOptionsLoading, restrictedCurriculum, visibleCurriculumOptions]);
 
   useEffect(() => {
     if (!session) return;
@@ -165,9 +429,9 @@ export default function App() {
       score: sessionSummary.score,
       total: sessionSummary.total,
       mode: sessionSummary.mode,
-      label: formatModeLabel(sessionSummary.mode),
+      label: formatModeLabel(sessionSummary.mode, locale),
     }));
-  }, [bundle]);
+  }, [bundle, locale]);
 
   const dashboardMetrics = useMemo(() => {
     if (!bundle) {
@@ -178,8 +442,11 @@ export default function App() {
         accuracyRate: null as number | null,
         weakAreasBadge: undefined as string | undefined,
         weeklyInsightData: weekdayLabels.map((label) => ({ name: label, questions: 0 })),
-        weeklyInsightSummary: 'Todavia no hay suficiente actividad para construir una lectura semanal.',
-        weeklyInsightDelta: 'Actividad inicial',
+        weeklyInsightSummary: t(
+          'Todavia no hay suficiente actividad para construir una lectura semanal.',
+          'Oraindik ez dago nahikoa jarduerarik asteko irakurketa osatzeko.',
+        ),
+        weeklyInsightDelta: t('Actividad inicial', 'Hasierako jarduera'),
       };
     }
 
@@ -247,39 +514,56 @@ export default function App() {
       specificProgress: buildScopeProgress('specific'),
       weeklyQuestions: currentWeekQuestions,
       accuracyRate,
-      weakAreasBadge: bundle.weakCategories.length > 0 ? `${bundle.weakCategories.length} temas` : undefined,
+      weakAreasBadge:
+        bundle.weakCategories.length > 0
+          ? t(`${bundle.weakCategories.length} temas`, `${bundle.weakCategories.length} gai`)
+          : undefined,
       weeklyInsightData: perDay,
-      weeklyInsightSummary:
-        coachPlan?.reasons[0] ??
-        bundle.practiceState.learningDashboardV2?.focusMessage ??
-        'La semana ya deja una primera foto de uso y rendimiento.',
+      weeklyInsightSummary: isBasque
+        ? currentWeekQuestions > 0
+          ? `${currentWeekQuestions} galdera landu dituzu azken zazpi egunetan.`
+          : 'Oraindik ez dago nahikoa jarduerarik asteko irakurketa osatzeko.'
+        : coachPlan?.reasons[0] ??
+          bundle.practiceState.learningDashboardV2?.focusMessage ??
+          'La semana ya deja una primera foto de uso y rendimiento.',
       weeklyInsightDelta:
         previousWeekQuestions > 0
-          ? `${deltaValue >= 0 ? '+' : ''}${deltaValue}% vs semana anterior`
+          ? t(
+              `${deltaValue >= 0 ? '+' : ''}${deltaValue}% vs semana anterior`,
+              `${deltaValue >= 0 ? '+' : ''}${deltaValue}% aurreko astearekin alderatuta`,
+            )
           : currentWeekQuestions > 0
-            ? 'Primera semana con actividad'
-            : 'Sin actividad reciente',
+            ? t('Primera semana con actividad', 'Lehen aste aktiboa')
+            : t('Sin actividad reciente', 'Ez dago azken jarduerarik'),
     };
-  }, [bundle, coachPlan]);
+  }, [bundle, coachPlan, isBasque, t, weekdayLabels]);
 
   const primaryCardTitle =
     coachPlan?.primaryAction === 'review'
-      ? 'Consolidar antes de seguir'
+      ? t('Consolidar antes de seguir', 'Aurrera egin aurretik sendotu')
       : coachPlan?.primaryAction === 'recovery'
-        ? 'Recuperar ritmo'
+        ? t('Recuperar ritmo', 'Erritmoa berreskuratu')
         : coachPlan?.primaryAction === 'simulacro'
-          ? 'Medir nivel real'
+          ? t('Medir nivel real', 'Benetako maila neurtu')
           : coachPlan?.primaryAction === 'anti_trap'
-            ? 'Afinar lectura'
+            ? t('Afinar lectura', 'Irakurketa doitu')
             : coachPlan?.primaryAction === 'push'
-              ? 'Subir exigencia'
-              : 'Continuidad limpia';
+              ? t('Subir exigencia', 'Exijentzia igo')
+              : t('Continuidad limpia', 'Jarraitutasun garbia');
 
   const weakCategory = bundle?.weakCategories[0] ?? null;
-  const weakTitle = weakCategory ? `Area mas fragil: ${weakCategory.category}` : 'Sin alertas dominantes';
+  const weakTitle = weakCategory
+    ? t(`Area mas fragil: ${weakCategory.category}`, `Ahulgunerik handiena: ${weakCategory.category}`)
+    : t('Sin alertas dominantes', 'Ez dago alerta nagusirik');
   const weakDescription = weakCategory
-    ? `Esta categoria concentra mas riesgo que tu media actual. Un bloque corto aqui puede mover el panel rapido.`
-    : 'No aparecen categorias con riesgo dominante. Puedes repartir practica con mas libertad.';
+    ? t(
+        'Esta categoria concentra mas riesgo que tu media actual. Un bloque corto aqui puede mover el panel rapido.',
+        'Kategoria honek zure uneko batezbestekoa baino arrisku handiagoa du. Hemen bloke labur batek panela azkar mugitu dezake.',
+      )
+    : t(
+        'No aparecen categorias con riesgo dominante. Puedes repartir practica con mas libertad.',
+        'Ez da arrisku nagusirik duen kategoriarik ageri. Praktika askatasun handiagoz banatu dezakezu.',
+      );
 
   const handleLogin = useCallback(async (username: string, password: string) => {
     setAuthLoading(true);
@@ -288,53 +572,70 @@ export default function App() {
       const nextSession = await loginWithUsername(username, password);
       setSession(nextSession);
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : 'No se ha podido iniciar sesion.');
+      setAuthError(
+        error instanceof Error ? error.message : t('No se ha podido iniciar sesion.', 'Ezin izan da saioa hasi.'),
+      );
     } finally {
       setAuthLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleStartTest = useCallback(
     async (mode: PracticeMode, syllabus?: SyllabusType, count?: number) => {
       setSelectedSyllabus(syllabus ?? null);
+      setSelectedLawFilter(null);
       setDataError(null);
 
       try {
         let questions: Question[] = [];
         let resolvedMode = mode;
-        const selectedScope = syllabus ?? 'common';
+        const selectedScopeLabel =
+          syllabus
+            ? formatSyllabusLabel(syllabus, locale)
+            : isSingleScopePracticeCurriculum
+              ? null
+              : t('Mixto', 'Mistoa');
         let resolvedTitle =
           mode === 'simulacro'
-            ? `Simulacro${syllabus ? ` (${formatSyllabusLabel(syllabus)})` : ' (Mixto)'}`
+            ? selectedScopeLabel
+              ? `${t('Simulacro', 'Simulakroa')} (${selectedScopeLabel})`
+              : t('Simulacro', 'Simulakroa')
             : mode === 'quick_five'
-              ? 'Test rapido'
+              ? t('Test rapido', 'Test azkarra')
               : mode === 'review'
-                ? 'Repaso de fallos'
-                : `Test: ${formatSyllabusLabel(selectedScope)}`;
+                ? t('Repaso de fallos', 'Akatsen errepasoa')
+                : selectedScopeLabel
+                  ? `${t('Test', 'Testa')}: ${selectedScopeLabel}`
+                  : t('Test', 'Testa');
         const batchSize =
           count ?? (mode === 'simulacro' ? 50 : mode === 'quick_five' ? 5 : 20);
         const scope = syllabus ?? 'all';
 
         if (mode === 'review') {
           try {
-            questions = await getWeakPracticeBatch(batchSize, DEFAULT_CURRICULUM, scope);
+            questions = await getWeakPracticeBatch(batchSize, curriculum, scope);
           } catch (error) {
-            questions = await getRandomPracticeBatch(batchSize, DEFAULT_CURRICULUM, scope);
+            questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
             if (questions.length === 0) {
               throw error;
             }
 
             resolvedMode = 'mixed';
-            resolvedTitle = 'Repaso guiado';
+            resolvedTitle = t('Repaso guiado', 'Errepaso gidatua');
           }
         } else if (mode === 'simulacro') {
-          questions = await getRandomPracticeBatch(batchSize, DEFAULT_CURRICULUM, scope);
+          questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
         } else {
-          questions = await getRandomPracticeBatch(batchSize, DEFAULT_CURRICULUM, scope);
+          questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
         }
 
         if (questions.length === 0) {
-          throw new Error('No hay preguntas disponibles para ese temario en este momento.');
+          throw new Error(
+            t(
+              'No hay preguntas disponibles para ese temario en este momento.',
+              'Une honetan ez dago galderarik eskuragarri temario horretarako.',
+            ),
+          );
         }
 
         const session: ActivePracticeSession = {
@@ -353,11 +654,131 @@ export default function App() {
         setCurrentView('test-active');
       } catch (error) {
         setDataError(
-          error instanceof Error ? error.message : 'No se ha podido arrancar la sesion de test.',
+          error instanceof Error
+            ? error.message
+            : t('No se ha podido arrancar la sesion de test.', 'Ezin izan da test saioa abiatu.'),
         );
       }
     },
-    [],
+    [curriculum, isSingleScopePracticeCurriculum, locale, t],
+  );
+
+  const handleStartLawTest = useCallback(
+    async (law: string, count = 20) => {
+      const normalizedLaw = law.trim();
+      if (!normalizedLaw) {
+        setDataError(
+          t('Selecciona una ley para iniciar el test.', 'Hautatu lege bat testa hasteko.'),
+        );
+        return;
+      }
+
+      setSelectedSyllabus(null);
+      setSelectedLawFilter(normalizedLaw);
+      setDataError(null);
+
+      try {
+        const questions = await getPracticeBatchByCategory(count, curriculum, normalizedLaw);
+        if (questions.length === 0) {
+          throw new Error(
+            t(
+              'No hay preguntas disponibles para esa ley en este momento.',
+              'Une honetan ez dago galderarik lege horretarako.',
+            ),
+          );
+        }
+
+        const session: ActivePracticeSession = {
+          id: crypto.randomUUID(),
+          mode: 'standard',
+          title: `${t('Test por ley', 'Lege bidezko testa')}: ${normalizedLaw}`,
+          startedAt: new Date().toISOString(),
+          questions,
+          batchNumber: 1,
+          totalBatches: 1,
+          batchStartIndex: null,
+          nextStandardBatchStartIndex: null,
+        };
+
+        setActiveSession(session);
+        setCurrentView('test-active');
+      } catch (error) {
+        setDataError(
+          error instanceof Error
+            ? error.message
+            : t('No se ha podido arrancar el test por ley.', 'Ezin izan da lege bidezko testa abiatu.'),
+        );
+      }
+    },
+    [curriculum, t],
+  );
+
+  const handleStartCoachSession = useCallback(async () => {
+    const primaryAction = coachPlan?.primaryAction ?? 'standard';
+    const coachMode: PracticeMode =
+      primaryAction === 'review'
+        ? 'review'
+        : primaryAction === 'simulacro'
+          ? 'simulacro'
+          : primaryAction === 'anti_trap'
+            ? 'anti_trap'
+            : 'standard';
+
+    await handleStartTest(coachMode, undefined, 20);
+  }, [coachPlan, handleStartTest]);
+
+  const handleLoadCustomBounds = useCallback(
+    async () => getCurriculumQuestionNumberBounds(curriculum),
+    [curriculum],
+  );
+
+  const handleStartCustomTest = useCallback(
+    async (params: { from: number; to: number; randomize: boolean }) => {
+      setSelectedSyllabus(null);
+      setDataError(null);
+      try {
+        const questions = await getQuestionsByNumberRange({
+          curriculum,
+          from: params.from,
+          to: params.to,
+          randomize: params.randomize,
+        });
+
+        if (questions.length === 0) {
+          throw new Error(
+            t(
+              'No hay preguntas disponibles para ese rango en este momento.',
+              'Une honetan ez dago galderarik tarte horretarako.',
+            ),
+          );
+        }
+
+        const session: ActivePracticeSession = {
+          id: crypto.randomUUID(),
+          mode: 'custom',
+          title: t(
+            `Test personalizado (${params.from}–${params.to})${params.randomize ? ' • aleatorio' : ''}`,
+            `Test pertsonalizatua (${params.from}–${params.to})${params.randomize ? ' • ausazkoa' : ''}`,
+          ),
+          startedAt: new Date().toISOString(),
+          questions,
+          batchNumber: 1,
+          totalBatches: 1,
+          batchStartIndex: null,
+          nextStandardBatchStartIndex: null,
+        };
+
+        setActiveSession(session);
+        setCurrentView('test-active');
+      } catch (error) {
+        setDataError(
+          error instanceof Error
+            ? error.message
+            : t('No se ha podido arrancar el test personalizado.', 'Ezin izan da test pertsonalizatua abiatu.'),
+        );
+      }
+    },
+    [curriculum, t],
   );
 
   const handleFinishTest = useCallback(
@@ -368,20 +789,20 @@ export default function App() {
       setSyncingSession(true);
       setDataError(null);
       try {
-        await recordPracticeSessionInCloud(activeSession, payload.answers, DEFAULT_CURRICULUM);
+        await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
         await refreshDashboard();
         setCurrentView('test-results');
       } catch (error) {
         setDataError(
           error instanceof Error
             ? error.message
-            : 'No se ha podido sincronizar la sesion con Quantia.',
+            : t('No se ha podido sincronizar la sesion con Quantia.', 'Ezin izan da saioa Quantiarekin sinkronizatu.'),
         );
       } finally {
         setSyncingSession(false);
       }
     },
-    [activeSession, refreshDashboard],
+    [activeSession, curriculum, refreshDashboard, t],
   );
 
   const handleLogout = useCallback(async () => {
@@ -412,13 +833,84 @@ export default function App() {
     const signalLabel =
       learningV2?.observedAccuracySampleOk || pressureV2?.sampleOk ? `Señal: ${confidenceLabel}` : 'Sin señal';
 
+    const localizedConfidenceLabel =
+      confidence === 'high'
+        ? t('Alta', 'Handia')
+        : confidence === 'medium'
+          ? t('Media', 'Ertaina')
+          : t('Baja', 'Baxua');
+    const resolvedSignalLabel =
+      learningV2?.observedAccuracySampleOk || pressureV2?.sampleOk
+        ? t(`Senal: ${localizedConfidenceLabel}`, `Seinalea: ${localizedConfidenceLabel}`)
+        : t('Sin senal', 'Seinalerik ez');
+
     return {
       readiness,
-      signalLabel,
+      signalLabel: resolvedSignalLabel,
       dotClass,
       sessions: bundle?.practiceState.recentSessions.length ?? 0,
     };
-  }, [bundle]);
+  }, [bundle, t]);
+
+  const activeCurriculumLabel = useMemo(
+    () =>
+      visibleCurriculumOptions.find((option) => option.id === curriculum)?.label ??
+      formatCurriculumLabel(curriculum),
+    [curriculum, visibleCurriculumOptions],
+  );
+
+  useEffect(() => {
+    if (!curriculumMenuOpen) return;
+
+    const updatePosition = () => {
+      const el = curriculumTriggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const desiredWidth = Math.max(280, rect.width);
+      const maxLeft = Math.max(12, window.innerWidth - desiredWidth - 12);
+      const desiredHeight = 420;
+      const belowTop = rect.bottom + 12;
+      const belowSpace = Math.max(0, window.innerHeight - belowTop - 12);
+      const aboveSpace = Math.max(0, rect.top - 24);
+      const openUpwards = belowSpace < 220 && aboveSpace > belowSpace;
+      const maxHeight = Math.min(desiredHeight, openUpwards ? aboveSpace : belowSpace);
+      const top = openUpwards ? Math.max(12, rect.top - 12 - maxHeight) : belowTop;
+
+      setCurriculumMenuStyle({
+        top,
+        left: Math.min(rect.left, maxLeft),
+        width: desiredWidth,
+        maxHeight: Math.max(200, maxHeight),
+      });
+    };
+
+    updatePosition();
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const container = curriculumMenuRef.current;
+      const panel = curriculumMenuPanelRef.current;
+      if (!container) return;
+      if (event.target instanceof Node && container.contains(event.target)) return;
+      if (panel && event.target instanceof Node && panel.contains(event.target)) return;
+      setCurriculumMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCurriculumMenuOpen(false);
+    };
+
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('touchstart', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('touchstart', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [curriculumMenuOpen]);
 
   const handleSaveExamTarget = useCallback(
     async (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number }) => {
@@ -426,30 +918,33 @@ export default function App() {
       setSettingsNotice(null);
       try {
         await updateMyExamTarget({
-          curriculum: DEFAULT_CURRICULUM,
+          curriculum,
           examDate: next.examDate,
           dailyReviewCapacity: next.dailyReviewCapacity,
           dailyNewCapacity: next.dailyNewCapacity,
         });
         await refreshDashboard();
-        setSettingsNotice({ kind: 'success', text: 'Ajustes guardados.' });
+        setSettingsNotice({ kind: 'success', text: t('Ajustes guardados.', 'Doikuntzak gorde dira.') });
       } catch (error) {
         setSettingsNotice({
           kind: 'error',
-          text: error instanceof Error ? error.message : 'No se han podido guardar los ajustes.',
+          text:
+            error instanceof Error
+              ? error.message
+              : t('No se han podido guardar los ajustes.', 'Ezin izan dira doikuntzak gorde.'),
         });
       } finally {
         setSettingsSaving(false);
       }
     },
-    [refreshDashboard],
+    [curriculum, refreshDashboard, t],
   );
 
   const handleStartStudy = useCallback(
     async (params: { scope: 'all' | SyllabusType; topic: string; count: number }) => {
       const { scope, topic, count } = params;
 
-      const pool = await getStudyQuestionsSlice(500, 0, DEFAULT_CURRICULUM);
+      const pool = await getStudyQuestionsSlice(500, 0, curriculum);
       const normalizedTopic = topic.trim().toLowerCase();
       const filtered = pool.filter((q) => {
         if (scope !== 'all' && q.syllabus !== scope) return false;
@@ -458,7 +953,12 @@ export default function App() {
       });
 
       if (filtered.length === 0) {
-        throw new Error('No hay preguntas disponibles para ese temario/tema en este momento.');
+        throw new Error(
+          t(
+            'No hay preguntas disponibles para ese temario/tema en este momento.',
+            'Une honetan ez dago galderarik eskuragarri temario/gai horretarako.',
+          ),
+        );
       }
 
       const shuffled = [...filtered];
@@ -472,7 +972,7 @@ export default function App() {
       const session: ActivePracticeSession = {
         id: crypto.randomUUID(),
         mode: 'standard',
-        title: 'Estudio guiado',
+        title: t('Estudio guiado', 'Ikasketa gidatua'),
         startedAt: new Date().toISOString(),
         questions: selected,
         batchNumber: 1,
@@ -483,6 +983,28 @@ export default function App() {
 
       setActiveStudySession(session);
       setCurrentView('study-active');
+    },
+    [curriculum, t],
+  );
+
+  const handleCurriculumChange = useCallback(
+    (next: string) => {
+      setCurriculum(next);
+      try {
+        window.localStorage.setItem(CURRICULUM_STORAGE_KEY, next);
+        window.localStorage.setItem(LEGACY_CURRICULUM_STORAGE_KEY, next);
+      } catch {
+        // ignore
+      }
+      setBundle(null);
+      setDataError(null);
+      setLastTestPayload(null);
+      setActiveSession(null);
+      setActiveStudySession(null);
+      setSelectedSyllabus(null);
+      setSelectedLawFilter(null);
+      setSidebarOpen(false);
+      setCurrentView('dashboard');
     },
     [],
   );
@@ -542,9 +1064,12 @@ export default function App() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-10 text-center">
         <div className="mb-6 rounded-3xl bg-rose-50 p-6 text-rose-600 shadow-sm border border-rose-100 max-w-md">
-          <h2 className="text-xl font-bold mb-2">Error de Configuración</h2>
+          <h2 className="text-xl font-bold mb-2">{t('Error de configuracion', 'Konfigurazio errorea')}</h2>
           <p className="font-medium">
-            Faltan las variables de entorno de Supabase (VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY).
+            {t(
+              'Faltan las variables de entorno de Supabase (VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY).',
+              'Supabase ingurune-aldagaiak falta dira (VITE_SUPABASE_URL eta VITE_SUPABASE_ANON_KEY).',
+            )}
           </p>
         </div>
       </div>
@@ -560,7 +1085,11 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen error={authError} loading={authLoading} onSubmit={handleLogin} />;
+    return (
+      <LocaleProvider locale={locale}>
+        <AuthScreen error={authError} loading={authLoading} onSubmit={handleLogin} />
+      </LocaleProvider>
+    );
   }
 
   const activeQuestions = activeSession?.questions ?? [];
@@ -568,16 +1097,146 @@ export default function App() {
   const isTesting = currentView === 'test-active' || currentView === 'study-active';
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+    <LocaleProvider locale={locale}>
+      <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {!isTesting && (
-        <aside className="w-72 bg-[#0a0a1a] text-white flex flex-col p-8 shadow-2xl border-r border-white/5 relative z-20 animate-in slide-in-from-left duration-700">
-          <div className="flex items-center gap-4 mb-12 px-2 group cursor-pointer">
-            <div className="bg-gradient-to-br from-indigo-500 to-emerald-500 p-2.5 rounded-2xl shadow-lg group-hover:scale-110 transition-transform duration-500">
-              <GraduationCap className="text-white w-7 h-7" />
-            </div>
-            <span className="font-black text-2xl tracking-tighter">
-              OsakiTest<span className="text-indigo-400">Pro</span>
-            </span>
+        <>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className={`lg:hidden fixed inset-0 z-40 bg-black/40 transition-opacity ${
+              sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
+            aria-hidden="true"
+          />
+          <aside
+            className={`w-72 bg-[#0a0a1a] text-white flex flex-col p-8 shadow-2xl border-r border-white/5 fixed lg:relative inset-y-0 left-0 z-50 lg:z-20 transition-transform duration-300 ${
+              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+            } lg:translate-x-0 overflow-y-auto`}
+          >
+          <div className="lg:hidden flex items-center justify-end mb-4 px-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              className="p-2 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
+            >
+              <X className="h-5 w-5 text-white" />
+            </button>
+          </div>
+          <div ref={curriculumMenuRef} className="relative z-50 mb-12 px-2">
+            <button
+              ref={curriculumTriggerRef}
+              type="button"
+              onClick={() => setCurriculumMenuOpen((prev) => !prev)}
+              disabled={curriculumOptionsLoading}
+              className="w-full flex items-center justify-between gap-4 group text-left rounded-3xl px-3 py-2.5 outline-none transition-all hover:bg-white/5 focus:bg-white/5 disabled:opacity-60 disabled:hover:bg-transparent"
+              aria-haspopup="menu"
+              aria-expanded={curriculumMenuOpen}
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="bg-gradient-to-br from-indigo-500 to-emerald-500 p-2.5 rounded-2xl shadow-lg group-hover:scale-110 transition-transform duration-500 shrink-0">
+                  <GraduationCap className="text-white w-7 h-7" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-black text-2xl tracking-tighter">Quantia</span>
+                    <span className="text-slate-500 font-black text-xs">•</span>
+                    <span className="text-xs font-black text-slate-200 truncate max-w-[140px]">
+                      {activeCurriculumLabel}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {curriculumOptionsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+              ) : (
+                <ChevronDown className={`h-4 w-4 transition-transform shrink-0 ${curriculumMenuOpen ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {curriculumMenuOpen
+              ? createPortal(
+                  <div
+                    ref={curriculumMenuPanelRef}
+                    className="fixed z-[9999] overflow-hidden rounded-3xl border border-white/10 bg-[#0b1024]/95 shadow-2xl backdrop-blur-xl flex flex-col"
+                    style={
+                      curriculumMenuStyle
+                        ? {
+                            top: curriculumMenuStyle.top,
+                            left: curriculumMenuStyle.left,
+                            width: curriculumMenuStyle.width,
+                            maxHeight: curriculumMenuStyle.maxHeight,
+                          }
+                        : undefined
+                    }
+                  >
+                    <div className="px-5 py-4 border-b border-white/10 shrink-0">
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                        {t('Oposicion', 'Oposizioa')}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-white truncate">{activeCurriculumLabel}</div>
+                      <div className="mt-2 text-[10px] font-bold text-slate-400 leading-relaxed">
+                        {t(
+                          'Estadisticas y progreso independientes por oposicion.',
+                          'Oposizio bakoitzak bere estatistikak eta aurrerapena ditu.',
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-2 flex-1 overflow-y-auto">
+                      {visibleCurriculumOptions.map((opt) => {
+                        const unavailable =
+                          (opt.questionCount === 0 || opt.questionCount == null) &&
+                          !curriculumHasActivity(opt);
+                        const selected = opt.id === curriculum;
+                        const subtitle = unavailable
+                          ? t('Sincronizacion pendiente', 'Sinkronizazioa zain')
+                          : null;
+
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              if (selected) {
+                                setCurriculumMenuOpen(false);
+                                setSidebarOpen(false);
+                                return;
+                              }
+                              handleCurriculumChange(opt.id);
+                              setCurriculumMenuOpen(false);
+                              setSidebarOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition-all ${
+                              unavailable
+                                ? 'opacity-70 hover:bg-white/5 active:bg-white/10'
+                                : 'hover:bg-white/5 active:bg-white/10'
+                            } ${selected ? 'bg-white/10' : ''}`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-black text-white truncate">{opt.label}</div>
+                              {subtitle ? (
+                                <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {subtitle}
+                                </div>
+                              ) : null}
+                            </div>
+                            {selected ? (
+                              <div className="w-8 h-8 rounded-2xl bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center">
+                                <Check className="h-4 w-4 text-emerald-300" />
+                              </div>
+                            ) : (
+                              <div className="w-8 h-8 rounded-2xl bg-white/5 border border-white/10" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>,
+                  document.body,
+                )
+              : null}
           </div>
 
           {/* Gamification Sidebar Block - Enhanced */}
@@ -587,10 +1246,14 @@ export default function App() {
               
               <div className="flex items-center justify-between mb-6 relative z-10">
                 <div className="flex flex-col gap-1 min-w-0">
-                  <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest truncate">Daily Streak</span>
+                  <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest truncate">
+                    {t('Racha diaria', 'Eguneko bolada')}
+                  </span>
                   <div className="flex items-center gap-2">
                     <Flame size={18} className="text-amber-500 fill-amber-500/20 animate-pulse shrink-0" />
-                    <span className="text-xl font-black truncate">{gamification.streak} días</span>
+                    <span className="text-xl font-black truncate">
+                      {gamification.streak} {t('dias', 'egun')}
+                    </span>
                   </div>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
@@ -600,7 +1263,7 @@ export default function App() {
 
               <div className="space-y-3 relative z-10">
                 <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                  <span>Nivel {gamification.level}</span>
+                  <span>{t('Nivel', 'Maila')} {gamification.level}</span>
                   <span>{gamification.xp % 100}%</span>
                 </div>
                 <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/5">
@@ -615,7 +1278,10 @@ export default function App() {
 
           <nav className="flex-1 space-y-3">
             <button
-              onClick={() => setCurrentView('dashboard')}
+              onClick={() => {
+                setCurrentView('dashboard');
+                setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
                 currentView === 'dashboard' 
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
@@ -623,10 +1289,13 @@ export default function App() {
               }`}
             >
               <LayoutDashboard size={22} className={currentView === 'dashboard' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">Dashboard</span>
+              <span className="text-lg">{t('Dashboard', 'Panela')}</span>
             </button>
             <button
-              onClick={() => setCurrentView('test-selection')}
+              onClick={() => {
+                setCurrentView('test-selection');
+                setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
                 currentView === 'test-selection' || currentView === 'test-results'
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
@@ -634,10 +1303,13 @@ export default function App() {
               }`}
             >
               <ClipboardList size={22} className={currentView === 'test-selection' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">Realizar Test</span>
+              <span className="text-lg">{t('Realizar test', 'Testa egin')}</span>
             </button>
             <button
-              onClick={() => setCurrentView('stats')}
+              onClick={() => {
+                setCurrentView('stats');
+                setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
                 currentView === 'stats' 
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
@@ -645,10 +1317,13 @@ export default function App() {
               }`}
             >
               <TrendingUp size={22} className={currentView === 'stats' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">Estadísticas</span>
+              <span className="text-lg">{t('Estadisticas', 'Estatistikak')}</span>
             </button>
             <button
-              onClick={() => setCurrentView('study')}
+              onClick={() => {
+                setCurrentView('study');
+                setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
                 currentView === 'study'
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
@@ -656,13 +1331,16 @@ export default function App() {
               }`}
             >
               <BookOpen size={22} className={currentView === 'study' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">Estudio</span>
+              <span className="text-lg">{t('Estudio', 'Ikasketa')}</span>
             </button>
           </nav>
 
           <div className="pt-8 border-t border-white/5 space-y-3">
             <button
-              onClick={() => setCurrentView('settings')}
+              onClick={() => {
+                setCurrentView('settings');
+                setSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 ${
                 currentView === 'settings'
                   ? 'bg-white/10 text-white'
@@ -670,60 +1348,103 @@ export default function App() {
               }`}
             >
               <Settings size={22} />
-              <span className="text-lg">Ajustes</span>
+              <span className="text-lg">{t('Ajustes', 'Doikuntzak')}</span>
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => {
+                setSidebarOpen(false);
+                void handleLogout();
+              }}
               className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-rose-400 hover:bg-rose-500/10 transition-all duration-300"
             >
               <LogOut size={22} />
-              <span className="text-lg font-bold">Cerrar sesión</span>
+              <span className="text-lg font-bold">{t('Cerrar sesion', 'Saioa itxi')}</span>
             </button>
           </div>
         </aside>
+        </>
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${isTesting ? 'p-10 lg:p-16' : 'p-10 lg:p-16'}`}>
+      <main className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${isTesting ? 'p-4 sm:p-6 lg:p-16' : 'p-5 sm:p-8 lg:p-16'}`}>
         {!isTesting && (
-          <header className="mb-16 flex items-start justify-between animate-in fade-in slide-in-from-top-4 duration-1000">
-            <div className="animate-in fade-in slide-in-from-left-4 duration-1000">
-              <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-                {currentView === 'dashboard' && `Hola, ${session.user.email?.split('@')[0]}`}
-                {currentView === 'study' && 'Estudio guiado'}
-                {currentView === 'test-selection' && 'Configuración de Entrenamiento'}
-                {currentView === 'stats' && 'Inteligencia de Datos'}
-                {currentView === 'test-results' && 'Análisis de Sesión'}
-                {currentView === 'settings' && 'Ajustes'}
+          <header className="mb-10 lg:mb-16 flex flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000">
+            <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden mt-1 p-3 rounded-2xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 transition-all"
+              >
+                <Menu className="h-5 w-5 text-slate-700" />
+              </button>
+              <div>
+              <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+                {currentView === 'dashboard' && `${t('Hola', 'Kaixo')}, ${session.user.email?.split('@')[0]}`}
+                {currentView === 'study' && t('Estudio guiado', 'Ikasketa gidatua')}
+                {currentView === 'test-selection' && t('Configuracion de entrenamiento', 'Entrenamenduaren konfigurazioa')}
+                {currentView === 'stats' && t('Inteligencia de datos', 'Datuen adimena')}
+                {currentView === 'test-results' && t('Analisis de sesion', 'Saioaren analisia')}
+                {currentView === 'settings' && t('Ajustes', 'Doikuntzak')}
               </h1>
-              <p className="text-slate-500 mt-2 text-lg font-medium">
-                {currentView === 'dashboard' && 'Tu centro de mando para el éxito en Osakidetza.'}
-                {currentView === 'study' && 'Explora el banco de preguntas por temario y tema.'}
-                {currentView === 'test-selection' && 'Optimiza tu tiempo con lotes inteligentes.'}
-                {currentView === 'stats' && 'Predicciones basadas en tu rendimiento real.'}
-                {currentView === 'settings' && 'Define tu objetivo y ajusta la estrategia diaria.'}
+              <p className="text-slate-500 mt-2 text-base sm:text-lg font-medium">
+                {currentView === 'dashboard' &&
+                  t(
+                    'Tu centro de mando para avanzar en esta oposicion.',
+                    'Zure aginte-zentroa oposizio honetan aurrera egiteko.',
+                  )}
+                {currentView === 'study' &&
+                  t(
+                    'Explora el banco de preguntas por temario y tema.',
+                    'Arakatu galdera-bankua temario eta gaika.',
+                  )}
+                {currentView === 'test-selection' &&
+                  t(
+                    'Optimiza tu tiempo con lotes inteligentes.',
+                    'Optimizatu zure denbora sorta adimendunekin.',
+                  )}
+                {currentView === 'stats' &&
+                  t(
+                    'Predicciones basadas en tu rendimiento real.',
+                    'Zure benetako errendimenduan oinarritutako iragarpenak.',
+                  )}
+                {currentView === 'settings' &&
+                  t(
+                    'Define tu objetivo y ajusta la estrategia diaria.',
+                    'Zehaztu zure helburua eta egokitu eguneroko estrategia.',
+                  )}
               </p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-6 animate-in fade-in slide-in-from-right-4 duration-1000">
+            <div className="flex items-center justify-between lg:justify-end gap-4 lg:gap-6 animate-in fade-in slide-in-from-right-4 duration-1000">
               <div className="flex flex-col items-end">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Status</span>
-                <div className="bg-indigo-50 text-indigo-700 px-5 py-2.5 rounded-2xl text-sm font-black flex items-center gap-3 border border-indigo-100 shadow-sm shadow-indigo-100/50">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">
+                  {t('Estado', 'Egoera')}
+                </span>
+                <div className="bg-indigo-50 text-indigo-700 px-4 sm:px-5 py-2.5 rounded-2xl text-sm font-black flex flex-wrap items-center gap-3 border border-indigo-100 shadow-sm shadow-indigo-100/50 max-w-full">
                   {dataLoading || syncingSession ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Sincronizando...
+                      {t('Sincronizando...', 'Sinkronizatzen...')}
                     </>
                   ) : (
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-4">
                       <div className="flex items-center gap-2 border-r border-indigo-200 pr-4">
                         <div className={`w-2 h-2 ${headerStatus.dotClass} rounded-full`} />
                         {headerStatus.signalLabel}
                       </div>
+                      <div className="flex items-center gap-2 border-r border-indigo-200 pr-4 min-w-0">
+                        <GraduationCap size={16} className="text-indigo-600 shrink-0" />
+                        <span className="font-black text-slate-900/90 truncate max-w-[110px] sm:max-w-[160px]">
+                          {activeCurriculumLabel}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Trophy size={16} className="text-amber-500" />
                         <span className="font-black">
-                          {headerStatus.readiness == null ? 'Preparación: —' : `Preparación: ${headerStatus.readiness}%`}
+                          {headerStatus.readiness == null
+                            ? t('Preparacion: -', 'Prestaketa: -')
+                            : `${t('Preparacion', 'Prestaketa')}: ${headerStatus.readiness}%`}
                         </span>
                       </div>
                     </div>
@@ -749,21 +1470,31 @@ export default function App() {
         {dataLoading && !bundle && currentView !== 'test-active' ? (
           <div className="flex items-center justify-center rounded-[2rem] border border-slate-100 bg-white p-20 text-slate-500">
             <Loader2 className="mr-3 h-6 w-6 animate-spin" />
-            Cargando panel...
+            {t('Cargando panel...', 'Panela kargatzen...')}
           </div>
         ) : null}
 
         {!dataLoading && bundle && currentView === 'dashboard' ? (
           <Dashboard
-            coachLabel={`Coach ${coachPlan?.tone ?? 'activo'}`}
-            coachTitle={coachMessage?.line1 ?? 'Tu panel ya esta conectado.'}
+            coachLabel={
+              isBasque ? 'Gaurko coacha' : `Coach ${coachPlan?.tone ?? 'activo'}`
+            }
+            coachTitle={
+              isBasque
+                ? primaryCardTitle
+                : coachMessage?.line1 ?? 'Tu panel ya esta conectado.'
+            }
             coachDescription={
-              coachMessage?.line2 ??
-              bundle.practiceState.learningDashboardV2?.focusMessage ??
-              'La lectura del coach aparecerá aqui en cuanto haya datos suficientes.'
+              isBasque
+                ? dashboardMetrics.weeklyInsightSummary
+                : coachMessage?.line2 ??
+                  bundle.practiceState.learningDashboardV2?.focusMessage ??
+                  'La lectura del coach aparecerá aqui en cuanto haya datos suficientes.'
             }
             coachCtaLabel={
-              coachPlan?.primaryAction === 'simulacro' ? 'Practicar especifico' : 'Practicar ahora'
+              coachPlan?.primaryAction === 'simulacro'
+                ? t('Practicar especifico', 'Espezifikoa landu')
+                : t('Practicar ahora', 'Orain praktikatu')
             }
             commonProgress={dashboardMetrics.commonProgress}
             specificProgress={dashboardMetrics.specificProgress}
@@ -771,11 +1502,13 @@ export default function App() {
             accuracyRate={dashboardMetrics.accuracyRate}
             primaryCardTitle={primaryCardTitle}
             primaryCardDescription={
-              coachPlan?.reasons[0] ??
-              bundle.practiceState.learningDashboardV2?.focusMessage ??
-              'Empieza una sesion para generar una senal mas limpia.'
+              isBasque
+                ? dashboardMetrics.weeklyInsightSummary
+                : coachPlan?.reasons[0] ??
+                  bundle.practiceState.learningDashboardV2?.focusMessage ??
+                  'Empieza una sesion para generar una senal mas limpia.'
             }
-            primaryCardProgressLabel="Cobertura global"
+            primaryCardProgressLabel={t('Cobertura global', 'Estaldura globala')}
             primaryCardProgressValue={Math.round(
               (bundle.practiceState.learningDashboardV2?.coverageRate ?? 0) * 100,
             )}
@@ -785,6 +1518,9 @@ export default function App() {
             weeklyInsightData={dashboardMetrics.weeklyInsightData}
             weeklyInsightSummary={dashboardMetrics.weeklyInsightSummary}
             weeklyInsightDelta={dashboardMetrics.weeklyInsightDelta}
+            onCoachAction={() => {
+              void handleStartCoachSession();
+            }}
             onStartTest={(syllabus) => {
               setSelectedSyllabus(syllabus);
               setCurrentView('test-selection');
@@ -798,7 +1534,17 @@ export default function App() {
         ) : null}
 
         {currentView === 'test-selection' ? (
-          <TestSelection onStart={handleStartTest} initialSyllabus={selectedSyllabus} />
+          <TestSelection
+            curriculum={curriculum}
+            lawOptions={lawOptions}
+            lawOptionsLoading={discoveredLawOptionsLoading}
+            initialLaw={selectedLawFilter}
+            onStart={handleStartTest}
+            onStartLawTest={handleStartLawTest}
+            onStartCustom={handleStartCustomTest}
+            onLoadCustomBounds={handleLoadCustomBounds}
+            initialSyllabus={selectedSyllabus}
+          />
         ) : null}
 
         {currentView === 'study' ? (
@@ -847,7 +1593,11 @@ export default function App() {
             questions={activeSession.questions}
             mode={activeSession.mode}
             onRestart={() => {
-              handleStartTest(activeSession.mode, selectedSyllabus || undefined);
+              if (selectedLawFilter) {
+                void handleStartLawTest(selectedLawFilter, activeSession.questions.length || 20);
+                return;
+              }
+              void handleStartTest(activeSession.mode, selectedSyllabus || undefined);
             }}
             onGoHome={() => {
               setActiveSession(null);
@@ -863,12 +1613,13 @@ export default function App() {
             bundle={bundle}
             levelLabel={
               coachPlan
-                ? formatModeLabel(coachPlan.primaryAction === 'review' ? 'mixed' : 'standard')
-                : 'Preparacion activa'
+                ? formatModeLabel(coachPlan.primaryAction === 'review' ? 'mixed' : 'standard', locale)
+                : t('Preparacion activa', 'Prestaketa aktiboa')
             }
           />
         ) : null}
       </main>
-    </div>
+      </div>
+    </LocaleProvider>
   );
 }

@@ -1,4 +1,5 @@
 import { TrendingUp, Target, BarChart3, Activity } from 'lucide-react';
+import { useAppLocale } from '../../lib/locale';
 
 interface ProgressOverviewProps {
   commonProgress: number | null;
@@ -13,42 +14,44 @@ export default function ProgressOverview({
   weeklyQuestions,
   accuracyRate,
 }: ProgressOverviewProps) {
+  const locale = useAppLocale();
+  const isBasque = locale === 'eu';
   const stats = [
-    { 
-      label: 'Temario Común', 
-      value: commonProgress == null ? '—' : `${commonProgress}%`, 
-      icon: BarChart3, 
-      bgColor: 'bg-indigo-50', 
-      textColor: 'text-indigo-600' 
+    {
+      label: isBasque ? 'Gai-zerrenda arrunta' : 'Temario comun',
+      value: commonProgress == null ? '-' : `${commonProgress}%`,
+      icon: BarChart3,
+      bgColor: 'bg-indigo-50',
+      textColor: 'text-indigo-600',
     },
-    { 
-      label: 'Temario Específico', 
-      value: specificProgress == null ? '—' : `${specificProgress}%`, 
-      icon: Target, 
-      bgColor: 'bg-emerald-50', 
-      textColor: 'text-emerald-600' 
+    {
+      label: isBasque ? 'Gai-zerrenda espezifikoa' : 'Temario especifico',
+      value: specificProgress == null ? '-' : `${specificProgress}%`,
+      icon: Target,
+      bgColor: 'bg-emerald-50',
+      textColor: 'text-emerald-600',
     },
-    { 
-      label: 'Preguntas (7 días)', 
-      value: weeklyQuestions, 
-      icon: Activity, 
-      bgColor: 'bg-blue-50', 
-      textColor: 'text-blue-600' 
+    {
+      label: isBasque ? 'Galderak (7 egun)' : 'Preguntas (7 dias)',
+      value: weeklyQuestions,
+      icon: Activity,
+      bgColor: 'bg-blue-50',
+      textColor: 'text-blue-600',
     },
-    { 
-      label: 'Precisión (muestra)', 
-      value: accuracyRate == null ? '—' : `${accuracyRate}%`, 
-      icon: TrendingUp, 
-      bgColor: 'bg-rose-50', 
-      textColor: 'text-rose-600' 
+    {
+      label: isBasque ? 'Doitasuna (lagina)' : 'Precision (muestra)',
+      value: accuracyRate == null ? '-' : `${accuracyRate}%`,
+      icon: TrendingUp,
+      bgColor: 'bg-rose-50',
+      textColor: 'text-rose-600',
     },
   ];
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-      {stats.map((stat, i) => (
-        <div 
-          key={i} 
+      {stats.map((stat) => (
+        <div
+          key={stat.label}
           className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-start gap-4 hover:shadow-md transition-all duration-300"
         >
           <div className={`p-3 ${stat.bgColor} ${stat.textColor} rounded-2xl`}>

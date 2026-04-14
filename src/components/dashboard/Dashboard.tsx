@@ -5,6 +5,7 @@ import PrimaryActionCard from './PrimaryActionCard';
 import SecondaryActions from './SecondaryActions';
 import WeeklyInsight from './WeeklyInsight';
 import { SyllabusType } from '../../types';
+import { useAppLocale } from '../../lib/locale';
 
 interface DashboardProps {
   coachLabel: string;
@@ -25,6 +26,7 @@ interface DashboardProps {
   weeklyInsightData: Array<{ name: string; questions: number }>;
   weeklyInsightSummary: string;
   weeklyInsightDelta: string;
+  onCoachAction: () => void;
   onStartTest: (syllabus: SyllabusType) => void;
   onShowStats: () => void;
   onReviewErrors: () => void;
@@ -49,26 +51,27 @@ export default function Dashboard({
   weeklyInsightData,
   weeklyInsightSummary,
   weeklyInsightDelta,
+  onCoachAction,
   onStartTest,
   onShowStats,
   onReviewErrors,
 }: DashboardProps) {
+  const locale = useAppLocale();
+  const isBasque = locale === 'eu';
+
   return (
     <div className="mx-auto max-w-7xl space-y-12 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      {/* 1. COACH HERO (PRIMARY BLOCK) */}
       <div className="hover-lift">
         <CoachHero
           label={coachLabel}
           title={coachTitle}
           description={coachDescription}
           ctaLabel={coachCtaLabel}
-          onAction={() => onStartTest('common')}
+          onAction={onCoachAction}
         />
       </div>
 
-      {/* 2. BENTO GRID LAYOUT */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Progress Overview - Wide */}
         <div className="md:col-span-4 lg:col-span-3">
           <ProgressOverview
             commonProgress={commonProgress}
@@ -78,8 +81,7 @@ export default function Dashboard({
           />
         </div>
 
-        {/* Stats Summary - Small/Tall */}
-        <div 
+        <div
           onClick={onShowStats}
           className="md:col-span-2 lg:col-span-1 glass-premium rounded-[2.5rem] p-8 flex flex-col justify-between hover-lift cursor-pointer group"
         >
@@ -90,15 +92,16 @@ export default function Dashboard({
             <Sparkles size={20} className="text-amber-400 animate-pulse" />
           </div>
           <div>
-            <p className="text-4xl font-black text-slate-800 mb-1">{accuracyRate == null ? '—' : `${accuracyRate}%`}</p>
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Precisión (muestra)</p>
+            <p className="text-4xl font-black text-slate-800 mb-1">{accuracyRate == null ? '-' : `${accuracyRate}%`}</p>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+              {isBasque ? 'Doitasuna (lagina)' : 'Precision (muestra)'}
+            </p>
           </div>
           <button className="text-indigo-600 font-black text-xs uppercase tracking-[0.2em] flex items-center gap-2 group-hover:gap-4 transition-all">
-            Ver Estadísticas <ArrowRight size={14} />
+            {isBasque ? 'Estatistikak ikusi' : 'Ver estadisticas'} <ArrowRight size={14} />
           </button>
         </div>
 
-        {/* Primary Action: Study - Large */}
         <div className="md:col-span-2 lg:col-span-2 hover-lift">
           <PrimaryActionCard
             title={primaryCardTitle}
@@ -106,46 +109,43 @@ export default function Dashboard({
             icon={<BookOpen size={32} />}
             progressLabel={primaryCardProgressLabel}
             progressValue={primaryCardProgressValue}
-            ctaText="Continuar Estudiando"
+            ctaText={isBasque ? 'Ikasten jarraitu' : 'Continuar estudiando'}
             onAction={() => onStartTest('common')}
             variant="indigo"
           />
         </div>
 
-        {/* Error Review - Large */}
         <div className="md:col-span-2 lg:col-span-2 hover-lift">
           <PrimaryActionCard
             title={weakTitle}
             description={weakDescription}
             icon={<AlertCircle size={32} />}
-            ctaText="Corregir Errores"
+            ctaText={isBasque ? 'Akatsak zuzendu' : 'Corregir errores'}
             onAction={onReviewErrors}
             variant="rose"
           />
         </div>
 
-        {/* Weekly Insight - Wide/Bottom */}
         <div className="md:col-span-4 lg:col-span-4 space-y-5">
           <div className="flex items-center gap-3 text-slate-400 px-2">
             <TrendingUp size={16} className="text-slate-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Actividad reciente (7 días)</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+              {isBasque ? 'Azken jarduera (7 egun)' : 'Actividad reciente (7 dias)'}
+            </span>
           </div>
 
           <div className="glass-premium rounded-[3rem] p-2 overflow-hidden hover-lift">
-            <WeeklyInsight
-              data={weeklyInsightData}
-              summary={weeklyInsightSummary}
-              deltaLabel={weeklyInsightDelta}
-            />
+            <WeeklyInsight data={weeklyInsightData} summary={weeklyInsightSummary} deltaLabel={weeklyInsightDelta} />
           </div>
         </div>
       </div>
 
-      {/* Secondary Actions - Bottom Shelf */}
       <div className="space-y-6">
         <div className="flex items-center gap-3 text-slate-400 px-2">
           <Sparkles size={16} />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Acciones de Alto Rendimiento</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+            {isBasque ? 'Errendimendu handiko ekintzak' : 'Acciones de alto rendimiento'}
+          </span>
         </div>
 
         <SecondaryActions

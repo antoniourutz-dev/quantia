@@ -11,8 +11,9 @@ export type PracticeMode =
   | 'mixed'
   | 'simulacro'
   | 'anti_trap'
-  | 'stats'
-  | 'test-results';
+  | 'custom';
+
+import type { AppLocale } from './lib/locale';
 
 export interface Option {
   id: OptionKey;
@@ -229,26 +230,32 @@ export interface ActivePracticeSession {
   nextStandardBatchStartIndex: number | null;
 }
 
-export const formatSyllabusLabel = (syllabus: SyllabusType) =>
-  syllabus === 'common' ? 'Comun' : 'Especifico';
+export const formatSyllabusLabel = (syllabus: SyllabusType, locale: AppLocale = 'es') => {
+  if (locale === 'eu') {
+    return syllabus === 'common' ? 'Orokorra' : 'Espezifikoa';
+  }
+  return syllabus === 'common' ? 'Comun' : 'Especifico';
+};
 
-export const formatModeLabel = (mode: PracticeMode) => {
+export const formatModeLabel = (mode: PracticeMode, locale: AppLocale = 'es') => {
   switch (mode) {
     case 'mixed':
-      return 'Adaptativo';
+      return locale === 'eu' ? 'Egokitzailea' : 'Adaptativo';
     case 'simulacro':
-      return 'Simulacro';
+      return locale === 'eu' ? 'Simulakroa' : 'Simulacro';
     case 'anti_trap':
-      return 'Anti-trampas';
+      return locale === 'eu' ? 'Tranpa-kontra' : 'Anti-trampas';
+    case 'custom':
+      return locale === 'eu' ? 'Pertsonalizatua' : 'Personalizado';
     case 'quick_five':
-      return 'Rapida';
+      return locale === 'eu' ? 'Azkarra' : 'Rapida';
     case 'weakest':
-      return 'Repaso';
+      return locale === 'eu' ? 'Errepasoa' : 'Repaso';
     case 'review':
-      return 'Revision';
+      return locale === 'eu' ? 'Berrikuspena' : 'Revision';
     case 'random':
-      return 'Aleatorio';
+      return locale === 'eu' ? 'Ausazkoa' : 'Aleatorio';
     default:
-      return 'Bloque';
+      return locale === 'eu' ? 'Blokea' : 'Bloque';
   }
 };

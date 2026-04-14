@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { AlertCircle, PlayCircle, TrendingUp } from 'lucide-react';
+import { useAppLocale } from '../../lib/locale';
 
 interface SecondaryActionItemProps {
   label: string;
@@ -42,20 +43,23 @@ export default function SecondaryActions({
   onWeakAreas,
   weakAreasBadge,
 }: SecondaryActionsProps) {
+  const locale = useAppLocale();
+  const isBasque = locale === 'eu';
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <SecondaryActionItem
-        label="Practica aleatoria"
+        label={isBasque ? 'Praktika ausazkoa' : 'Practica aleatoria'}
         icon={<PlayCircle size={24} />}
         onAction={onSimulation}
       />
       <SecondaryActionItem
-        label="Estadisticas completas"
+        label={isBasque ? 'Estatistika osoak' : 'Estadisticas completas'}
         icon={<TrendingUp size={24} />}
         onAction={onStats}
       />
       <SecondaryActionItem
-        label="Areas de mejora"
+        label={isBasque ? 'Hobetu beharreko arloak' : 'Areas de mejora'}
         icon={<AlertCircle size={24} />}
         onAction={onWeakAreas}
         badge={weakAreasBadge}
