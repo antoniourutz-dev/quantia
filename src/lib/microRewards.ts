@@ -20,7 +20,9 @@ const readLastReward = (): { id: string; timestamp: string } | null => {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return null;
-    const { id, timestamp } = parsed as any;
+    const record = parsed as Record<string, unknown>;
+    const id = record.id;
+    const timestamp = record.timestamp;
     if (typeof id !== 'string' || typeof timestamp !== 'string') return null;
     return { id, timestamp };
   } catch {

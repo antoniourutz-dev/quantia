@@ -132,6 +132,7 @@ export default function TelemetryDebugPanel({ onClose }: { onClose: () => void }
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
             >
               <option value="all">{t('Todas', 'Guztiak')}</option>
+              <option value="entry">entry</option>
               <option value="home">home</option>
               <option value="stats">stats</option>
               <option value="review">review</option>
@@ -378,4 +379,3 @@ export default function TelemetryDebugPanel({ onClose }: { onClose: () => void }
     </div>
   );
 }
-

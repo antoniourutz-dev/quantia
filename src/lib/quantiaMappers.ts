@@ -8,6 +8,7 @@ import type {
   PracticeSessionSummary,
   Question,
 } from '../types';
+import { createId } from './id';
 
 const OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
 
@@ -262,7 +263,7 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
     normalizeQuestionScope(row.grupo);
 
   return {
-    id: readText(row.id ?? row.question_id ?? row.uuid ?? row.slug) ?? crypto.randomUUID(),
+    id: readText(row.id ?? row.question_id ?? row.uuid ?? row.slug) ?? createId(),
     number: toNullableNumber(
       row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
     ),

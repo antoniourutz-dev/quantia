@@ -1,4 +1,4 @@
-export type TelemetrySurface = 'home' | 'stats' | 'review' | 'session_end' | 'test';
+export type TelemetrySurface = 'home' | 'stats' | 'review' | 'session_end' | 'test' | 'entry';
 
 export type TelemetryDecisionEvent = {
   kind: 'decision';

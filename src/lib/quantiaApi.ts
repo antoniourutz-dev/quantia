@@ -1,4 +1,5 @@
 import { getSafeSupabaseSession, supabase } from './supabaseClient';
+import { createId } from './id';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -175,11 +176,36 @@ const canonicalizeCurriculumId = (value: string) => String(value).trim().toLower
 
 const CURRICULUM_ALIAS_GROUPS = [
   {
+    key: 'osakidetza-admin',
+    label: 'Administrativo',
+    aliases: ['osakidetza_admin', 'osakidetza-admin', 'administrativo'],
+  },
+  {
+    key: 'auxiliar-administrativo',
+    label: 'Auxiliar administrativo',
+    aliases: ['auxiliar_administrativo', 'auxiliar-administrativo', 'auxiliar administrativo'],
+  },
+  {
     key: 'goi-teknikaria',
     label: 'Goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
   },
 ] as const;
+
+type SharedCurriculumSource = {
+  curriculum: string;
+  scope: PracticeQuestionScopeFilter;
+};
+
+const CURRICULUM_SHARED_QUESTION_SOURCES: Record<
+  string,
+  Partial<Record<PracticeQuestionScopeFilter, SharedCurriculumSource[]>>
+> = {
+  'auxiliar-administrativo': {
+    all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+    common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+  },
+};
 
 const getCurriculumAliasGroup = (value: string) => {
   const normalized = canonicalizeCurriculumId(value);
@@ -205,6 +231,16 @@ const getCurriculumAliasCandidates = (value: string) => {
       ]),
     );
   });
+};
+
+const getSharedCurriculumSources = (
+  curriculum: string,
+  questionScope: PracticeQuestionScopeFilter,
+) => {
+  const normalized = canonicalizeCurriculumId(curriculum);
+  const sources = CURRICULUM_SHARED_QUESTION_SOURCES[normalized];
+  if (!sources) return [];
+  return sources[questionScope] ?? [];
 };
 
 const buildCurriculumCandidates = (curriculum: string) => {
@@ -296,6 +332,45 @@ const resolveCurriculumCandidates = async (curriculum: string) => {
   curriculumCandidatesCache.set(cacheKey, task);
   return task;
 };
+
+type CurriculumQueryTarget = {
+  curriculum: string;
+  candidates: string[];
+  scope: PracticeQuestionScopeFilter;
+};
+
+const resolveQuestionCurriculumTargets = async (
+  curriculum: string,
+  questionScope: PracticeQuestionScopeFilter = 'all',
+): Promise<CurriculumQueryTarget[]> => {
+  const rawTargets: Array<{ curriculum: string; scope: PracticeQuestionScopeFilter }> = [
+    { curriculum, scope: questionScope },
+    ...getSharedCurriculumSources(curriculum, questionScope),
+  ];
+
+  const targets = await Promise.all(
+    rawTargets.map(async (target) => ({
+      curriculum: target.curriculum,
+      scope: target.scope,
+      candidates: await resolveCurriculumCandidates(target.curriculum),
+    })),
+  );
+
+  const deduped = new Map<string, CurriculumQueryTarget>();
+  for (const target of targets) {
+    const key = `${canonicalizeCurriculumId(target.curriculum)}:${target.scope}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, target);
+    }
+  }
+
+  return Array.from(deduped.values());
+};
+
+const hasSharedQuestionSources = (
+  curriculum: string,
+  questionScope: PracticeQuestionScopeFilter = 'all',
+) => getSharedCurriculumSources(curriculum, questionScope).length > 0;
 
 const mapPracticeCloudError = (error: PostgrestLikeError) => {
   const message = String(error.message ?? '');
@@ -596,6 +671,101 @@ const filterQuestionsByScope = (
   );
 };
 
+const buildQuestionDedupKey = (question: Question) => {
+  const normalizedText = String(question.text ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  const normalizedCategory = normalizeCategoryLabel(question.category);
+  return [question.number ?? '', normalizedCategory, normalizedText, question.correctAnswer].join('|');
+};
+
+const mergeQuestionCollections = (questions: Question[]) => {
+  const deduped = new Map<string, Question>();
+
+  for (const question of questions) {
+    const key = buildQuestionDedupKey(question);
+    if (!deduped.has(key)) {
+      deduped.set(key, question);
+    }
+  }
+
+  return Array.from(deduped.values()).sort((left, right) => {
+    const leftNumber = left.number ?? Number.MAX_SAFE_INTEGER;
+    const rightNumber = right.number ?? Number.MAX_SAFE_INTEGER;
+    if (leftNumber !== rightNumber) return leftNumber - rightNumber;
+
+    const leftCategory = String(left.category ?? '');
+    const rightCategory = String(right.category ?? '');
+    const categoryDiff = leftCategory.localeCompare(rightCategory, 'es');
+    if (categoryDiff !== 0) return categoryDiff;
+
+    const textDiff = left.text.localeCompare(right.text, 'es');
+    if (textDiff !== 0) return textDiff;
+
+    return left.id.localeCompare(right.id, 'es');
+  });
+};
+
+const getQuestionSnapshotFromTables = async (params: {
+  curriculum: string;
+  maxQuestions?: number;
+  questionScope?: PracticeQuestionScopeFilter;
+}) => {
+  const {
+    curriculum,
+    maxQuestions = 4000,
+    questionScope = 'all',
+  } = params;
+
+  const pageSize = Math.min(500, Math.max(100, maxQuestions));
+  const targets = await resolveQuestionCurriculumTargets(curriculum, questionScope);
+  let lastError: Error | null = null;
+
+  for (const source of QUESTION_TABLE_SOURCES) {
+    const collected: Question[] = [];
+
+    for (const target of targets) {
+      for (let offset = 0; offset < maxQuestions; offset += pageSize) {
+        try {
+          const rows = await queryQuestionsFromSource(
+            source,
+            target.curriculum,
+            target.candidates,
+            pageSize,
+            offset,
+          );
+
+          if (rows === null || rows.length === 0) {
+            break;
+          }
+
+          const filtered = filterQuestionsByScope(mapQuestionRows(rows), target.scope);
+          if (filtered.length > 0) {
+            collected.push(...filtered);
+          }
+
+          if (rows.length < pageSize || collected.length >= maxQuestions) {
+            break;
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error('No se han podido leer preguntas.');
+          break;
+        }
+      }
+    }
+
+    const merged = mergeQuestionCollections(collected).slice(0, maxQuestions);
+    if (merged.length > 0) {
+      return merged;
+    }
+  }
+
+  if (lastError) throw lastError;
+  return [];
+};
+
 const shuffleQuestions = (questions: Question[]) => {
   const shuffled = [...questions];
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
@@ -839,64 +1009,37 @@ const getQuestionsFromTables = async (params: {
     questionScope = 'all',
     randomize = false,
   } = params;
+  const requestedWindow = randomize
+    ? Math.min(4000, Math.max(limit * 8, 300))
+    : Math.min(4000, Math.max(limit + offset, 300));
 
-  let lastError: Error | null = null;
-  const curriculumCandidates = await resolveCurriculumCandidates(curriculum);
+  const snapshot = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: requestedWindow,
+    questionScope,
+  });
 
-  for (const source of QUESTION_TABLE_SOURCES) {
-    try {
-      const rows = await queryQuestionsFromSource(source, curriculum, curriculumCandidates, limit, offset);
-      if (!rows || rows.length === 0) continue;
-
-      const filtered = filterQuestionsByScope(mapQuestionRows(rows), questionScope);
-      if (filtered.length === 0) continue;
-
-      return randomize ? shuffleQuestions(filtered).slice(0, limit) : filtered.slice(0, limit);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('No se han podido leer preguntas.');
-    }
+  if (snapshot.length === 0) {
+    return [];
   }
 
-  if (lastError) throw lastError;
-  return [];
-};
-
-const getQuestionRowsForCurriculum = async (curriculum: string, maxRows = 4000) => {
-  const pageSize = Math.min(500, Math.max(100, maxRows));
-  const curriculumCandidates = await resolveCurriculumCandidates(curriculum);
-  let lastError: Error | null = null;
-
-  for (const source of QUESTION_TABLE_SOURCES) {
-    const collected: Array<Record<string, unknown>> = [];
-
-    for (let offset = 0; offset < maxRows; offset += pageSize) {
-      try {
-        const rows = await queryQuestionsFromSource(source, curriculum, curriculumCandidates, pageSize, offset);
-        if (rows === null || rows.length === 0) break;
-
-        collected.push(...rows);
-        if (rows.length < pageSize || collected.length >= maxRows) break;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error('No se han podido leer preguntas.');
-        break;
-      }
-    }
-
-    if (collected.length > 0) {
-      return collected.slice(0, maxRows);
-    }
+  if (randomize) {
+    return shuffleQuestions(snapshot).slice(0, limit);
   }
 
-  if (lastError) throw lastError;
-  return [];
+  return snapshot.slice(offset, offset + limit);
 };
 
 export const getCurriculumCategoryOptions = async (curriculum = DEFAULT_CURRICULUM) => {
-  const rows = await getQuestionRowsForCurriculum(curriculum, 4000);
+  const questions = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: 4000,
+    questionScope: 'all',
+  });
   const deduped = new Map<string, string>();
 
-  for (const row of rows) {
-    const label = getCurriculumCategoryGroupLabel(curriculum, readQuestionCategoryLabel(row));
+  for (const question of questions) {
+    const label = getCurriculumCategoryGroupLabel(curriculum, question.category);
     const normalized = normalizeCategoryLabel(label);
     if (!normalized || deduped.has(normalized)) continue;
     deduped.set(normalized, label!.trim());
@@ -909,6 +1052,16 @@ async function getRandomPracticeBatchPreview(
   curriculum: string,
   questionScope: PracticeQuestionScopeFilter = 'all',
 ) {
+  if (hasSharedQuestionSources(curriculum, questionScope)) {
+    const preview = await getQuestionsFromTables({
+      curriculum,
+      limit: 1,
+      questionScope,
+      randomize: true,
+    });
+    return preview.slice(0, 1);
+  }
+
   const { data, error } = await supabase.schema('app').rpc('get_random_practice_batch', {
     p_curriculum: curriculum,
     p_batch_size: 1,
@@ -993,45 +1146,16 @@ async function enrichCurriculumOptions(
   return mergeCurriculumOptions(enriched, preferredCurriculum);
 }
 
-const getQuestionCountFromTables = async (curriculum: string) => {
-  const candidates = await resolveCurriculumCandidates(curriculum);
-  for (const source of QUESTION_TABLE_SOURCES) {
-    if (isKnownMissingTableSource(source)) continue;
-
-    let missingAllColumns = true;
-    for (const field of QUESTION_CURRICULUM_FIELD_ALIASES) {
-      const { count, error } = await getSchemaClient(source.schema)
-        .from(source.table)
-        .select('*', { count: 'exact', head: true })
-        .in(field, candidates);
-
-      if (!error && typeof count === 'number') {
-        return count;
-      }
-
-      if (error && isMissingColumnError(error)) continue;
-      missingAllColumns = false;
-      if (error && isMissingRelationError(error)) {
-        markTableSourceMissing(source);
-        break;
-      }
-    }
-
-    if (missingAllColumns) {
-      const { count, error } = await getSchemaClient(source.schema)
-        .from(source.table)
-        .select('*', { count: 'exact', head: true });
-
-      if (!error && typeof count === 'number' && count > 0) {
-        return count;
-      }
-      if (error && isMissingRelationError(error)) {
-        markTableSourceMissing(source);
-      }
-    }
-  }
-
-  return 0;
+const getQuestionCountFromTables = async (
+  curriculum: string,
+  questionScope: PracticeQuestionScopeFilter = 'all',
+) => {
+  const snapshot = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: 4000,
+    questionScope,
+  });
+  return snapshot.length;
 };
 
 const buildIdentityFromAuthUser = async (): Promise<AccountIdentity | null> => {
@@ -1168,11 +1292,18 @@ export const getPracticeCatalogSummary = async (
     });
 
     if (fallbackQuestions.length > 0) {
-      return { totalQuestions: await getQuestionCountFromTables(curriculum) || fallbackQuestions.length };
+      return {
+        totalQuestions:
+          (await getQuestionCountFromTables(curriculum, questionScope)) || fallbackQuestions.length,
+      };
     }
 
     return { totalQuestions: 0 };
   };
+
+  if (hasSharedQuestionSources(curriculum, questionScope)) {
+    return loadFallbackSummary();
+  }
 
   const { data, error } = await supabase
     .schema('app')
@@ -1230,6 +1361,15 @@ export const getRandomPracticeBatch = async (
   curriculum = DEFAULT_CURRICULUM,
   questionScope: PracticeQuestionScopeFilter = 'all',
 ) => {
+  if (hasSharedQuestionSources(curriculum, questionScope)) {
+    return getQuestionsFromTables({
+      curriculum,
+      limit: batchSize,
+      questionScope,
+      randomize: true,
+    });
+  }
+
   const { data, error } = await supabase.schema('app').rpc('get_random_practice_batch', {
     p_curriculum: curriculum,
     p_batch_size: batchSize,
@@ -1269,14 +1409,19 @@ export const getPracticeBatchByCategory = async (
   const normalizedTarget = normalizeCategoryLabel(getCurriculumCategoryGroupLabel(curriculum, category));
   if (!normalizedTarget) return [];
 
-  const rows = await getQuestionRowsForCurriculum(curriculum, 4000);
-  const filteredRows = rows.filter(
-    (row) =>
-      normalizeCategoryLabel(
-        getCurriculumCategoryGroupLabel(curriculum, readQuestionCategoryLabel(row)),
-      ) === normalizedTarget,
-  );
-  const mapped = shuffleQuestions(mapQuestionRows(filteredRows)).slice(0, batchSize);
+  const snapshot = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: 4000,
+    questionScope: 'all',
+  });
+  const mapped = shuffleQuestions(
+    snapshot.filter(
+      (question) =>
+        normalizeCategoryLabel(
+          getCurriculumCategoryGroupLabel(curriculum, question.category),
+        ) === normalizedTarget,
+    ),
+  ).slice(0, batchSize);
   if (mapped.length > 0) {
     return mapped;
   }
@@ -1292,59 +1437,21 @@ export const getPracticeBatchByCategory = async (
 export const getCurriculumQuestionNumberBounds = async (
   curriculum = DEFAULT_CURRICULUM,
 ): Promise<{ min: number; max: number } | null> => {
-  const candidates = await resolveCurriculumCandidates(curriculum);
+  const snapshot = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: 4000,
+    questionScope: 'all',
+  });
+  const numbers = snapshot
+    .map((question) => question.number)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
 
-  for (const source of QUESTION_TABLE_SOURCES) {
-    if (isKnownMissingTableSource(source)) continue;
+  if (numbers.length === 0) return null;
 
-    for (const curriculumField of QUESTION_CURRICULUM_FIELD_ALIASES) {
-      for (const numberField of QUESTION_NUMBER_FIELD_ALIASES) {
-        const minResponse = await getSchemaClient(source.schema)
-          .from(source.table)
-          .select(numberField)
-          .in(curriculumField, candidates)
-          .order(numberField, { ascending: true })
-          .limit(1);
-
-        if (minResponse.error) {
-          if (isMissingColumnError(minResponse.error)) continue;
-          if (isMissingRelationError(minResponse.error)) {
-            markTableSourceMissing(source);
-            break;
-          }
-          continue;
-        }
-
-        const minRow = ((minResponse.data ?? []) as Array<Record<string, unknown>>)[0] ?? null;
-        const minValue = minRow ? readOptionalNumber(minRow[numberField]) : null;
-        if (minValue == null) continue;
-
-        const maxResponse = await getSchemaClient(source.schema)
-          .from(source.table)
-          .select(numberField)
-          .in(curriculumField, candidates)
-          .order(numberField, { ascending: false })
-          .limit(1);
-
-        if (maxResponse.error) {
-          if (isMissingColumnError(maxResponse.error)) continue;
-          if (isMissingRelationError(maxResponse.error)) {
-            markTableSourceMissing(source);
-            break;
-          }
-          continue;
-        }
-
-        const maxRow = ((maxResponse.data ?? []) as Array<Record<string, unknown>>)[0] ?? null;
-        const maxValue = maxRow ? readOptionalNumber(maxRow[numberField]) : null;
-        if (maxValue == null) continue;
-
-        return { min: minValue, max: maxValue };
-      }
-    }
-  }
-
-  return null;
+  return {
+    min: Math.min(...numbers),
+    max: Math.max(...numbers),
+  };
 };
 
 export const getQuestionsByNumberRange = async (params: {
@@ -1356,48 +1463,12 @@ export const getQuestionsByNumberRange = async (params: {
   const { curriculum, randomize = false } = params;
   const fromValue = Math.min(params.from, params.to);
   const toValue = Math.max(params.from, params.to);
-  const limit = Math.min(2000, Math.max(1, toValue - fromValue + 1));
-  const candidates = await resolveCurriculumCandidates(curriculum);
-
-  for (const source of QUESTION_TABLE_SOURCES) {
-    if (isKnownMissingTableSource(source)) continue;
-
-    for (const curriculumField of QUESTION_CURRICULUM_FIELD_ALIASES) {
-      for (const numberField of QUESTION_NUMBER_FIELD_ALIASES) {
-        const { data, error } = await getSchemaClient(source.schema)
-          .from(source.table)
-          .select('*')
-          .in(curriculumField, candidates)
-          .gte(numberField, fromValue)
-          .lte(numberField, toValue)
-          .order(numberField, { ascending: true })
-          .limit(limit);
-
-        if (!error) {
-          const questions = mapQuestionRows((data ?? []) as Array<Record<string, unknown>>);
-          if (questions.length === 0) continue;
-          const ordered = [...questions].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
-          return randomize ? shuffleQuestions(ordered) : ordered;
-        }
-
-        if (isMissingColumnError(error)) continue;
-        if (isMissingRelationError(error)) {
-          markTableSourceMissing(source);
-          break;
-        }
-      }
-    }
-  }
-
-  const fallbackPool = await getQuestionsFromTables({
+  const snapshot = await getQuestionSnapshotFromTables({
     curriculum,
-    limit: 2000,
-    offset: 0,
+    maxQuestions: 4000,
     questionScope: 'all',
-    randomize: false,
   });
-
-  const filtered = fallbackPool
+  const filtered = snapshot
     .filter((q) => typeof q.number === 'number' && q.number >= fromValue && q.number <= toValue)
     .sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
 
@@ -1543,7 +1614,7 @@ export const updateMyExamTarget = async (input: {
 };
 
 export const buildRandomPracticeSession = (questions: Question[]): ActivePracticeSession => ({
-  id: crypto.randomUUID(),
+  id: createId(),
   mode: 'random',
   title: 'Sesion aleatoria',
   startedAt: new Date().toISOString(),
@@ -1623,14 +1694,40 @@ export const loadDashboardBundle = async (
       getWeakCategorySummary(curriculum, 5).catch(() => []),
     ]);
 
+  const dashboardReportedQuestions = Math.max(
+    practiceState.learningDashboard?.totalQuestions ?? 0,
+    learningDashboardV2?.totalQuestions ?? 0,
+  );
+  const normalizedQuestionsCount =
+    catalog.totalQuestions > 0 ? catalog.totalQuestions : dashboardReportedQuestions;
+
+  const syncedPracticeState: CloudPracticeState = {
+    ...practiceState,
+    learningDashboard:
+      practiceState.learningDashboard && normalizedQuestionsCount > 0
+        ? {
+            ...practiceState.learningDashboard,
+            totalQuestions: normalizedQuestionsCount,
+          }
+        : practiceState.learningDashboard,
+    learningDashboardV2:
+      learningDashboardV2 && normalizedQuestionsCount > 0
+        ? {
+            ...learningDashboardV2,
+            totalQuestions: normalizedQuestionsCount,
+            coverageRate: Math.max(
+              0,
+              Math.min(1, (learningDashboardV2.seenQuestions ?? 0) / normalizedQuestionsCount),
+            ),
+          }
+        : learningDashboardV2,
+    pressureInsightsV2,
+  };
+
   return {
     identity,
-    practiceState: {
-      ...practiceState,
-      learningDashboardV2,
-      pressureInsightsV2,
-    },
-    questionsCount: catalog.totalQuestions,
+    practiceState: syncedPracticeState,
+    questionsCount: normalizedQuestionsCount,
     weakCategories,
   };
 };

@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
+import EntryScreen from './components/EntryScreen';
 import TestSelection from './components/TestSelection';
 import TestInterface from './components/TestInterface';
 import StatsDashboard from './components/StatsDashboard';
@@ -30,6 +31,7 @@ import Dashboard from './components/dashboard/Dashboard';
 import { supabaseConfigError } from './lib/supabaseConfig';
 import { getSafeSupabaseSession, supabase } from './lib/supabaseClient';
 import { loginWithUsername } from './lib/auth';
+import { createId } from './lib/id';
 import {
   buildFallbackCurriculumOptions,
   DEFAULT_CURRICULUM,
@@ -178,6 +180,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [unauthView, setUnauthView] = useState<'entry' | 'login'>('entry');
   const [bundle, setBundle] = useState<DashboardBundle | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
@@ -723,7 +726,7 @@ export default function App() {
         });
 
         const session: ActivePracticeSession = {
-          id: crypto.randomUUID(),
+          id: createId(),
           mode: resolvedMode,
           title: resolvedTitle,
           startedAt: new Date().toISOString(),
@@ -773,7 +776,7 @@ export default function App() {
         }
 
         const session: ActivePracticeSession = {
-          id: crypto.randomUUID(),
+          id: createId(),
           mode: 'standard',
           title: `${t('Test por ley', 'Lege bidezko testa')}: ${normalizedLaw}`,
           startedAt: new Date().toISOString(),
@@ -838,7 +841,7 @@ export default function App() {
         }
 
         const session: ActivePracticeSession = {
-          id: crypto.randomUUID(),
+          id: createId(),
           mode: 'custom',
           title: t(
             `Test personalizado (${params.from}–${params.to})${params.randomize ? ' • aleatorio' : ''}`,
@@ -915,8 +918,6 @@ export default function App() {
       learningV2?.observedAccuracySampleOk && (learningV2?.observedAccuracyN ?? 0) >= 15
         ? learningV2.retentionSeenConfidenceFlag ?? 'medium'
         : pressureV2?.confidenceFlag ?? 'low';
-    const confidenceLabel =
-      confidence === 'high' ? 'Alta' : confidence === 'medium' ? 'Media' : 'Baja';
 
     const dotClass =
       confidence === 'high'
@@ -924,20 +925,6 @@ export default function App() {
         : confidence === 'medium'
           ? 'bg-amber-500'
           : 'bg-rose-500';
-
-    const signalLabel =
-      learningV2?.observedAccuracySampleOk || pressureV2?.sampleOk ? `Señal: ${confidenceLabel}` : 'Sin señal';
-
-    const localizedConfidenceLabel =
-      confidence === 'high'
-        ? t('Alta', 'Handia')
-        : confidence === 'medium'
-          ? t('Media', 'Ertaina')
-          : t('Baja', 'Baxua');
-    const resolvedSignalLabel =
-      learningV2?.observedAccuracySampleOk || pressureV2?.sampleOk
-        ? t(`Senal: ${localizedConfidenceLabel}`, `Seinalea: ${localizedConfidenceLabel}`)
-        : t('Sin senal', 'Seinalerik ez');
     const headerCopy = buildHeaderStatusCopy({
       locale,
       readiness,
@@ -948,13 +935,12 @@ export default function App() {
 
     return {
       readiness,
-      signalLabel: resolvedSignalLabel,
       readingLabel: headerCopy.readingLabel,
       readinessLabel: headerCopy.readinessLabel,
       dotClass,
       sessions: bundle?.practiceState.recentSessions.length ?? 0,
     };
-  }, [bundle, locale, t]);
+  }, [bundle, locale]);
 
   const activeCurriculumLabel = useMemo(
     () =>
@@ -1074,7 +1060,7 @@ export default function App() {
       const selected = shuffled.slice(0, Math.max(1, Math.min(count, shuffled.length)));
 
       const session: ActivePracticeSession = {
-        id: crypto.randomUUID(),
+        id: createId(),
         mode: 'standard',
         title: t('Estudio guiado', 'Ikasketa gidatua'),
         startedAt: new Date().toISOString(),
@@ -1191,7 +1177,20 @@ export default function App() {
   if (!session) {
     return (
       <LocaleProvider locale={locale}>
-        <AuthScreen error={authError} loading={authLoading} onSubmit={handleLogin} />
+        {unauthView === 'entry' ? (
+          <EntryScreen
+            onLogin={() => {
+              setUnauthView('login');
+            }}
+          />
+        ) : (
+          <AuthScreen
+            error={authError}
+            loading={authLoading}
+            onSubmit={handleLogin}
+            onBack={() => setUnauthView('entry')}
+          />
+        )}
       </LocaleProvider>
     );
   }
@@ -1214,7 +1213,7 @@ export default function App() {
             aria-hidden="true"
           />
           <aside
-            className={`w-72 bg-[#0a0a1a] text-white flex flex-col p-8 shadow-2xl border-r border-white/5 fixed lg:relative inset-y-0 left-0 z-50 lg:z-20 transition-transform duration-300 ${
+            className={`w-72 bg-[#0a0a1a] text-white flex flex-col p-8 [@media(max-height:800px)]:p-5 shadow-2xl border-r border-white/5 fixed lg:relative inset-y-0 left-0 z-50 lg:z-20 transition-transform duration-300 ${
               sidebarOpen ? 'translate-x-0' : '-translate-x-full'
             } lg:translate-x-0 overflow-y-auto`}
           >
@@ -1227,7 +1226,7 @@ export default function App() {
               <X className="h-5 w-5 text-white" />
             </button>
           </div>
-          <div ref={curriculumMenuRef} className="relative z-50 mb-12 px-2">
+          <div ref={curriculumMenuRef} className="relative z-50 mb-12 [@media(max-height:800px)]:mb-6 px-2">
             <button
               ref={curriculumTriggerRef}
               type="button"
@@ -1345,124 +1344,128 @@ export default function App() {
 
           {/* Gamification Sidebar Block - Enhanced */}
           {bundle && (
-            <div className="mb-12 p-5 bg-white/5 rounded-[2rem] border border-white/10 backdrop-blur-md relative overflow-hidden group">
+            <div className="mb-12 [@media(max-height:800px)]:mb-6 [@media(max-height:700px)]:mb-4 p-5 [@media(max-height:800px)]:p-4 [@media(max-height:700px)]:p-3 bg-white/5 rounded-[2rem] border border-white/10 backdrop-blur-md relative overflow-hidden group shrink-0 [@media(max-height:650px)]:hidden">
               <div className="absolute top-0 right-0 -mt-4 -mr-4 w-20 h-20 bg-indigo-500 rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity"></div>
               
-              <div className="flex items-center justify-between mb-6 relative z-10">
+              <div className="flex items-center justify-between mb-6 [@media(max-height:800px)]:mb-3 relative z-10">
                 <div className="flex flex-col gap-1 min-w-0">
                   <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest truncate">
                     {t('Racha diaria', 'Eguneko bolada')}
                   </span>
                   <div className="flex items-center gap-2">
-                    <Flame size={18} className="text-amber-500 fill-amber-500/20 animate-pulse shrink-0" />
-                    <span className="text-xl font-black truncate">
+                    <Flame size={16} className="text-amber-500 fill-amber-500/20 animate-pulse shrink-0" />
+                    <span className="text-xl [@media(max-height:800px)]:text-lg font-black truncate">
                       {gamification.streak} {t('dias', 'egun')}
                     </span>
                   </div>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                  <Star size={18} className="text-indigo-400 fill-indigo-400/20" />
+                <div className="w-10 h-10 [@media(max-height:800px)]:w-8 [@media(max-height:800px)]:h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                  <Star size={16} className="text-indigo-400 fill-indigo-400/20" />
                 </div>
               </div>
 
-              <div className="space-y-3 relative z-10">
-                <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              <div className="space-y-3 [@media(max-height:800px)]:space-y-2 relative z-10">
+                <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest [@media(max-height:700px)]:hidden">
                   <span>{t('Nivel', 'Maila')} {gamification.level}</span>
                   <span>{gamification.xp % 100}%</span>
                 </div>
-                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/5">
+                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden border border-white/5 [@media(max-height:700px)]:hidden">
                   <div 
                     className="bg-gradient-to-r from-indigo-500 to-emerald-500 h-full transition-all duration-1000 shadow-[0_0_15px_rgba(79,70,229,0.5)]" 
                     style={{ width: `${(gamification.xp % 100)}%` }}
                   />
                 </div>
+                <div className="hidden [@media(max-height:700px)]:flex items-center justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                  <span>{t('Nivel', 'Maila')} {gamification.level}</span>
+                  <span>{gamification.xp % 100}%</span>
+                </div>
               </div>
             </div>
           )}
 
-          <nav className="flex-1 space-y-3">
+          <nav className="flex-1 space-y-3 [@media(max-height:800px)]:space-y-2 [@media(max-height:700px)]:space-y-1.5">
             <button
               onClick={() => {
                 setCurrentView('dashboard');
                 setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
+              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
                 currentView === 'dashboard' 
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
             >
               <LayoutDashboard size={22} className={currentView === 'dashboard' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">{t('Dashboard', 'Panela')}</span>
+              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Dashboard', 'Panela')}</span>
             </button>
             <button
               onClick={() => {
                 setCurrentView('test-selection');
                 setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
+              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
                 currentView === 'test-selection' || currentView === 'test-results'
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
             >
               <ClipboardList size={22} className={currentView === 'test-selection' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">{t('Realizar test', 'Testa egin')}</span>
+              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Realizar test', 'Testa egin')}</span>
             </button>
             <button
               onClick={() => {
                 setCurrentView('stats');
                 setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
+              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
                 currentView === 'stats' 
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
             >
               <TrendingUp size={22} className={currentView === 'stats' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">{t('Estadisticas', 'Estatistikak')}</span>
+              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estadisticas', 'Estatistikak')}</span>
             </button>
             <button
               onClick={() => {
                 setCurrentView('study');
                 setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group ${
+              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
                 currentView === 'study'
                   ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
             >
               <BookOpen size={22} className={currentView === 'study' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg">{t('Estudio', 'Ikasketa')}</span>
+              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estudio', 'Ikasketa')}</span>
             </button>
           </nav>
 
-          <div className="pt-8 border-t border-white/5 space-y-3">
+          <div className="pt-8 [@media(max-height:800px)]:pt-6 [@media(max-height:700px)]:pt-4 border-t border-white/5 space-y-3 [@media(max-height:700px)]:space-y-2">
             <button
               onClick={() => {
                 setCurrentView('settings');
                 setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 ${
+              className={`w-full flex items-center gap-4 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 ${
                 currentView === 'settings'
                   ? 'bg-white/10 text-white'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
               }`}
             >
               <Settings size={22} />
-              <span className="text-lg">{t('Ajustes', 'Doikuntzak')}</span>
+              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Ajustes', 'Doikuntzak')}</span>
             </button>
             <button
               onClick={() => {
                 setSidebarOpen(false);
                 void handleLogout();
               }}
-              className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-rose-400 hover:bg-rose-500/10 transition-all duration-300"
+              className="w-full flex items-center gap-4 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl text-rose-400 hover:bg-rose-500/10 transition-all duration-300"
             >
               <LogOut size={22} />
-              <span className="text-lg font-bold">{t('Cerrar sesion', 'Saioa itxi')}</span>
+              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm font-bold">{t('Cerrar sesion', 'Saioa itxi')}</span>
             </button>
           </div>
         </aside>

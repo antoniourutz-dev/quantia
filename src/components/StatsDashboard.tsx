@@ -509,12 +509,13 @@ export default function StatsDashboard({
   const renderTrendDot = (props: any) => {
     const { cx, cy, payload } = props;
     if (cx == null || cy == null || !payload) {
-      return <circle cx={0} cy={0} r={0} />;
+      return <circle key="trend-dot-empty" cx={0} cy={0} r={0} />;
     }
     const ratio = Number(payload.volumeRatio ?? 0);
     const radius = 3 + Math.round(Math.max(0, Math.min(1, ratio)) * 5);
     return (
       <circle
+        key={`trend-dot:${payload.iso ?? `${cx}-${cy}`}`}
         cx={cx}
         cy={cy}
         r={radius}
@@ -600,7 +601,8 @@ export default function StatsDashboard({
                 {t('Lectura', 'Irakurketa')}: {formatConfidence(readinessConfidence)}
               </div>
               <div className="px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
-                {t('Visto', 'Ikusita')}: {coverage}% ({seenQuestions}/{totalBankQuestions})
+                {t('Visto', 'Ikusita')}: {coverage}%
+                <span className="[@media(max-height:800px)]:hidden"> ({seenQuestions}/{totalBankQuestions})</span>
               </div>
             </div>
           </div>
@@ -614,13 +616,16 @@ export default function StatsDashboard({
                 <div className="text-5xl md:text-6xl font-black tracking-tighter leading-none">{readiness}%</div>
                 <div className="text-right text-xs font-bold text-indigo-100/80">
                   {readinessCiLow != null && readinessCiHigh != null ? (
-                    <div>{t('Margen', 'Tartea')}: {readinessCiLow}-{readinessCiHigh}</div>
+                    <div>
+                      <span className="[@media(max-height:800px)]:hidden">{t('Margen', 'Tartea')}: </span>
+                      {readinessCiLow}–{readinessCiHigh}
+                    </div>
                   ) : (
                     <div>{t('Leyendo tus ultimas sesiones...', 'Azken saioak irakurtzen...')}</div>
                   )}
                 </div>
               </div>
-              <div className="mt-3 text-sm font-medium text-indigo-50/80 leading-relaxed">
+              <div className="mt-3 text-sm font-medium text-indigo-50/80 leading-relaxed [@media(max-height:800px)]:hidden">
                 {actionSummary || t('Todavia hace falta un poco mas para leer bien este momento.', 'Oraindik pixka bat gehiago falta da une hau ondo irakurtzeko.')}
               </div>
             </div>
@@ -632,9 +637,12 @@ export default function StatsDashboard({
               <div className="flex items-end justify-between gap-6">
                 <div className="text-4xl md:text-5xl font-black tracking-tighter leading-none">{observedAccuracy}%</div>
                 <div className="text-right text-xs font-bold text-indigo-100/80">
-                  <div>{observedAccuracyN} {t('respuestas', 'erantzun')}</div>
+                  <div>
+                    <span className="[@media(max-height:800px)]:hidden">{t('Respuestas', 'Erantzunak')}: </span>
+                    {observedAccuracyN}
+                  </div>
                   {observedCiLow != null && observedCiHigh != null ? (
-                    <div>{t('Margen', 'Tartea')}: {observedCiLow}-{observedCiHigh}</div>
+                    <div className="[@media(max-height:800px)]:hidden">{t('Margen', 'Tartea')}: {observedCiLow}–{observedCiHigh}</div>
                   ) : null}
                 </div>
               </div>
@@ -656,19 +664,25 @@ export default function StatsDashboard({
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-300/80 mb-2">{t('Sesiones', 'Saioak')}</div>
+                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-slate-300/80 mb-2 text-center">
+                    {t('Sesiones', 'Saioak')}
+                  </div>
                   <div className="text-2xl font-black">{results.length}</div>
                 </div>
                 <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-300/80 mb-2">{t('Preguntas', 'Galderak')}</div>
+                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-slate-300/80 mb-2 text-center">
+                    {t('Preguntas', 'Galderak')}
+                  </div>
                   <div className="text-2xl font-black">{totalQuestions}</div>
                 </div>
                 <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-300/80 mb-2">{t('Aciertos', 'Asmatzeak')}</div>
+                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-slate-300/80 mb-2 text-center">
+                    {t('Aciertos', 'Asmatzeak')}
+                  </div>
                   <div className="text-2xl font-black">{correctAnswers}</div>
                 </div>
               </div>
-              <div className="mt-4 text-xs font-bold text-indigo-100/80">
+              <div className="mt-4 text-xs font-bold text-indigo-100/80 [@media(max-height:800px)]:hidden">
                 {t('Ritmo actual', 'Uneko erritmoa')}: {levelLabel}
               </div>
             </div>
@@ -676,17 +690,17 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 [@media(max-height:800px)]:gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
               <Swords size={14} className="text-indigo-600" />
               {t('Hoy', 'Gaur')}
             </div>
-            <h3 className="mt-2 text-2xl font-black text-slate-900">
+            <h3 className="mt-2 text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
               {t('Lo que te conviene hacer ahora', 'Orain egitea komeni zaizuna')}
             </h3>
-            <div className="mt-2 text-sm font-medium text-slate-500 leading-relaxed">
+            <div className="mt-2 text-sm font-medium text-slate-500 leading-relaxed [@media(max-height:800px)]:hidden">
               {actionSummary}
             </div>
           </div>
@@ -704,7 +718,7 @@ export default function StatsDashboard({
               type="button"
               onClick={onStartRecommended}
               disabled={!onStartRecommended}
-              className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-indigo-600 text-white font-black text-lg shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all disabled:opacity-60 disabled:hover:bg-indigo-600"
+              className="w-full sm:w-auto px-6 py-4 [@media(max-height:800px)]:py-3 rounded-2xl bg-indigo-600 text-white font-black text-lg [@media(max-height:800px)]:text-base shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all disabled:opacity-60 disabled:hover:bg-indigo-600"
             >
               {actionCopy.cta ?? t('Practicar por aqui', 'Hemendik praktikatu')}
             </button>
@@ -712,17 +726,17 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm">
+      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
               <ShieldAlert size={14} className="text-rose-600" />
               {t('Temas a reforzar', 'Indartu beharreko gaiak')}
             </div>
-            <h3 className="mt-2 text-2xl font-black text-slate-900">
+            <h3 className="mt-2 text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
               {t('Donde mas te conviene entrar', 'Non komeni zaizun gehien sartzea')}
             </h3>
-            <div className="mt-2 text-sm font-medium text-slate-500 leading-relaxed">
+            <div className="mt-2 text-sm font-medium text-slate-500 leading-relaxed [@media(max-height:800px)]:hidden">
               {rankedWeakCategories.length > 0
                 ? t('Empieza por los puntos donde mas se te esta yendo el acierto.', 'Hasi gehien kostatzen ari zaizkizun puntuetatik.')
                 : t('Todavia hacen falta algunas respuestas mas para ordenar bien tus prioridades.', 'Oraindik erantzun batzuk gehiago falta dira lehentasunak ondo ordenatzeko.')}
@@ -730,7 +744,7 @@ export default function StatsDashboard({
           </div>
         </div>
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 space-y-3 [@media(max-height:800px)]:mt-4">
           {rankedWeakCategories.length > 0 ? (
             rankedWeakCategories.map((item, index) => {
               const risk = item.excessRisk ?? 0;
@@ -738,7 +752,7 @@ export default function StatsDashboard({
               const barPct = Math.max(8, Math.min(100, riskPct));
               const confidence = item.confidenceFlag ?? 'low';
               return (
-                <div key={`${item.category}-${index}`} className="rounded-3xl border border-slate-100 bg-slate-50 px-5 py-4">
+                <div key={`${item.category}-${index}`} className="rounded-3xl border border-slate-100 bg-slate-50 px-5 py-4 [@media(max-height:800px)]:px-4 [@media(max-height:800px)]:py-3">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <div className="text-sm font-black text-slate-900 truncate">{item.category}</div>
@@ -746,7 +760,7 @@ export default function StatsDashboard({
                         <div className={`px-2.5 py-1 rounded-2xl border text-[10px] font-black uppercase tracking-[0.2em] ${confidenceClass(confidence)}`}>
                           {t('Lectura', 'Irakurketa')}: {formatConfidence(confidence)}
                         </div>
-                        <div className="px-2.5 py-1 rounded-2xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                        <div className="px-2.5 py-1 rounded-2xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 [@media(max-height:800px)]:hidden">
                           {t('Intentos', 'Saiakerak')}: {item.attempts}
                         </div>
                         {item.sampleOk ? (
@@ -784,9 +798,9 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm">
+      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-black text-slate-900">
+          <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
             {t('Tu precision en los ultimos dias', 'Azken egunetako zure doitasuna')}
           </h3>
           <div className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-500">
@@ -794,7 +808,7 @@ export default function StatsDashboard({
             {t('Ultimos 10 dias', 'Azken 10 egunak')}
           </div>
         </div>
-        <div className="h-[280px] w-full">
+        <div className="h-[280px] [@media(max-height:800px)]:h-[220px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={dailyTrendData}>
               <defs>
@@ -831,15 +845,17 @@ export default function StatsDashboard({
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-4 rounded-3xl border border-slate-100 bg-slate-50 px-6 py-5 text-sm font-bold text-slate-700 leading-relaxed">
+        <div className="mt-4 [@media(max-height:800px)]:mt-3 rounded-3xl border border-slate-100 bg-slate-50 px-6 py-5 [@media(max-height:800px)]:px-5 [@media(max-height:800px)]:py-4 text-sm font-bold text-slate-700 leading-relaxed">
           {trendNarrative}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm xl:col-span-1">
-          <h3 className="text-2xl font-black text-slate-900 mb-6">{t('Como has repartido las sesiones', 'Nola banatu dituzun saioak')}</h3>
-          <div className="h-[220px] w-full">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 [@media(max-height:800px)]:gap-4">
+        <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm xl:col-span-1">
+          <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900 mb-6 [@media(max-height:800px)]:mb-4">
+            {t('Como has repartido las sesiones', 'Nola banatu dituzun saioak')}
+          </h3>
+          <div className="h-[220px] [@media(max-height:800px)]:h-[180px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={modeData} dataKey="value" cx="50%" cy="50%" innerRadius={54} outerRadius={80} paddingAngle={6}>
@@ -851,7 +867,7 @@ export default function StatsDashboard({
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="space-y-3 mt-6">
+          <div className="space-y-3 mt-6 [@media(max-height:800px)]:mt-4 [@media(max-height:800px)]:hidden">
             {modeData.map((entry, index) => (
               <div key={entry.name} className="flex items-center justify-between rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0">
@@ -864,36 +880,38 @@ export default function StatsDashboard({
           </div>
         </div>
 
-        <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm xl:col-span-2">
+        <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm xl:col-span-2">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-2xl font-black text-slate-900">{t('Tu registro de sesiones', 'Zure saioen erregistroa')}</h3>
-              <p className="text-sm font-medium text-slate-500 mt-1">
+              <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
+                {t('Tu registro de sesiones', 'Zure saioen erregistroa')}
+              </h3>
+              <p className="text-sm font-medium text-slate-500 mt-1 [@media(max-height:800px)]:hidden">
                 {t('Un vistazo a tu habito y a como te fue cada dia', 'Zure ohiturari eta egun bakoitza nola joan den begirada bat')}
               </p>
             </div>
           </div>
 
           {results.length === 0 ? (
-            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 text-slate-500">
+            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 [@media(max-height:800px)]:p-6 text-slate-500">
               {t('Aun no hay sesiones registradas.', 'Oraindik ez dago saiorik erregistratuta.')}
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6">
-              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-5">
-                <div className="flex items-center justify-between mb-5">
+            <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6 [@media(max-height:800px)]:gap-4">
+              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-5 [@media(max-height:800px)]:p-4">
+                <div className="flex items-center justify-between mb-5 [@media(max-height:800px)]:mb-4">
                   <button onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} className="w-10 h-10 rounded-xl border border-slate-100 bg-white flex items-center justify-center text-slate-600">
                     <ChevronLeft size={18} />
                   </button>
                   <div className="text-center">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Calendario', 'Egutegia')}</div>
-                    <div className="text-lg font-black text-slate-900">{calendarLabel}</div>
+                    <div className="text-lg [@media(max-height:800px)]:text-base font-black text-slate-900">{calendarLabel}</div>
                   </div>
                   <button onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} className="w-10 h-10 rounded-xl border border-slate-100 bg-white flex items-center justify-center text-slate-600">
                     <ChevronRight size={18} />
                   </button>
                 </div>
-                <div className="grid grid-cols-7 gap-2 mb-3">
+                <div className="grid grid-cols-7 gap-2 mb-3 [@media(max-height:800px)]:mb-2">
                   {weekdayLabels.map((day) => (
                     <div key={day} className="text-center text-[10px] font-black uppercase tracking-widest text-slate-400">{day}</div>
                   ))}
@@ -935,7 +953,7 @@ export default function StatsDashboard({
                         key={cell.iso}
                         onClick={() => setSelectedDate(cell.iso)}
                         title={title}
-                        className={`h-11 rounded-xl border flex items-center justify-center text-sm font-black transition-all ${
+                        className={`h-11 [@media(max-height:800px)]:h-9 rounded-xl border flex items-center justify-center text-sm [@media(max-height:800px)]:text-xs font-black transition-all ${
                           isSelected
                             ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
                             : heatClass
@@ -948,7 +966,7 @@ export default function StatsDashboard({
                 </div>
               </div>
 
-              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
+              <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6 [@media(max-height:800px)]:p-5">
                 {!selectedDaySummary || !selectedDate ? (
                   <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500">
                     {t('Elige un dia del calendario para ver como te fue.', 'Hautatu egutegiko egun bat nola joan den ikusteko.')}
@@ -960,13 +978,13 @@ export default function StatsDashboard({
                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">
                           {t('Resumen del dia', 'Eguneko laburpena')}
                         </div>
-                        <div className="text-2xl font-black text-slate-900">{formatLongDate(parseIsoDate(selectedDate), locale)}</div>
+                        <div className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">{formatLongDate(parseIsoDate(selectedDate), locale)}</div>
                       </div>
                       <div className="rounded-[1.5rem] bg-white border border-slate-100 px-5 py-4 text-right">
                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-1">
                           {t('Como te fue', 'Nola joan da')}
                         </div>
-                        <div className="text-3xl font-black text-indigo-600">{selectedDaySummary.accuracy.toFixed(0)}%</div>
+                        <div className="text-3xl [@media(max-height:800px)]:text-2xl font-black text-indigo-600">{selectedDaySummary.accuracy.toFixed(0)}%</div>
                         <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
                           {selectedDaySummary.totalQuestions === 0
                             ? t('Sin actividad', 'Jarduerarik gabe')
@@ -992,12 +1010,12 @@ export default function StatsDashboard({
                       }].map((item) => (
                         <div key={item.label} className="rounded-[1.5rem] border border-slate-100 bg-white p-5">
                           <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{item.label}</div>
-                          <div className="text-3xl font-black text-slate-900">{item.value}</div>
+                          <div className="text-3xl [@media(max-height:800px)]:text-2xl font-black text-slate-900">{item.value}</div>
                         </div>
                       ))}
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-3 [@media(max-height:800px)]:hidden">
                       {selectedDaySummary.types.map((typeGroup) => (
                         <div key={`${selectedDate}-${typeGroup.label}`} className="rounded-[1.5rem] border border-slate-100 bg-white p-5">
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -1025,15 +1043,15 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 shadow-sm">
+      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
               <ShieldAlert size={14} className="text-amber-600" />
               {t('Estudio vs examen', 'Ikasketa vs azterketa')}
             </div>
-            <h3 className="mt-2 text-2xl font-black text-slate-900">{examSection.headline}</h3>
-            <div className="mt-2 text-sm font-medium text-slate-500 leading-relaxed">{examSection.subtitle}</div>
+            <h3 className="mt-2 text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">{examSection.headline}</h3>
+            <div className="mt-2 text-sm font-medium text-slate-500 leading-relaxed [@media(max-height:800px)]:hidden">{examSection.subtitle}</div>
           </div>
           <div className="shrink-0 rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
@@ -1043,7 +1061,7 @@ export default function StatsDashboard({
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 [@media(max-height:800px)]:mt-4">
           <div className="rounded-[2rem] border border-slate-100 bg-slate-50 px-6 py-5">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">
               {t('Como estudias', 'Nola ikasten duzu')}
@@ -1051,7 +1069,7 @@ export default function StatsDashboard({
             <div className="text-3xl font-black text-slate-900">
               {examSection.learningPct == null ? '—' : `${examSection.learningPct}%`}
             </div>
-            <div className="mt-2 text-xs font-bold text-slate-500">
+            <div className="mt-2 text-xs font-bold text-slate-500 [@media(max-height:800px)]:hidden">
               {examSection.learningQ > 0 || examSection.learningS > 0
                 ? `${examSection.learningQ} ${t('preguntas', 'galdera')} · ${examSection.learningS} ${t('sesiones', 'saio')}`
                 : t('Todavía sin base suficiente.', 'Oraindik oinarri gutxiegi.')}
@@ -1065,7 +1083,7 @@ export default function StatsDashboard({
             <div className="text-3xl font-black text-slate-900">
               {examSection.examPct == null ? '—' : `${examSection.examPct}%`}
             </div>
-            <div className="mt-2 text-xs font-bold text-slate-500">
+            <div className="mt-2 text-xs font-bold text-slate-500 [@media(max-height:800px)]:hidden">
               {examSection.examQ > 0 || examSection.examS > 0
                 ? `${examSection.examQ} ${t('preguntas', 'galdera')} · ${examSection.examS} ${t('sesiones', 'saio')}`
                 : t('Aún no hay simulacros suficientes.', 'Oraindik ez dago simulakrurik nahikorik.')}
@@ -1081,7 +1099,7 @@ export default function StatsDashboard({
                 ? '—'
                 : `${examSection.gapPct > 0 ? '-' : examSection.gapPct < 0 ? '+' : ''}${Math.abs(examSection.gapPct)} ${t('puntos', 'puntu')}`}
             </div>
-            <div className="mt-2 text-xs font-bold text-slate-500">
+            <div className="mt-2 text-xs font-bold text-slate-500 [@media(max-height:800px)]:hidden">
               {examSection.stillEarly
                 ? t('Aún con poca base para afirmarlo.', 'Oraindik oinarri gutxirekin baieztatzeko.')
                 : t('Comparación ya bastante estable.', 'Alderaketa nahiko egonkorra.')}
@@ -1089,8 +1107,8 @@ export default function StatsDashboard({
           </div>
         </div>
 
-        <div className="mt-6 space-y-3">
-          <div className="rounded-[2rem] border border-slate-100 bg-slate-50 px-6 py-5 text-sm font-bold text-slate-700 leading-relaxed">
+        <div className="mt-6 [@media(max-height:800px)]:mt-4 space-y-3">
+          <div className="rounded-[2rem] border border-slate-100 bg-slate-50 px-6 py-5 [@media(max-height:800px)]:px-5 [@media(max-height:800px)]:py-4 text-sm font-bold text-slate-700 leading-relaxed">
             {examSection.gapDetail}
           </div>
           {examSection.paceDetail ? (
