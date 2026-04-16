@@ -34,6 +34,7 @@ const writeLastReward = (value: { id: string; timestamp: string }) => {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
   } catch {
+    void 0;
   }
 };
 

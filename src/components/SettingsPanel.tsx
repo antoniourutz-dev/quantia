@@ -9,6 +9,7 @@ interface SettingsPanelProps {
   notice: { kind: 'success' | 'error'; text: string } | null;
   onSave: (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number }) => Promise<void>;
   isAdmin?: boolean;
+  onOpenAdmin?: () => void;
   onOpenTelemetry?: () => void;
 }
 
@@ -17,7 +18,7 @@ const clampInt = (value: number, min: number, max: number) => {
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
-export default function SettingsPanel({ examTarget, saving, notice, onSave, isAdmin = false, onOpenTelemetry }: SettingsPanelProps) {
+export default function SettingsPanel({ examTarget, saving, notice, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const telemetryEnabled = useMemo(() => {
@@ -25,6 +26,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
     try {
       if (window.localStorage.getItem('quantia.debug.telemetry') === '1') return true;
     } catch {
+      void 0;
     }
     try {
       return new URLSearchParams(window.location.search).get('telemetry') === '1';
@@ -191,6 +193,15 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
               ? isBasque ? 'Gordetzen...' : 'Guardando...'
               : isBasque ? 'Doikuntzak gorde' : 'Guardar ajustes'}
           </button>
+          {isAdmin && onOpenAdmin ? (
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="sm:w-auto px-6 py-5 rounded-[2rem] bg-white text-slate-700 font-black text-base shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+            >
+              <span>{isBasque ? 'BD kudeaketa' : 'Gestión BD'}</span>
+            </button>
+          ) : null}
           {telemetryEnabled && onOpenTelemetry ? (
             <button
               type="button"

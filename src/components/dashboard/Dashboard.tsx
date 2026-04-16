@@ -1,4 +1,5 @@
-import { AlertCircle, BookOpen, Sparkles, TrendingUp, ArrowRight } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertCircle, BookOpen, ChevronDown, Sparkles, TrendingUp, ArrowRight } from 'lucide-react';
 import CoachHero from './CoachHero';
 import ProgressOverview from './ProgressOverview';
 import PrimaryActionCard from './PrimaryActionCard';
@@ -62,16 +63,28 @@ export default function Dashboard({
 }: DashboardProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+  const t = useMemo(() => (es: string, eu: string) => (isBasque ? eu : es), [isBasque]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-12 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-      <div className="hover-lift">
+    <div className="mx-auto max-w-7xl space-y-6 lg:space-y-12 pb-10 lg:pb-20 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+      <div className="hover-lift hidden lg:block">
         <CoachHero
           label={coachLabel}
           title={coachTitle}
           description={coachDescription}
           ctaLabel={coachCtaLabel}
           onAction={onCoachAction}
+        />
+      </div>
+      <div className="hover-lift lg:hidden">
+        <CoachHero
+          label={coachLabel}
+          title={coachTitle}
+          description={coachDescription}
+          ctaLabel={coachCtaLabel}
+          onAction={onCoachAction}
+          compact
         />
       </div>
 
@@ -138,13 +151,24 @@ export default function Dashboard({
             </span>
           </div>
 
-          <div className="glass-premium rounded-[3rem] p-2 overflow-hidden hover-lift">
+          <div className={`${mobileExpanded ? 'block' : 'hidden'} lg:block glass-premium rounded-[3rem] p-2 overflow-hidden hover-lift`}>
             <WeeklyInsight data={weeklyInsightData} summary={weeklyInsightSummary} deltaLabel={weeklyInsightDelta} />
           </div>
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileExpanded((prev) => !prev)}
+          className="w-full rounded-[2rem] border border-slate-200 bg-white px-6 py-4 text-slate-700 font-black text-base flex items-center justify-between shadow-sm"
+        >
+          <span>{mobileExpanded ? t('Ver menos', 'Gutxiago ikusi') : t('Ver más', 'Gehiago ikusi')}</span>
+          <ChevronDown className={`h-5 w-5 transition-transform ${mobileExpanded ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      <div className={`${mobileExpanded ? 'block' : 'hidden'} lg:block space-y-6`}>
         <div className="flex items-center gap-3 text-slate-400 px-2">
           <Sparkles size={16} />
           <span className="text-[10px] font-black uppercase tracking-[0.3em]">

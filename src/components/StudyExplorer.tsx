@@ -9,9 +9,10 @@ type StudyScope = 'all' | SyllabusType;
 interface StudyExplorerProps {
   bundle: DashboardBundle | null;
   onStartStudy: (params: { scope: StudyScope; topic: string; count: number }) => Promise<void>;
+  onOpenQuestionBank: () => void;
 }
 
-export default function StudyExplorer({ bundle, onStartStudy }: StudyExplorerProps) {
+export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const [scope, setScope] = useState<StudyScope>('all');
@@ -51,9 +52,9 @@ export default function StudyExplorer({ bundle, onStartStudy }: StudyExplorerPro
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-10 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex items-start justify-between gap-6">
-        <div>
+    <div className="mx-auto max-w-7xl space-y-6 lg:space-y-10 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex items-center justify-between gap-4">
+        <div className="hidden lg:block">
           <div className="flex items-center gap-3 text-slate-400">
             <BookOpen size={18} />
             <span className="text-[10px] font-black uppercase tracking-[0.3em]">{isBasque ? 'Ikasketa' : 'Estudio'}</span>
@@ -67,6 +68,16 @@ export default function StudyExplorer({ bundle, onStartStudy }: StudyExplorerPro
               : 'Elige temario y tema. Avanza pregunta a pregunta, viendo la respuesta correcta y la explicacion.'}
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={onOpenQuestionBank}
+          className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-slate-200 bg-white px-5 py-4 text-slate-700 font-black text-base shadow-sm hover:bg-slate-50 transition-all"
+        >
+          <BookOpen size={18} className="text-indigo-600" />
+          <span className="hidden sm:inline">{isBasque ? 'Galdera-bankua' : 'Banco de preguntas'}</span>
+          <span className="sm:hidden">{isBasque ? 'Bankua' : 'Banco'}</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

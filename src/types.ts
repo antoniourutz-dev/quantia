@@ -32,6 +32,68 @@ export interface Question {
   questionScope: PracticeQuestionScope | null;
 }
 
+export interface AdminQuestionListItem {
+  id: string;
+  oppositionId: string | null;
+  curriculum: string | null;
+  curriculumKey: string | null;
+  number: number | null;
+  text: string;
+  correctAnswer: OptionKey | null;
+  syllabus: SyllabusType;
+  category: string | null;
+  lawReference: string | null;
+  topic: string | null;
+  languageCode: string | null;
+  difficulty: number | null;
+  updatedAt: string | null;
+}
+
+export interface AdminQuestionDetail extends AdminQuestionListItem {
+  options: Option[];
+  explanation: string;
+  editorialExplanation: string | null;
+  questionScopeKey: string | null;
+  subjectKey: string | null;
+  subjectId: string | null;
+  scopeId: string | null;
+  generalLawId: string | null;
+  generalLawBlockId: string | null;
+  generalLawQuestionType: string | null;
+  dominantTrapType: string | null;
+}
+
+export interface AdminUserListItem {
+  userId: string;
+  email: string | null;
+  createdAt: string | null;
+  lastSignInAt: string | null;
+  currentUsername: string | null;
+  activeOppositionId: string | null;
+  activeCurriculum: string | null;
+}
+
+export interface AdminUserDetail extends AdminUserListItem {
+  sessionsTotal: number | null;
+  sessionsLast7d: number | null;
+  accuracyRateLast7d: number | null;
+  totalAnsweredLast7d: number | null;
+}
+
+export interface QuestionBankListItem {
+  id: string;
+  number: number | null;
+  correctAnswer: OptionKey;
+  syllabus: SyllabusType;
+}
+
+export interface QuestionBankPage {
+  items: QuestionBankListItem[];
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+}
+
 export interface TestAnswer {
   questionId: string;
   selectedOption: OptionKey | null;

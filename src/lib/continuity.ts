@@ -27,6 +27,7 @@ export const storeSessionCloseSummary = (summary: SessionCloseSummary) => {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(summary));
   } catch {
+    void 0;
   }
 };
 

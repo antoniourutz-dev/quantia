@@ -55,6 +55,7 @@ export default function StatsDashboard({
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const t = (es: string, eu: string) => (isBasque ? eu : es);
+  const [mobileView, setMobileView] = useState<'summary' | 'detail'>('summary');
 
   const learningV2 = bundle?.practiceState.learningDashboardV2 ?? null;
   const pressureV2 = bundle?.practiceState.pressureInsightsV2 ?? null;
@@ -506,7 +507,7 @@ export default function StatsDashboard({
   const calendarLabel = formatMonthYear(calendarMonth, locale);
   const colors = ['#4f46e5', '#10b981', '#f97316', '#ef4444', '#0ea5e9'];
 
-  const renderTrendDot = (props: any) => {
+  const renderTrendDot = (props: { cx?: number; cy?: number; payload?: { volumeRatio?: unknown; iso?: unknown } | null }) => {
     const { cx, cy, payload } = props;
     if (cx == null || cy == null || !payload) {
       return <circle key="trend-dot-empty" cx={0} cy={0} r={0} />;
@@ -515,7 +516,7 @@ export default function StatsDashboard({
     const radius = 3 + Math.round(Math.max(0, Math.min(1, ratio)) * 5);
     return (
       <circle
-        key={`trend-dot:${payload.iso ?? `${cx}-${cy}`}`}
+        key={`trend-dot:${typeof payload.iso === 'string' ? payload.iso : `${cx}-${cy}`}`}
         cx={cx}
         cy={cy}
         r={radius}
@@ -527,23 +528,20 @@ export default function StatsDashboard({
     );
   };
 
-  const renderTrendTooltip = (props: any) => {
+  const renderTrendTooltip = (props: { active?: boolean; payload?: Array<{ payload?: unknown }> }) => {
     const { active, payload } = props;
-    const row = payload?.[0]?.payload as
-      | {
-          longLabel: string;
-          totalQuestions: number;
-          totalCorrect: number;
-          totalSessions: number;
-          score: number;
-        }
-      | undefined;
+    const raw = payload?.[0]?.payload;
+    if (!active || !raw || typeof raw !== 'object') return null;
+    const row = raw as Record<string, unknown>;
+    if (typeof row.longLabel !== 'string') return null;
+    const totalQuestions = Number(row.totalQuestions ?? 0);
+    const totalCorrect = Number(row.totalCorrect ?? 0);
+    const totalSessions = Number(row.totalSessions ?? 0);
 
-    if (!active || !row) return null;
     const accuracy =
-      row.totalQuestions > 0 ? Math.round((row.totalCorrect / row.totalQuestions) * 100) : 0;
+      totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
     const dayTone =
-      row.totalQuestions === 0
+      totalQuestions === 0
         ? t('Sin actividad.', 'Jarduerarik gabe.')
         : accuracy >= 80
           ? t('Día fuerte.', 'Egun indartsua.')
@@ -559,13 +557,13 @@ export default function StatsDashboard({
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
               {t('Preguntas', 'Galderak')}
             </div>
-            <div className="text-sm font-black text-slate-900">{row.totalQuestions}</div>
+            <div className="text-sm font-black text-slate-900">{Number.isFinite(totalQuestions) ? totalQuestions : 0}</div>
           </div>
           <div>
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
               {t('Aciertos', 'Asmatzeak')}
             </div>
-            <div className="text-sm font-black text-slate-900">{row.totalCorrect}</div>
+            <div className="text-sm font-black text-slate-900">{Number.isFinite(totalCorrect) ? totalCorrect : 0}</div>
           </div>
           <div>
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -577,7 +575,7 @@ export default function StatsDashboard({
             <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
               {t('Sesiones', 'Saioak')}
             </div>
-            <div className="text-sm font-black text-slate-900">{row.totalSessions}</div>
+            <div className="text-sm font-black text-slate-900">{Number.isFinite(totalSessions) ? totalSessions : 0}</div>
           </div>
         </div>
         <div className="mt-2 text-[10px] font-bold text-slate-500">{dayTone}</div>
@@ -586,7 +584,7 @@ export default function StatsDashboard({
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-20 [@media(max-height:800px)]:space-y-6 [@media(max-height:800px)]:pb-16">
+    <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-16 lg:pb-20 [@media(max-height:800px)]:space-y-6 [@media(max-height:800px)]:pb-16">
       <div className="rounded-[3rem] bg-[#0a0a1a] text-white p-6 md:p-8 [@media(max-height:800px)]:p-6 [@media(max-height:800px)]:md:p-7 relative overflow-hidden border border-white/5">
         <div className="absolute top-0 right-0 -mt-20 -mr-20 w-[360px] h-[360px] rounded-full bg-indigo-600/30 blur-[120px]" />
         <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-[260px] h-[260px] rounded-full bg-emerald-500/20 blur-[100px]" />
@@ -659,24 +657,24 @@ export default function StatsDashboard({
             </div>
 
             <div className="rounded-[2.5rem] bg-white/5 border border-white/10 px-7 py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200/80 mb-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-indigo-200/80 mb-3 whitespace-nowrap overflow-hidden text-ellipsis">
                 {t('Tu actividad reciente', 'Azken jarduera')}
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-slate-300/80 mb-2 text-center">
+                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.18em] text-slate-300/80 mb-2 text-center whitespace-nowrap overflow-hidden text-ellipsis leading-none">
                     {t('Sesiones', 'Saioak')}
                   </div>
                   <div className="text-2xl font-black">{results.length}</div>
                 </div>
                 <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-slate-300/80 mb-2 text-center">
+                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.18em] text-slate-300/80 mb-2 text-center whitespace-nowrap overflow-hidden text-ellipsis leading-none">
                     {t('Preguntas', 'Galderak')}
                   </div>
                   <div className="text-2xl font-black">{totalQuestions}</div>
                 </div>
                 <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-slate-300/80 mb-2 text-center">
+                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.18em] text-slate-300/80 mb-2 text-center whitespace-nowrap overflow-hidden text-ellipsis leading-none">
                     {t('Aciertos', 'Asmatzeak')}
                   </div>
                   <div className="text-2xl font-black">{correctAnswers}</div>
@@ -726,6 +724,31 @@ export default function StatsDashboard({
         </div>
       </div>
 
+      <div className="lg:hidden">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileView('summary')}
+              className={`rounded-[1.5rem] px-4 py-3 text-xs font-black uppercase tracking-[0.25em] transition-all ${
+                mobileView === 'summary' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'
+              }`}
+            >
+              {t('Resumen', 'Laburpena')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileView('detail')}
+              className={`rounded-[1.5rem] px-4 py-3 text-xs font-black uppercase tracking-[0.25em] transition-all ${
+                mobileView === 'detail' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'
+              }`}
+            >
+              {t('Detalle', 'Xehetasunak')}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
@@ -746,7 +769,7 @@ export default function StatsDashboard({
 
         <div className="mt-6 space-y-3 [@media(max-height:800px)]:mt-4">
           {rankedWeakCategories.length > 0 ? (
-            rankedWeakCategories.map((item, index) => {
+            (mobileView === 'summary' ? rankedWeakCategories.slice(0, 3) : rankedWeakCategories).map((item, index) => {
               const risk = item.excessRisk ?? 0;
               const riskPct = Math.max(0, Math.min(100, Math.round(risk * 100)));
               const barPct = Math.max(8, Math.min(100, riskPct));
@@ -796,9 +819,20 @@ export default function StatsDashboard({
             </div>
           )}
         </div>
+        {rankedWeakCategories.length > 3 ? (
+          <div className="mt-5 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileView((prev) => (prev === 'summary' ? 'detail' : 'summary'))}
+              className="w-full rounded-[2rem] border border-slate-200 bg-white px-6 py-4 text-slate-700 font-black text-base shadow-sm hover:bg-slate-50 transition-all"
+            >
+              {mobileView === 'summary' ? t('Ver todo', 'Dena ikusi') : t('Ver menos', 'Gutxiago ikusi')}
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
+      <div className={`${mobileView === 'detail' ? 'block' : 'hidden'} lg:block rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm`}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
             {t('Tu precision en los ultimos dias', 'Azken egunetako zure doitasuna')}
@@ -850,7 +884,7 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 [@media(max-height:800px)]:gap-4">
+      <div className={`${mobileView === 'detail' ? 'grid' : 'hidden'} lg:grid grid-cols-1 xl:grid-cols-3 gap-6 [@media(max-height:800px)]:gap-4`}>
         <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm xl:col-span-1">
           <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900 mb-6 [@media(max-height:800px)]:mb-4">
             {t('Como has repartido las sesiones', 'Nola banatu dituzun saioak')}
@@ -1043,7 +1077,7 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
+      <div className={`${mobileView === 'detail' ? 'block' : 'hidden'} lg:block rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm`}>
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, CheckCircle2, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal } from 'lucide-react';
 import { SyllabusType, formatSyllabusLabel, PracticeMode } from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
@@ -46,7 +46,36 @@ export default function TestSelection({
   const [customError, setCustomError] = useState<string | null>(null);
   const usesLawSelection = useMemo(() => isLawSelectionCurriculum(curriculum), [curriculum]);
   const usesSingleScope = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
-
+  const configRef = useRef<HTMLDivElement | null>(null);
+  const modeNeedsConfig = selectionMode === 'standard' || selectionMode === 'simulacro' || selectionMode === 'custom';
+  const startLabel =
+    selectionMode === 'standard'
+      ? isBasque
+        ? usesLawSelection
+          ? 'Lege bidezko testa sortu'
+          : usesSingleScope
+            ? 'Testa sortu'
+            : 'Test blokea sortu'
+        : usesLawSelection
+          ? 'Empezar por esta ley'
+          : usesSingleScope
+            ? 'Empezar este test'
+            : 'Empezar este bloque'
+      : selectionMode === 'quick'
+        ? isBasque
+          ? 'Bloke laburra egin'
+          : 'Hacer bloque corto'
+        : selectionMode === 'errors'
+          ? isBasque
+            ? 'Nire hutsetara joan'
+            : 'Ir a mis fallos'
+          : selectionMode === 'custom'
+            ? isBasque
+              ? 'Tarte hau hasi'
+              : 'Empezar este tramo'
+            : isBasque
+              ? 'Simulakroa hasi'
+              : 'Iniciar simulacro';
   const formatSyllabusUiLabel = (syllabus: SyllabusType) => {
     if (isBasque) {
       return syllabus === 'common' ? 'Gai-zerrenda arrunta' : 'Gai-zerrenda espezifikoa';
@@ -66,6 +95,18 @@ export default function TestSelection({
       setSelectedLaw(lawOptions[0] ?? '');
     }
   }, [initialLaw, lawOptions, selectedLaw, usesLawSelection]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+    if (isDesktop) {
+      if (selectionMode === 'quick' || selectionMode === 'errors') return;
+      const handle = window.setTimeout(() => {
+        configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+      return () => window.clearTimeout(handle);
+    }
+  }, [selectionMode]);
 
   const ensureCustomBounds = async () => {
     if (customLoading || customBounds) return;
@@ -138,20 +179,20 @@ export default function TestSelection({
           {isBasque ? 'Nola praktikatu nahi duzu gaur?' : 'Como quieres practicar hoy'}
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-3 md:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-6">
           <button
             onClick={() => setSelectionMode('standard')}
-            className={`p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-4 text-center ${
+            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
               selectionMode === 'standard'
                 ? 'border-indigo-600 bg-indigo-50 shadow-xl shadow-indigo-100 ring-4 ring-indigo-500/10'
                 : 'border-slate-50 bg-white hover:border-indigo-100 hover:bg-slate-50'
             }`}
           >
-            <div className={`p-4 rounded-2xl ${selectionMode === 'standard' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <BookOpen size={32} />
+            <div className={`p-3 sm:p-4 rounded-2xl ${selectionMode === 'standard' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <BookOpen size={26} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">
+              <p className="font-black text-sm sm:text-xl text-slate-800 leading-tight">
                 {usesLawSelection
                   ? isBasque
                     ? 'Lege bidezko testa'
@@ -164,7 +205,7 @@ export default function TestSelection({
                     ? 'Temario bidezko testa'
                     : 'Test por temario'}
               </p>
-              <p className="text-sm font-medium text-slate-500 mt-2">
+              <p className="hidden sm:block text-sm font-medium text-slate-500 mt-2">
                 {usesLawSelection
                   ? isBasque
                       ? 'Aukeratu errepasatu nahi duzun legea'
@@ -182,18 +223,18 @@ export default function TestSelection({
 
           <button
             onClick={() => setSelectionMode('quick')}
-            className={`p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-4 text-center ${
+            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
               selectionMode === 'quick'
                 ? 'border-amber-500 bg-amber-50 shadow-xl shadow-amber-100 ring-4 ring-amber-500/10'
                 : 'border-slate-50 bg-white hover:border-amber-100 hover:bg-slate-50'
             }`}
           >
-            <div className={`p-4 rounded-2xl ${selectionMode === 'quick' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <Zap size={32} />
+            <div className={`p-3 sm:p-4 rounded-2xl ${selectionMode === 'quick' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <Zap size={26} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">{isBasque ? 'Bloke laburra' : 'Bloque corto'}</p>
-              <p className="text-sm font-medium text-slate-500 mt-2">
+              <p className="font-black text-sm sm:text-xl text-slate-800 leading-tight">{isBasque ? 'Bloke laburra' : 'Bloque corto'}</p>
+              <p className="hidden sm:block text-sm font-medium text-slate-500 mt-2">
                 {isBasque ? 'Berriz sartzeko 5 galdera' : '5 preguntas para volver a entrar'}
               </p>
             </div>
@@ -201,18 +242,18 @@ export default function TestSelection({
 
           <button
             onClick={() => setSelectionMode('errors')}
-            className={`p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-4 text-center ${
+            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
               selectionMode === 'errors'
                 ? 'border-rose-500 bg-rose-50 shadow-xl shadow-rose-100 ring-4 ring-rose-500/10'
                 : 'border-slate-50 bg-white hover:border-rose-100 hover:bg-slate-50'
             }`}
           >
-            <div className={`p-4 rounded-2xl ${selectionMode === 'errors' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <AlertCircle size={32} />
+            <div className={`p-3 sm:p-4 rounded-2xl ${selectionMode === 'errors' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <AlertCircle size={26} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">{isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos'}</p>
-              <p className="text-sm font-medium text-slate-500 mt-2">
+              <p className="font-black text-sm sm:text-xl text-slate-800 leading-tight">{isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos'}</p>
+              <p className="hidden sm:block text-sm font-medium text-slate-500 mt-2">
                 {isBasque ? 'Zoaz gehien kostatzen zaizunera' : 'Ve justo a lo que mas se te resiste'}
               </p>
             </div>
@@ -220,22 +261,22 @@ export default function TestSelection({
 
           <button
             onClick={() => setSelectionMode('simulacro')}
-            className={`p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-4 text-center ${
+            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
               selectionMode === 'simulacro'
                 ? 'border-slate-700 bg-slate-50 shadow-xl shadow-slate-200 ring-4 ring-slate-900/10'
                 : 'border-slate-50 bg-white hover:border-slate-200 hover:bg-slate-50'
             }`}
           >
             <div
-              className={`p-4 rounded-2xl ${
+              className={`p-3 sm:p-4 rounded-2xl ${
                 selectionMode === 'simulacro' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'
               }`}
             >
-              <Timer size={32} />
+              <Timer size={26} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">{isBasque ? 'Simulakroa' : 'Simulacro'}</p>
-              <p className="text-sm font-medium text-slate-500 mt-2">
+              <p className="font-black text-sm sm:text-xl text-slate-800 leading-tight">{isBasque ? 'Simulakroa' : 'Simulacro'}</p>
+              <p className="hidden sm:block text-sm font-medium text-slate-500 mt-2">
                 {isBasque ? 'Erantzunak amaieran ikusiko dituzu' : 'Sin ver las respuestas hasta el final'}
               </p>
             </div>
@@ -246,20 +287,20 @@ export default function TestSelection({
               setSelectionMode('custom');
               void ensureCustomBounds();
             }}
-            className={`p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-4 text-center ${
+            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
               selectionMode === 'custom'
                 ? 'border-violet-600 bg-violet-50 shadow-xl shadow-violet-100 ring-4 ring-violet-500/10'
                 : 'border-slate-50 bg-white hover:border-violet-100 hover:bg-slate-50'
             }`}
           >
-            <div className={`p-4 rounded-2xl ${selectionMode === 'custom' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <SlidersHorizontal size={32} />
+            <div className={`p-3 sm:p-4 rounded-2xl ${selectionMode === 'custom' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <SlidersHorizontal size={26} />
             </div>
             <div>
-              <p className="font-black text-xl text-slate-800">
+              <p className="font-black text-sm sm:text-xl text-slate-800 leading-tight">
                 {isBasque ? 'Zure neurrira' : 'A tu medida'}
               </p>
-              <p className="text-sm font-medium text-slate-500 mt-2">
+              <p className="hidden sm:block text-sm font-medium text-slate-500 mt-2">
                 {isBasque ? 'Landu nahi duzun tartea aukeratu' : 'Escoge el tramo que quieres trabajar'}
               </p>
             </div>
@@ -267,7 +308,212 @@ export default function TestSelection({
         </div>
       </div>
 
-      {selectionMode === 'standard' && !usesSingleScope && (
+      <div ref={configRef} className="scroll-mt-[calc(7rem+env(safe-area-inset-top))]" />
+
+      {modeNeedsConfig ? (
+        <div className="lg:hidden bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
+          {selectionMode === 'standard' ? (
+            <div className="space-y-6">
+              {!usesSingleScope ? (
+                usesLawSelection ? (
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Legea' : 'Ley'}
+                    </div>
+                    <select
+                      value={selectedLaw}
+                      onChange={(e) => setSelectedLaw(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                    >
+                      {lawOptions.map((law) => (
+                        <option key={law} value={law}>
+                          {law}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Temarioa' : 'Temario'}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSyllabus('common')}
+                        className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                          selectedSyllabus === 'common'
+                            ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-100 bg-white text-slate-600'
+                        }`}
+                      >
+                        {formatSyllabusUiLabel('common')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSyllabus('specific')}
+                        className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                          selectedSyllabus === 'specific'
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                            : 'border-slate-100 bg-white text-slate-600'
+                        }`}
+                      >
+                        {formatSyllabusUiLabel('specific')}
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : null}
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Galdera kopurua' : 'Cantidad'}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {options.map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setQuestionCount(count)}
+                      className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
+                        questionCount === count
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                          : 'border-slate-100 bg-white text-slate-500'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {selectionMode === 'simulacro' ? (
+            <div className="space-y-6">
+              {!usesSingleScope ? (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                    {isBasque ? 'Zatia' : 'Parte'}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { id: 'mixed', label: isBasque ? 'Mistoa' : 'Mixto' },
+                      { id: 'common', label: formatSyllabusUiLabel('common') },
+                      { id: 'specific', label: formatSyllabusUiLabel('specific') },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setSimulacroScope(opt.id)}
+                        className={`rounded-2xl border-2 px-3 py-4 font-black text-xs transition-all ${
+                          simulacroScope === opt.id
+                            ? 'border-slate-800 bg-slate-50 text-slate-900'
+                            : 'border-slate-100 bg-white text-slate-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Galderak' : 'Preguntas'}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {simulacroOptions.map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setSimulacroCount(count)}
+                      className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
+                        simulacroCount === count
+                          ? 'border-slate-800 bg-slate-50 text-slate-900'
+                          : 'border-slate-100 bg-white text-slate-500'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {selectionMode === 'custom' ? (
+            <div className="space-y-6">
+              {customError ? (
+                <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
+                  {customError}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                    {isBasque ? 'Hasiera' : 'Desde'}
+                  </div>
+                  <input
+                    value={customFrom}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    inputMode="numeric"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-violet-300 focus:bg-white"
+                    placeholder={customBounds ? String(customBounds.min) : '1'}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                    {isBasque ? 'Amaiera' : 'Hasta'}
+                  </div>
+                  <input
+                    value={customTo}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    inputMode="numeric"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-violet-300 focus:bg-white"
+                    placeholder={customBounds ? String(customBounds.max) : '100'}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Ordena' : 'Orden'}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCustomOrder('sequence')}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                      customOrder === 'sequence'
+                        ? 'border-violet-600 bg-violet-50 text-violet-800'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {isBasque ? 'Sekuentziala' : 'Secuencial'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomOrder('random')}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                      customOrder === 'random'
+                        ? 'border-violet-600 bg-violet-50 text-violet-800'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {isBasque ? 'Ausazkoa' : 'Aleatorio'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {selectionMode === 'standard' && !usesSingleScope ? (
+        <div className="hidden lg:block">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
           <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center gap-2">
             <BookOpen className="text-indigo-600 w-5 h-5" />
@@ -352,9 +598,11 @@ export default function TestSelection({
             </div>
           )}
         </div>
-      )}
+        </div>
+      ) : null}
 
-      {selectionMode === 'standard' && (
+      {selectionMode === 'standard' ? (
+        <div className="hidden lg:block">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
           <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center gap-2">
             <Hash className="text-indigo-600 w-5 h-5" />
@@ -377,9 +625,11 @@ export default function TestSelection({
             ))}
           </div>
         </div>
-      )}
+        </div>
+      ) : null}
 
-      {selectionMode === 'simulacro' && (
+      {selectionMode === 'simulacro' ? (
+        <div className="hidden lg:block">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8">
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Timer className="text-slate-700 w-5 h-5" />
@@ -467,9 +717,11 @@ export default function TestSelection({
             </div>
           </div>
         </div>
-      )}
+        </div>
+      ) : null}
 
-      {selectionMode === 'custom' && (
+      {selectionMode === 'custom' ? (
+        <div className="hidden lg:block">
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -553,52 +805,30 @@ export default function TestSelection({
             ) : null}
           </div>
         </div>
-      )}
+        </div>
+      ) : null}
 
-      <button
-        onClick={handleStart}
-        disabled={selectionMode === 'standard' && usesLawSelection && (!selectedLaw || lawOptions.length === 0)}
-        className={`w-full py-6 rounded-[2rem] font-black text-2xl shadow-2xl transition-all duration-500 flex items-center justify-center gap-4 hover:-translate-y-1 ${
-          selectionMode === 'standard'
-            ? 'bg-indigo-600 text-white shadow-indigo-200 hover:bg-indigo-700'
-            : selectionMode === 'quick'
-              ? 'bg-amber-500 text-white shadow-amber-200 hover:bg-amber-600'
-              : selectionMode === 'errors'
-                ? 'bg-rose-600 text-white shadow-rose-200 hover:bg-rose-700'
-                : selectionMode === 'custom'
-                  ? 'bg-violet-600 text-white shadow-violet-200 hover:bg-violet-700'
-                  : 'bg-slate-800 text-white shadow-slate-200 hover:bg-slate-900'
-        } disabled:bg-slate-300 disabled:text-white disabled:shadow-none disabled:hover:translate-y-0`}
-      >
-        {selectionMode === 'standard'
-          ? isBasque
-            ? usesLawSelection
-              ? 'Lege bidezko testa sortu'
-              : usesSingleScope
-                ? 'Testa sortu'
-              : 'Test blokea sortu'
-            : usesLawSelection
-              ? 'Empezar por esta ley'
-              : usesSingleScope
-                ? 'Empezar este test'
-              : 'Empezar este bloque'
-          : selectionMode === 'quick'
-            ? isBasque
-              ? 'Bloke laburra egin'
-              : 'Hacer bloque corto'
-            : selectionMode === 'errors'
-              ? isBasque
-                ? 'Nire hutsetara joan'
-                : 'Ir a mis fallos'
-              : selectionMode === 'custom'
-                ? isBasque
-                  ? 'Tarte hau hasi'
-                  : 'Empezar este tramo'
-                : isBasque
-                  ? 'Simulakroa hasi'
-                  : 'Iniciar simulacro'}
-        <ChevronRight size={32} />
-      </button>
+      <div className="lg:static fixed left-0 right-0 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6">
+        <button
+          onClick={handleStart}
+          disabled={selectionMode === 'standard' && usesLawSelection && (!selectedLaw || lawOptions.length === 0)}
+          className={`w-full py-5 sm:py-6 rounded-[2rem] font-black text-lg sm:text-2xl shadow-2xl transition-all duration-500 flex items-center justify-center gap-4 ${
+            selectionMode === 'standard'
+              ? 'bg-indigo-600 text-white shadow-indigo-200 hover:bg-indigo-700'
+              : selectionMode === 'quick'
+                ? 'bg-amber-500 text-white shadow-amber-200 hover:bg-amber-600'
+                : selectionMode === 'errors'
+                  ? 'bg-rose-600 text-white shadow-rose-200 hover:bg-rose-700'
+                  : selectionMode === 'custom'
+                    ? 'bg-violet-600 text-white shadow-violet-200 hover:bg-violet-700'
+                    : 'bg-slate-800 text-white shadow-slate-200 hover:bg-slate-900'
+          } disabled:bg-slate-300 disabled:text-white disabled:shadow-none`}
+        >
+          {startLabel}
+          <ChevronRight size={28} />
+        </button>
+      </div>
+      <div className="h-[220px] lg:hidden" />
     </div>
   );
 }

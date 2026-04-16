@@ -76,7 +76,19 @@ const sanitizeSupabaseAuthStorage = () => {
 
 sanitizeSupabaseAuthStorage();
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const safeFetch: typeof fetch = async (input, init) => {
+  const response = await fetch(input, init);
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.includes('text/html')) {
+    const text = await response.text().catch(() => '');
+    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : '';
+    const snippet = text.trim().slice(0, 120);
+    throw new Error(`Respuesta HTML inesperada (${response.status}) desde ${url || 'fetch'}. ${snippet}`);
+  }
+  return response;
+};
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, { global: { fetch: safeFetch } });
 
 export const getSafeSupabaseSession = async (): Promise<Session | null> => {
   const {

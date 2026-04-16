@@ -22,6 +22,7 @@ const storeAccessRequest = (request: AccessRequest) => {
     list.push(request);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-50)));
   } catch {
+    void 0;
   }
 };
 

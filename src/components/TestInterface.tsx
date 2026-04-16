@@ -207,7 +207,7 @@ export default function TestInterface({ questions, mode, onFinish, onCancel }: T
       )}
 
       <div className={`bg-white rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-4 transition-all duration-500 ${isFocusMode ? 'p-16 shadow-2xl scale-[1.02]' : 'p-6'}`}>
-        <div className="space-y-2 px-2">
+        <div className={`px-2 ${isFocusMode ? '' : 'sticky top-0 z-20 bg-white/95 backdrop-blur-xl border-b border-slate-100 -mx-6 px-6 pt-4 pb-4 rounded-t-[2.5rem]'}`}>
           <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
             <AlertCircle size={14} />
             {currentQuestion.category || (isBasque ? 'Praktika-galdera' : 'Pregunta de practica')}
@@ -225,7 +225,7 @@ export default function TestInterface({ questions, mode, onFinish, onCancel }: T
           </h2>
         </div>
 
-        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden divide-y divide-slate-100">
+        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden divide-y divide-slate-100 max-h-[calc(100svh-360px)] sm:max-h-none overflow-y-auto">
           {currentQuestion.options.map((option) => {
             const isSelected = selectedAnswer === option.id;
             const isAnswerCorrect = option.id === currentQuestion.correctAnswer;

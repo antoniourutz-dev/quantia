@@ -49,6 +49,7 @@ const writeStoredEvents = (events: TelemetryEvent[]) => {
   try {
     window.localStorage.setItem(TELEMETRY_STORAGE_KEY, JSON.stringify(events.slice(-TELEMETRY_MAX_EVENTS)));
   } catch {
+    void 0;
   }
 };
 
@@ -86,6 +87,7 @@ const writeDedupe = (map: DedupeMap) => {
   try {
     window.localStorage.setItem(TELEMETRY_DEDUPE_KEY, JSON.stringify(map));
   } catch {
+    void 0;
   }
 };
 

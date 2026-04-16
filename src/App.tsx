@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -7,8 +7,10 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Database,
   Menu,
   Settings,
+  Users,
   TrendingUp,
   BookOpen,
   Flame,
@@ -22,11 +24,11 @@ import AuthScreen from './components/AuthScreen';
 import EntryScreen from './components/EntryScreen';
 import TestSelection from './components/TestSelection';
 import TestInterface from './components/TestInterface';
-import StatsDashboard from './components/StatsDashboard';
 import PostTestStats from './components/PostTestStats';
 import StudyExplorer from './components/StudyExplorer';
+import MobileTabBar from './components/MobileTabBar';
+import MobileTopBar from './components/MobileTopBar';
 import SettingsPanel from './components/SettingsPanel';
-import TelemetryDebugPanel from './components/TelemetryDebugPanel';
 import Dashboard from './components/dashboard/Dashboard';
 import { supabaseConfigError } from './lib/supabaseConfig';
 import { getSafeSupabaseSession, supabase } from './lib/supabaseClient';
@@ -55,6 +57,14 @@ import {
 import { buildCoachPlanV2 } from './lib/coach';
 import { getContinuityLine } from './lib/continuity';
 import { trackDecisionOnce, trackEffect } from './lib/telemetry';
+
+const StatsDashboard = lazy(() => import('./components/StatsDashboard'));
+const StudyQuestionBank = lazy(() => import('./components/StudyQuestionBank'));
+const TelemetryDebugPanel = lazy(() => import('./components/TelemetryDebugPanel'));
+const AdminQuestions = lazy(() => import('./components/admin/AdminQuestions'));
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard'));
+const AdminStudents = lazy(() => import('./components/admin/AdminStudents'));
+const AdminCatalogs = lazy(() => import('./components/admin/AdminCatalogs'));
 import {
   buildCoachCopySeed,
   buildHeaderStatusCopy,
@@ -85,12 +95,17 @@ import {
 type View =
   | 'dashboard'
   | 'study'
+  | 'study-bank'
   | 'study-active'
   | 'test-selection'
   | 'test-active'
   | 'stats'
   | 'test-results'
   | 'settings'
+  | 'admin-questions'
+  | 'admin-dashboard'
+  | 'admin-students'
+  | 'admin-catalogs'
   | 'telemetry';
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -105,6 +120,8 @@ const isGoiTeknikariaCurriculum = (value: string | null | undefined) => {
   const normalized = normalizeCurriculumId(value);
   return normalized === 'goi-teknikaria' || normalized.startsWith('goi-teknikaria-');
 };
+
+const ADMIN_EMAIL = 'admin@oposik.app';
 const getRestrictedCurriculumForIdentity = (
   session: Session | null,
   identity: AccountIdentity | null | undefined,
@@ -207,6 +224,21 @@ export default function App() {
     () => getRestrictedCurriculumForIdentity(session, bundle?.identity ?? null),
     [bundle?.identity, session],
   );
+  const isAdminEmail = normalizeUserIdentifier(session?.user?.email) === ADMIN_EMAIL;
+  useEffect(() => {
+    if (
+      (currentView === 'admin-questions' ||
+        currentView === 'admin-dashboard' ||
+        currentView === 'admin-students' ||
+        currentView === 'admin-catalogs') &&
+      !isAdminEmail
+    ) {
+      setCurrentView('dashboard');
+    }
+    if (currentView === 'dashboard' && isAdminEmail) {
+      setCurrentView('admin-dashboard');
+    }
+  }, [currentView, isAdminEmail]);
   const visibleCurriculumOptions = useMemo(() => {
     if (!restrictedCurriculum) return curriculumOptions;
 
@@ -237,6 +269,7 @@ export default function App() {
     try {
       if (window.localStorage.getItem('quantia.debug.telemetry') === '1') return true;
     } catch {
+      void 0;
     }
     try {
       return new URLSearchParams(window.location.search).get('telemetry') === '1';
@@ -1198,10 +1231,37 @@ export default function App() {
   const activeQuestions = activeSession?.questions ?? [];
   const activeStudyQuestions = activeStudySession?.questions ?? [];
   const isTesting = currentView === 'test-active' || currentView === 'study-active';
+  const isAdminView = currentView === 'admin-dashboard' || currentView === 'admin-students' || currentView === 'admin-questions';
+  const showMobileTabs =
+    !isTesting && !isAdminView && currentView !== 'telemetry' && currentView !== 'study-bank';
+  const activeMobileTab = (() => {
+    if (currentView === 'test-selection' || currentView === 'test-results') return 'test-selection';
+    if (currentView === 'stats') return 'stats';
+    if (currentView === 'study') return 'study';
+    if (currentView === 'settings') return 'settings';
+    return 'dashboard';
+  })();
+
+  const mobileTitle =
+    currentView === 'dashboard'
+      ? t('Inicio', 'Hasiera')
+      : currentView === 'study'
+        ? t('Estudio', 'Ikasketa')
+        : currentView === 'test-selection'
+          ? t('Test', 'Test')
+          : currentView === 'stats'
+            ? t('Stats', 'Stats')
+            : currentView === 'test-results'
+              ? t('Análisis', 'Analisia')
+              : currentView === 'settings'
+                ? t('Ajustes', 'Doikuntzak')
+                : isAdminView
+                  ? t('Admin', 'Admin')
+                  : t('Quantia', 'Quantia');
 
   return (
     <LocaleProvider locale={locale}>
-      <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+      <div className="flex h-[100svh] bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {!isTesting && (
         <>
           <button
@@ -1384,62 +1444,125 @@ export default function App() {
           )}
 
           <nav className="flex-1 space-y-3 [@media(max-height:800px)]:space-y-2 [@media(max-height:700px)]:space-y-1.5">
-            <button
-              onClick={() => {
-                setCurrentView('dashboard');
-                setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
-                currentView === 'dashboard' 
-                  ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <LayoutDashboard size={22} className={currentView === 'dashboard' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Dashboard', 'Panela')}</span>
-            </button>
-            <button
-              onClick={() => {
-                setCurrentView('test-selection');
-                setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
-                currentView === 'test-selection' || currentView === 'test-results'
-                  ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <ClipboardList size={22} className={currentView === 'test-selection' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Realizar test', 'Testa egin')}</span>
-            </button>
-            <button
-              onClick={() => {
-                setCurrentView('stats');
-                setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
-                currentView === 'stats' 
-                  ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <TrendingUp size={22} className={currentView === 'stats' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estadisticas', 'Estatistikak')}</span>
-            </button>
-            <button
-              onClick={() => {
-                setCurrentView('study');
-                setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
-                currentView === 'study'
-                  ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <BookOpen size={22} className={currentView === 'study' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-              <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estudio', 'Ikasketa')}</span>
-            </button>
+            {isAdminEmail ? (
+              <>
+                <button
+                  onClick={() => {
+                    setCurrentView('admin-dashboard');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'admin-dashboard'
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <LayoutDashboard size={22} className={currentView === 'admin-dashboard' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Admin', 'Admin')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('admin-students');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'admin-students'
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <Users size={22} className={currentView === 'admin-students' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Alumnos', 'Ikasleak')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('admin-questions');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'admin-questions'
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <Database size={22} className={currentView === 'admin-questions' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Preguntas', 'Galderak')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('admin-catalogs');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'admin-catalogs'
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <GraduationCap size={22} className={currentView === 'admin-catalogs' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Catálogos', 'Katalogoak')}</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setCurrentView('dashboard');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'dashboard' 
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <LayoutDashboard size={22} className={currentView === 'dashboard' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Dashboard', 'Panela')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('test-selection');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'test-selection' || currentView === 'test-results'
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <ClipboardList size={22} className={currentView === 'test-selection' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Realizar test', 'Testa egin')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('stats');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'stats' 
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <TrendingUp size={22} className={currentView === 'stats' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estadisticas', 'Estatistikak')}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('study');
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
+                    currentView === 'study'
+                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <BookOpen size={22} className={currentView === 'study' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estudio', 'Ikasketa')}</span>
+                </button>
+              </>
+            )}
           </nav>
 
           <div className="pt-8 [@media(max-height:800px)]:pt-6 [@media(max-height:700px)]:pt-4 border-t border-white/5 space-y-3 [@media(max-height:700px)]:space-y-2">
@@ -1457,6 +1580,22 @@ export default function App() {
               <Settings size={22} />
               <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Ajustes', 'Doikuntzak')}</span>
             </button>
+            {isAdminEmail ? (
+              <button
+                onClick={() => {
+                  setCurrentView('admin-questions');
+                  setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center gap-4 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 ${
+                  currentView === 'admin-questions'
+                    ? 'bg-white/10 text-white'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <Database size={22} />
+                <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Gestión BD', 'BD kudeaketa')}</span>
+              </button>
+            ) : null}
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -1472,14 +1611,37 @@ export default function App() {
         </>
       )}
 
+      {showMobileTabs && !isTesting ? (
+        <MobileTopBar
+          title={mobileTitle}
+          readingLabel={headerStatus.readingLabel}
+          dotClass={headerStatus.dotClass}
+          curriculumLabel={activeCurriculumLabel}
+          curriculumId={curriculum}
+          curriculumOptions={visibleCurriculumOptions}
+          curriculumOptionsLoading={curriculumOptionsLoading}
+          onSelectCurriculum={(next) => setCurriculum(next)}
+          onLogout={() => {
+            setSidebarOpen(false);
+            void handleLogout();
+          }}
+        />
+      ) : null}
+
       {/* Main Content */}
-      <main className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${
-        isTesting
-          ? 'p-3 sm:p-4 lg:p-10'
-          : 'p-5 sm:p-8 lg:p-12 xl:p-16 [@media(max-height:800px)]:p-4 [@media(max-height:800px)]:sm:p-6 [@media(max-height:800px)]:lg:p-10'
-      }`}>
+      <main
+        className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${
+          isTesting
+            ? 'p-3 sm:p-4 lg:p-10'
+            : `px-4 sm:px-6 lg:px-12 xl:px-16 pb-10 lg:pb-16 ${
+                showMobileTabs
+                  ? 'pt-[calc(3.7rem+env(safe-area-inset-top))]'
+                  : 'pt-5 sm:pt-8 lg:pt-12'
+              } [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10`
+        } ${showMobileTabs ? 'pb-[calc(7.25rem+env(safe-area-inset-bottom))]' : ''}`}
+      >
         {!isTesting && (
-          <header className="mb-10 lg:mb-16 flex flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000">
+          <header className="hidden lg:flex mb-10 lg:mb-16 flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000">
             <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
               <button
                 type="button"
@@ -1643,7 +1805,92 @@ export default function App() {
         ) : null}
 
         {currentView === 'study' ? (
-          <StudyExplorer bundle={bundle} onStartStudy={handleStartStudy} />
+          <StudyExplorer
+            bundle={bundle}
+            onStartStudy={handleStartStudy}
+            onOpenQuestionBank={() => setCurrentView('study-bank')}
+          />
+        ) : null}
+
+        {currentView === 'study-bank' ? (
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-16 text-slate-500">
+                <Loader2 className="h-7 w-7 animate-spin" />
+              </div>
+            }
+          >
+            <StudyQuestionBank
+              curriculum={curriculum}
+              onBack={() => setCurrentView('study')}
+            />
+          </Suspense>
+        ) : null}
+
+        {currentView === 'admin-dashboard' ? (
+          isAdminEmail ? (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="h-7 w-7 animate-spin" />
+                </div>
+              }
+            >
+              <AdminDashboard
+                curriculumOptions={curriculumOptions}
+                defaultCurriculum={curriculum}
+                onOpenStudents={() => setCurrentView('admin-students')}
+                onOpenQuestions={() => setCurrentView('admin-questions')}
+                onOpenCatalogs={() => setCurrentView('admin-catalogs')}
+              />
+            </Suspense>
+          ) : null
+        ) : null}
+
+        {currentView === 'admin-students' ? (
+          isAdminEmail ? (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="h-7 w-7 animate-spin" />
+                </div>
+              }
+            >
+              <AdminStudents onClose={() => setCurrentView('admin-dashboard')} />
+            </Suspense>
+          ) : null
+        ) : null}
+
+        {currentView === 'admin-questions' ? (
+          isAdminEmail ? (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="h-7 w-7 animate-spin" />
+                </div>
+              }
+            >
+              <AdminQuestions
+                curriculumOptions={curriculumOptions}
+                defaultCurriculum={curriculum}
+                onClose={() => setCurrentView('admin-dashboard')}
+              />
+            </Suspense>
+          ) : null
+        ) : null}
+
+        {currentView === 'admin-catalogs' ? (
+          isAdminEmail ? (
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="h-7 w-7 animate-spin" />
+                </div>
+              }
+            >
+              <AdminCatalogs onClose={() => setCurrentView('admin-dashboard')} />
+            </Suspense>
+          ) : null
         ) : null}
 
         {currentView === 'settings' ? (
@@ -1652,18 +1899,27 @@ export default function App() {
             saving={settingsSaving}
             notice={settingsNotice}
             onSave={handleSaveExamTarget}
-            isAdmin={Boolean(bundle?.identity.is_admin)}
+            isAdmin={isAdminEmail}
+            onOpenAdmin={() => setCurrentView('admin-dashboard')}
             onOpenTelemetry={() => setCurrentView('telemetry')}
           />
         ) : null}
 
         {currentView === 'telemetry' ? (
           telemetryEnabled ? (
-            <TelemetryDebugPanel
-              onClose={() => {
-                setCurrentView('settings');
-              }}
-            />
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center py-16 text-slate-500">
+                  <Loader2 className="h-7 w-7 animate-spin" />
+                </div>
+              }
+            >
+              <TelemetryDebugPanel
+                onClose={() => {
+                  setCurrentView('settings');
+                }}
+              />
+            </Suspense>
           ) : null
         ) : null}
 
@@ -1717,31 +1973,48 @@ export default function App() {
         ) : null}
 
         {currentView === 'stats' ? (
-          <StatsDashboard
-            results={statsResults}
-            bundle={bundle}
-            curriculum={curriculum}
-            coachPlan={coachPlan}
-            onStartRecommended={() => {
-              trackEffect({
-                surface: 'stats',
-                curriculum,
-                action: 'cta_clicked',
-                context: {
-                  cta: t('Hacer sesion recomendada', 'Gomendatutako saioa egin'),
-                  primaryAction: coachPlan?.primaryAction ?? null,
-                },
-              });
-              void handleStartCoachSession();
-            }}
-            levelLabel={
-              coachPlan
-                ? formatModeLabel(coachPlan.primaryAction === 'review' ? 'mixed' : 'standard', locale)
-                : t('Ritmo actual', 'Uneko erritmoa')
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-16 text-slate-500">
+                <Loader2 className="h-7 w-7 animate-spin" />
+              </div>
             }
-          />
+          >
+            <StatsDashboard
+              results={statsResults}
+              bundle={bundle}
+              curriculum={curriculum}
+              coachPlan={coachPlan}
+              onStartRecommended={() => {
+                trackEffect({
+                  surface: 'stats',
+                  curriculum,
+                  action: 'cta_clicked',
+                  context: {
+                    cta: t('Hacer sesion recomendada', 'Gomendatutako saioa egin'),
+                    primaryAction: coachPlan?.primaryAction ?? null,
+                  },
+                });
+                void handleStartCoachSession();
+              }}
+              levelLabel={
+                coachPlan
+                  ? formatModeLabel(coachPlan.primaryAction === 'review' ? 'mixed' : 'standard', locale)
+                  : t('Ritmo actual', 'Uneko erritmoa')
+              }
+            />
+          </Suspense>
         ) : null}
       </main>
+      {showMobileTabs ? (
+        <MobileTabBar
+          active={activeMobileTab}
+          onChange={(next) => {
+            setCurrentView(next);
+            setSidebarOpen(false);
+          }}
+        />
+      ) : null}
       </div>
     </LocaleProvider>
   );
