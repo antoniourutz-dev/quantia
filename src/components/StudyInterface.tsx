@@ -8,13 +8,15 @@ import {
   Save,
   X,
   MessageSquare,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 import { OptionKey, PracticeMode, Question } from '../types';
 import { useAppLocale } from '../lib/locale';
 import HighlightableText, { TextHighlight } from './HighlightableText';
 import { createId } from '../lib/id';
 
-import { getStudyData, saveStudyData } from '../lib/quantiaApi';
+import { getStudyData, saveStudyData, setLastVisitedStudyQuestion } from '../lib/quantiaApi';
 
 interface StudyInterfaceProps {
   questions: Question[];
@@ -50,7 +52,10 @@ export default function StudyInterface({
   
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
-  }, [currentIndex]);
+    if (currentQuestion) {
+      setLastVisitedStudyQuestion(currentQuestion.id);
+    }
+  }, [currentIndex, currentQuestion]);
 
   useEffect(() => {
     if (questions.length === 0) return;
@@ -167,14 +172,14 @@ export default function StudyInterface({
           </button>
         </div>
 
-        <div className="px-4 sm:px-0 pb-4 pt-4">
+        <div className="px-4 sm:px-0 pb-4 pt-4 sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 sm:border-transparent transition-all">
           <div className="mb-2 flex items-center justify-between gap-2 pr-24">
             <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
               {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Práctica')}
             </span>
           </div>
 
-          <div className="text-[17px] sm:text-[19px] font-extrabold leading-relaxed text-slate-800 pr-1 select-text">
+          <div className="text-[17px] sm:text-[19px] font-extrabold leading-tight text-slate-800 pr-1 select-text">
             <HighlightableText
               text={currentQuestion.text}
               highlights={highlightsMap[currentQuestion.id] || []}

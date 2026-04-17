@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Hash, Loader2, Tag, ChevronRight } from 'lucide-react';
+import { BookOpen, Hash, Loader2, Tag, ChevronRight, History, Sparkles } from 'lucide-react';
 import type { DashboardBundle } from '../lib/quantiaApi';
+import { getLastVisitedStudyQuestion } from '../lib/quantiaApi';
 import type { SyllabusType } from '../types';
 import { useAppLocale } from '../lib/locale';
 
@@ -13,6 +14,7 @@ export interface StudyStartParams {
   topic: string;
   count: number;
   range?: [number, number];
+  resumeId?: string;
 }
 
 interface StudyExplorerProps {
@@ -37,6 +39,12 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [lastVisitedId, setLastVisitedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLastVisitedId(getLastVisitedStudyQuestion());
+  }, []);
 
   const availableTopics = useMemo(() => {
     const topics = (bundle?.practiceState.learningDashboardV2?.topicBreakdown ?? [])
@@ -76,6 +84,21 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
     }
   };
 
+  const handleResume = async () => {
+    if (!lastVisitedId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Starting study from a specific ID - we'll treat it as a special case in handleStartStudy 
+      // where it fetches that question + some context.
+      // For now, simpler: start study for all but pass the ID to start at.
+      await onStartStudy({ mode: 'topic', scope: 'all', topic: '', count: 20, resumeId: lastVisitedId });
+    } catch (err) {
+      setError(isBasque ? 'Ezin izan da estudioa berreskuratu.' : 'No se ha podido retomar el estudio.');
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 lg:space-y-10 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex items-center justify-between gap-4">
@@ -104,6 +127,30 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
           <span className="sm:hidden">{isBasque ? 'Bankua' : 'Banco'}</span>
         </button>
       </div>
+
+      {lastVisitedId && (
+        <div className="bg-indigo-900 rounded-[2rem] p-6 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl shadow-indigo-900/20 animate-in zoom-in-95 duration-500">
+           <div className="flex items-center gap-5">
+              <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
+                 <History className="text-indigo-200" size={28} />
+              </div>
+              <div>
+                 <h4 className="font-black text-xl tracking-tight">{isBasque ? 'Ikasten jarraitu' : 'Continuar territorio de estudio'}</h4>
+                 <p className="text-indigo-200/80 font-medium text-sm mt-1">
+                    {isBasque ? 'Utzi zenuen lekutik berrekin.' : 'Retoma exactamente donde lo dejaste en tu última sesión.'}
+                 </p>
+              </div>
+           </div>
+           <button 
+             onClick={handleResume}
+             disabled={loading}
+             className="w-full md:w-auto bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-indigo-50 transition-all hover:scale-[1.03] active:scale-[0.98] disabled:opacity-50"
+           >
+              {loading ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} className="text-indigo-600" />}
+              {isBasque ? 'Jarraitu orain' : 'Continuar ahora'}
+           </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 space-y-8 relative overflow-hidden">

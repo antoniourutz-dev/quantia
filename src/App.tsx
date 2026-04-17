@@ -1326,8 +1326,8 @@ export default function App() {
   );
 
   const handleStartStudy = useCallback(
-    async (params: { mode?: string; scope: 'all' | SyllabusType; topic: string; count: number; range?: [number, number] }) => {
-      const { mode, scope, topic, count, range } = params;
+    async (params: { mode?: string; scope: 'all' | SyllabusType; topic: string; count: number; range?: [number, number]; resumeId?: string }) => {
+      const { mode, scope, topic, count, range, resumeId } = params;
 
       let selected: Question[] = [];
 
@@ -1361,6 +1361,13 @@ export default function App() {
           [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
         selected = shuffled.slice(0, Math.max(1, Math.min(count, shuffled.length)));
+      if (resumeId) {
+        const pool = await getStudyQuestionsSlice(1000, 0, curriculum);
+        const target = pool.find(q => q.id === resumeId);
+        if (target) {
+          const others = selected.filter(q => q.id !== resumeId);
+          selected = [target, ...others.slice(0, count - 1)];
+        }
       }
 
       const session: ActivePracticeSession = {

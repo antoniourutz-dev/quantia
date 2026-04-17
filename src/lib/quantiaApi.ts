@@ -34,6 +34,7 @@ import type {
   AdminUserDetail,
   AdminUserListItem,
   Question,
+  PracticeSessionSummary,
   QuestionBankListItem,
   QuestionBankPage,
   SyllabusType,
@@ -45,6 +46,7 @@ export const DEFAULT_CURRICULUM = 'osakidetza_admin';
 export type DashboardBundle = {
   identity: AccountIdentity;
   practiceState: CloudPracticeState;
+  activitySessions: PracticeSessionSummary[];
   questionsCount: number;
   weakCategories: PracticeCategoryRiskSummary[];
 };
@@ -324,6 +326,76 @@ const buildCurriculumCandidates = (curriculum: string) => {
 };
 
 const curriculumCandidatesCache = new Map<string, Promise<string[]>>();
+const curriculumContextCandidatesCache = new Map<string, Promise<string[]>>();
+
+const resolveCurrentUserCurriculumContextCandidates = async (
+  curriculum: string,
+  baseCandidates: string[],
+) => {
+  const cacheKey = canonicalizeCurriculumId(curriculum);
+  if (curriculumContextCandidatesCache.has(cacheKey)) {
+    return curriculumContextCandidatesCache.get(cacheKey)!;
+  }
+
+  const task = (async () => {
+    const session = await getSafeSupabaseSession().catch(() => null);
+    const userId = readText(session?.user?.id);
+    if (!userId) return [];
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from('user_opposition_profiles')
+      .select('opposition_id,is_active_context,is_primary')
+      .eq('user_id', userId)
+      .limit(24);
+
+    if (profilesError || !Array.isArray(profiles) || profiles.length === 0) {
+      return [];
+    }
+
+    const oppositionIds = profiles
+      .map((row) => readText((row as Record<string, unknown>).opposition_id))
+      .filter((value): value is string => Boolean(value));
+
+    if (oppositionIds.length === 0) return [];
+
+    const normalizedBase = new Set(baseCandidates.map((value) => canonicalizeCurriculumId(value)));
+    const { data: configs, error: configsError } = await supabase
+      .from('opposition_configs')
+      .select('opposition_id,config_json')
+      .in('opposition_id', oppositionIds);
+
+    if (configsError || !Array.isArray(configs) || configs.length === 0) {
+      return [];
+    }
+
+    const resolved = new Set<string>();
+    for (const row of configs as Array<Record<string, unknown>>) {
+      const oppositionId = readText(row.opposition_id);
+      const cfg =
+        row.config_json && typeof row.config_json === 'object' && !Array.isArray(row.config_json)
+          ? (row.config_json as Record<string, unknown>)
+          : null;
+      if (!cfg) continue;
+
+      const cfgValues = [
+        readText(cfg.curriculum),
+        readText(cfg.curriculum_key ?? cfg.curriculumKey),
+        readText(cfg.label ?? cfg.name ?? cfg.title),
+      ].filter((value): value is string => Boolean(value));
+
+      const matches = cfgValues.some((value) => normalizedBase.has(canonicalizeCurriculumId(value)));
+      if (!matches) continue;
+
+      if (oppositionId) resolved.add(oppositionId);
+      for (const value of cfgValues) resolved.add(value);
+    }
+
+    return Array.from(resolved);
+  })();
+
+  curriculumContextCandidatesCache.set(cacheKey, task);
+  return task;
+};
 
 const resolveCurriculumCandidates = async (curriculum: string) => {
   const cacheKey = canonicalizeCurriculumId(curriculum);
@@ -368,6 +440,14 @@ const resolveCurriculumCandidates = async (curriculum: string) => {
       if (resolvedIds.size > 0) {
         break;
       }
+    }
+
+    const userContextCandidates = await resolveCurrentUserCurriculumContextCandidates(
+      curriculum,
+      baseCandidates,
+    ).catch(() => []);
+    for (const candidate of userContextCandidates) {
+      resolvedIds.add(candidate);
     }
 
     const all = Array.from(new Set([...baseCandidates, ...Array.from(resolvedIds)]));
@@ -533,6 +613,23 @@ const buildQuestionBankDedupeKey = (row: {
     normalizeQuestionBankText(row.text),
     row.correctAnswer,
   ].join('|');
+
+const buildQuestionContentDedupKey = (row: {
+  number: number | null;
+  category: string | null;
+  text: string | null;
+  correctAnswer: OptionKey | null;
+}) => {
+  const normalizedText = normalizeQuestionBankText(String(row.text ?? ''));
+  if (!normalizedText || !row.correctAnswer) return null;
+
+  return [
+    row.number ?? '',
+    normalizeCategoryLabel(row.category),
+    normalizedText,
+    row.correctAnswer,
+  ].join('|');
+};
 
 const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCacheRow | null => {
   const id = readText(row.id ?? row.question_id ?? row.uuid ?? row.slug);
@@ -805,7 +902,8 @@ const extractCurriculumId = (row: Record<string, unknown>) => {
   );
 
   if (candidates.length === 0) return null;
-  return candidates[0];
+  const preferredCandidate = candidates.find((value) => !isOpaqueCurriculumValue(value));
+  return preferredCandidate ?? candidates[0];
 };
 
 // ==========================================
@@ -867,8 +965,16 @@ export const saveStudyData = async (
   writeStudyState(state);
 };
 
-  const preferredCandidate = candidates.find((value) => !isOpaqueCurriculumValue(value));
-  return preferredCandidate ?? candidates[0];
+export const setLastVisitedStudyQuestion = (questionId: string) => {
+  try {
+    localStorage.setItem('quantia_last_study_qid', questionId);
+  } catch (e) {
+    // ignore
+  }
+};
+
+export const getLastVisitedStudyQuestion = (): string | null => {
+  return localStorage.getItem('quantia_last_study_qid');
 };
 
 const buildNormalizedCurriculumCandidateSet = (values: string[]) => {
@@ -923,15 +1029,24 @@ const sortSessionSummariesByRecency = <T extends { finishedAt?: string | null; s
   });
 
 const getSessionTableRows = async (source: TableSource, limit: number) => {
-  const client = getSchemaClient(source.schema).from(source.table);
   const orderedQueries = [
-    client.select('*').order('finished_at', { ascending: false, nullsFirst: false }).limit(limit),
-    client.select('*').order('started_at', { ascending: false, nullsFirst: false }).limit(limit),
-    client.select('*').limit(limit),
+    () =>
+      getSchemaClient(source.schema)
+        .from(source.table)
+        .select('*')
+        .order('finished_at', { ascending: false, nullsFirst: false })
+        .limit(limit),
+    () =>
+      getSchemaClient(source.schema)
+        .from(source.table)
+        .select('*')
+        .order('started_at', { ascending: false, nullsFirst: false })
+        .limit(limit),
+    () => getSchemaClient(source.schema).from(source.table).select('*').limit(limit),
   ];
 
   for (const query of orderedQueries) {
-    const { data, error } = await query;
+    const { data, error } = await query();
     if (!error) {
       return { data: (data ?? []) as Array<Record<string, unknown>>, error: null as PostgrestLikeError | null };
     }
@@ -944,6 +1059,30 @@ const getSessionTableRows = async (source: TableSource, limit: number) => {
   }
 
   return { data: [] as Array<Record<string, unknown>>, error: null as PostgrestLikeError | null };
+};
+
+const getRecentActivitySessions = async () => {
+  let lastError: Error | null = null;
+
+  for (const source of SESSION_TABLE_SOURCES) {
+    if (isKnownMissingTableSource(source)) continue;
+
+    const { data, error } = await getSessionTableRows(source, 1000);
+    if (!error) {
+      return sortSessionSummariesByRecency(
+        ((data ?? []) as Array<Record<string, unknown>>).map(mapSession),
+      );
+    }
+
+    if (isMissingRelationError(error)) {
+      markTableSourceMissing(source);
+      continue;
+    }
+    lastError = new Error(mapPracticeCloudError(error));
+  }
+
+  if (lastError) throw lastError;
+  return [];
 };
 
 const extractCurriculumOption = (row: Record<string, unknown>): CurriculumOption | null => {
@@ -1447,6 +1586,63 @@ const extractAttemptRows = (row: Record<string, unknown>): Array<Record<string, 
   return [];
 };
 
+type AttemptedQuestionRefs = {
+  ids: Set<string>;
+  dedupeKeys: Set<string>;
+};
+
+const buildAttemptQuestionDedupKey = (row: Record<string, unknown>) =>
+  buildQuestionContentDedupKey({
+    number: readOptionalNumber(
+      row.question_number ??
+        row.questionNumber ??
+        row.numero ??
+        row.number ??
+        row.item_number ??
+        row.itemNumber,
+    ),
+    category: readText(row.category ?? row.tema ?? row.topic ?? row.subject ?? row.ley_referencia),
+    text: readText(
+      row.statement ??
+        row.question_text ??
+        row.questionText ??
+        row.text ??
+        row.pregunta ??
+        row.enunciado,
+    ),
+    correctAnswer: toOptionKey(
+      row.correct_option ??
+        row.correctOption ??
+        row.correct_answer ??
+        row.correctAnswer ??
+        row.respuesta_correcta,
+    ),
+  });
+
+const collectAttemptQuestionRefs = (row: Record<string, unknown>, target: AttemptedQuestionRefs) => {
+  const directQuestionId = readText(
+    row.question_id ??
+      row.questionId ??
+      row.pregunta_id ??
+      row.preguntaId ??
+      row.item_id ??
+      row.itemId,
+  );
+  if (directQuestionId) target.ids.add(directQuestionId);
+
+  const directDedupeKey = buildAttemptQuestionDedupKey(row);
+  if (directDedupeKey) target.dedupeKeys.add(directDedupeKey);
+
+  const attempts = extractAttemptRows(row);
+  for (const attempt of attempts) {
+    const nestedQuestionId = readText(attempt.question_id ?? attempt.questionId ?? attempt.id);
+    if (nestedQuestionId) target.ids.add(nestedQuestionId);
+
+    const nestedDedupeKey = buildAttemptQuestionDedupKey(attempt);
+    if (nestedDedupeKey) target.dedupeKeys.add(nestedDedupeKey);
+  }
+};
+
 const COMMON_PROGRESS_DEBUG_KEY = 'quantia.debug.common_progress.v1';
 
 const isCommonProgressDebugEnabled = () => {
@@ -1458,31 +1654,14 @@ const isCommonProgressDebugEnabled = () => {
   }
 };
 
-const getAttemptedQuestionIdsFromSessions = async (
+const getAttemptedQuestionRefsFromSessions = async (
   curriculum: string,
-): Promise<Set<string> | null> => {
+): Promise<AttemptedQuestionRefs | null> => {
   let lastError: Error | null = null;
   const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
     buildCurriculumCandidates(curriculum),
   );
   const normalizedCandidates = buildNormalizedCurriculumCandidateSet(curriculumCandidates);
-
-  const extractQuestionIdsFromRow = (row: Record<string, unknown>) => {
-    const directQuestionId = readText(
-      row.question_id ??
-        row.questionId ??
-        row.pregunta_id ??
-        row.preguntaId ??
-        row.item_id ??
-        row.itemId,
-    );
-    if (directQuestionId) return [directQuestionId];
-
-    const attempts = extractAttemptRows(row);
-    return attempts
-      .map((attempt) => readText(attempt.question_id ?? attempt.questionId ?? attempt.id))
-      .filter((questionId): questionId is string => Boolean(questionId));
-  };
 
   for (const source of ATTEMPT_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
@@ -1506,14 +1685,15 @@ const getAttemptedQuestionIdsFromSessions = async (
       );
       if (sourceRows.length === 0) continue;
 
-      const attempted = new Set<string>();
+      const attempted: AttemptedQuestionRefs = {
+        ids: new Set<string>(),
+        dedupeKeys: new Set<string>(),
+      };
       for (const row of sourceRows) {
-        for (const questionId of extractQuestionIdsFromRow(row)) {
-          attempted.add(questionId);
-        }
+        collectAttemptQuestionRefs(row, attempted);
       }
 
-      return attempted.size > 0 ? attempted : null;
+      return attempted.ids.size > 0 || attempted.dedupeKeys.size > 0 ? attempted : null;
     }
 
     if (isMissingRelationError(error)) {
@@ -2939,9 +3119,10 @@ export const loadDashboardBundle = async (
 export const loadDashboardPrimaryBundle = async (
   curriculum = DEFAULT_CURRICULUM,
 ): Promise<DashboardBundle> => {
-  const [identity, practiceState] = await Promise.all([
+  const [identity, practiceState, activitySessions] = await Promise.all([
     getMyAccountIdentity(),
     getMyPracticeState(curriculum),
+    getRecentActivitySessions().catch(() => []),
   ]);
 
   const inferredQuestionsCount = Math.max(
@@ -2952,6 +3133,7 @@ export const loadDashboardPrimaryBundle = async (
   return {
     identity,
     practiceState,
+    activitySessions,
     questionsCount: inferredQuestionsCount,
     weakCategories: [],
   };
@@ -2977,16 +3159,36 @@ export const hydrateDashboardBundle = async (
           maxQuestions: 4000,
           questionScope: 'common',
         }).catch(() => []);
-        const commonQuestionIds = new Set(commonSnapshot.map((q) => q.id).filter(Boolean));
-        const attemptedIds = await getAttemptedQuestionIdsFromSessions(curriculum).catch(() => null);
-        if (commonQuestionIds.size === 0 || !attemptedIds) return null;
-
-        let seenCommon = 0;
-        for (const id of attemptedIds) {
-          if (commonQuestionIds.has(id)) seenCommon += 1;
+        const commonQuestionKeysById = new Map<string, string>();
+        const commonQuestionKeys = new Set<string>();
+        for (const question of commonSnapshot) {
+          const fallbackId = String(question.id ?? '').trim();
+          const dedupeKey = buildQuestionDedupKey(question);
+          const canonicalKey = dedupeKey || `id:${fallbackId}`;
+          if (fallbackId) commonQuestionKeysById.set(fallbackId, canonicalKey);
+          commonQuestionKeys.add(canonicalKey);
+        }
+        const attemptedRefs = await getAttemptedQuestionRefsFromSessions(curriculum).catch(() => null);
+        if (
+          commonQuestionKeys.size === 0 ||
+          !attemptedRefs
+        ) {
+          return null;
         }
 
-        const totalCommon = commonQuestionIds.size;
+        const seenSharedCommon = new Set<string>();
+
+        for (const id of attemptedRefs.ids) {
+          const canonicalKey = commonQuestionKeysById.get(id);
+          if (canonicalKey) seenSharedCommon.add(canonicalKey);
+        }
+
+        for (const dedupeKey of attemptedRefs.dedupeKeys) {
+          if (commonQuestionKeys.has(dedupeKey)) seenSharedCommon.add(dedupeKey);
+        }
+
+        const seenCommon = seenSharedCommon.size;
+        const totalCommon = commonQuestionKeys.size;
         const safeSeen = Math.max(0, Math.min(totalCommon, seenCommon));
         const unseen = Math.max(0, totalCommon - safeSeen);
 
@@ -2995,8 +3197,10 @@ export const hydrateDashboardBundle = async (
             curriculum,
             totalCommon,
             seenCommon: safeSeen,
-            commonQuestionIds: commonQuestionIds.size,
-            attemptedIds: attemptedIds.size,
+            commonQuestionIds: commonQuestionKeysById.size,
+            commonQuestionKeys: commonQuestionKeys.size,
+            attemptedIds: attemptedRefs.ids.size,
+            attemptedDedupeKeys: attemptedRefs.dedupeKeys.size,
           });
         }
 
@@ -3063,6 +3267,7 @@ export const hydrateDashboardBundle = async (
   return {
     identity: primaryBundle.identity,
     practiceState: syncedPracticeState,
+    activitySessions: primaryBundle.activitySessions,
     questionsCount: normalizedQuestionsCount,
     weakCategories,
   };
