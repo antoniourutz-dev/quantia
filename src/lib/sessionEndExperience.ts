@@ -4,9 +4,8 @@ import { getContinuityLine } from './continuity';
 import { buildSessionEndDecision } from './sessionEndAdapter';
 
 export type SessionEndNextMove =
-  | { kind: 'review_on_page' }
   | { kind: 'start_session'; mode: PracticeMode; syllabus: SyllabusType | null; questionCount: number | null }
-  | { kind: 'go_home' };
+  | { kind: 'review_on_page' };
 
 export type SessionEndExperience = {
   dominantState: SurfaceCopyState;
@@ -54,8 +53,8 @@ export const buildSessionEndExperience = (input: {
   let primaryCta = decision.primaryCta;
 
   if (wantsClose) {
-    nextMove = { kind: 'go_home' };
-    primaryCta = isBasque ? 'Gaurkoz itxi' : 'Cerrar por hoy';
+    nextMove = { kind: 'start_session', mode: 'review', syllabus: null, questionCount: 10 };
+    primaryCta = isBasque ? 'Hurrengo errepasoa hasi' : 'Empezar siguiente repaso';
   } else if (input.mode === 'simulacro') {
     nextMove = { kind: 'review_on_page' };
     primaryCta = isBasque ? 'Zuzenketa ikusi' : 'Ver corrección';
@@ -69,6 +68,14 @@ export const buildSessionEndExperience = (input: {
       syllabus: null,
       questionCount: input.questionsCount,
     };
+    primaryCta =
+      input.mode === 'review'
+        ? isBasque
+          ? 'Hurrengo errepasoa hasi'
+          : 'Empezar siguiente repaso'
+        : isBasque
+          ? 'Beste test bat egin'
+          : 'Hacer otro test';
   }
 
   const continuityMessage = isBasque
@@ -86,4 +93,3 @@ export const buildSessionEndExperience = (input: {
     continuityMessage,
   };
 };
-

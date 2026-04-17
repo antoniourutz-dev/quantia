@@ -581,11 +581,11 @@ export default function StatsDashboard({
   };
 
   return (
-    <div className="space-y-6 lg:space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-16 lg:pb-20 [@media(max-height:800px)]:space-y-6 [@media(max-height:800px)]:pb-16">
-      <div className="rounded-[3rem] bg-[#0a0a1a] text-white p-6 md:p-8 [@media(max-height:800px)]:p-6 [@media(max-height:800px)]:md:p-7 relative overflow-hidden border border-white/5">
-        <div className="absolute top-0 right-0 -mt-20 -mr-20 w-[360px] h-[360px] rounded-full bg-indigo-600/30 blur-[120px]" />
-        <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-[260px] h-[260px] rounded-full bg-emerald-500/20 blur-[100px]" />
-        <div className="relative z-10 space-y-8 [@media(max-height:800px)]:space-y-6">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-8 sm:space-y-6 lg:space-y-8 lg:pb-20 [@media(max-height:800px)]:space-y-6 [@media(max-height:800px)]:pb-16">
+      <div className="relative overflow-hidden rounded-[2.25rem] border border-white/5 bg-[#0a0a1a] p-5 text-white sm:rounded-[3rem] sm:p-6 md:p-8 [@media(max-height:800px)]:p-6 [@media(max-height:800px)]:md:p-7">
+        <div className="absolute right-0 top-0 -mr-20 -mt-20 h-[320px] w-[320px] rounded-full bg-indigo-600/30 blur-[120px] sm:h-[360px] sm:w-[360px]" />
+        <div className="absolute bottom-0 left-0 -mb-20 -ml-20 h-[220px] w-[220px] rounded-full bg-emerald-500/20 blur-[100px] sm:h-[260px] sm:w-[260px]" />
+        <div className="relative z-10 space-y-6 sm:space-y-8 [@media(max-height:800px)]:space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-indigo-300">
               <Zap size={12} />
@@ -602,8 +602,8 @@ export default function StatsDashboard({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 [@media(max-height:800px)]:gap-4">
-            <div className="rounded-[2.5rem] bg-white/5 border border-white/10 px-7 py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6 [@media(max-height:800px)]:gap-4">
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-5 sm:rounded-[2.5rem] sm:px-7 sm:py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200/80 mb-3">
                 {t('Punto actual', 'Uneko puntua')}
               </div>
@@ -625,7 +625,7 @@ export default function StatsDashboard({
               </div>
             </div>
 
-            <div className="rounded-[2.5rem] bg-white/5 border border-white/10 px-7 py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-5 sm:rounded-[2.5rem] sm:px-7 sm:py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200/80 mb-3">
                 {t('Como estas respondiendo', 'Nola ari zaren erantzuten')}
               </div>
@@ -653,7 +653,7 @@ export default function StatsDashboard({
               </div>
             </div>
 
-            <div className="rounded-[2.5rem] bg-white/5 border border-white/10 px-7 py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-5 sm:rounded-[2.5rem] sm:px-7 sm:py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-indigo-200/80 mb-3 whitespace-nowrap overflow-hidden text-ellipsis">
                 {t('Tu actividad reciente', 'Azken jarduera')}
               </div>
@@ -685,7 +685,7 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
+      <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8 [@media(max-height:800px)]:p-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 [@media(max-height:800px)]:gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
@@ -713,7 +713,7 @@ export default function StatsDashboard({
               type="button"
               onClick={onStartRecommended}
               disabled={!onStartRecommended}
-              className="w-full sm:w-auto px-6 py-4 [@media(max-height:800px)]:py-3 rounded-2xl bg-indigo-600 text-white font-black text-lg [@media(max-height:800px)]:text-base shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all disabled:opacity-60 disabled:hover:bg-indigo-600"
+              className="w-full rounded-2xl bg-indigo-600 px-5 py-4 text-base font-black text-white shadow-xl shadow-indigo-200 transition-all hover:bg-indigo-700 disabled:opacity-60 disabled:hover:bg-indigo-600 sm:w-auto sm:px-6 sm:text-lg [@media(max-height:800px)]:py-3 [@media(max-height:800px)]:text-base"
             >
               {actionCopy.cta ?? t('Practicar por aqui', 'Hemendik praktikatu')}
             </button>
@@ -722,12 +722,12 @@ export default function StatsDashboard({
       </div>
 
       <div className="lg:hidden">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="rounded-[1.75rem] border border-slate-200 bg-white p-1.5 shadow-sm">
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setMobileView('summary')}
-              className={`rounded-[1.5rem] px-4 py-3 text-xs font-black uppercase tracking-[0.25em] transition-all ${
+              className={`rounded-[1.35rem] px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition-all ${
                 mobileView === 'summary' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'
               }`}
             >
@@ -736,7 +736,7 @@ export default function StatsDashboard({
             <button
               type="button"
               onClick={() => setMobileView('detail')}
-              className={`rounded-[1.5rem] px-4 py-3 text-xs font-black uppercase tracking-[0.25em] transition-all ${
+              className={`rounded-[1.35rem] px-4 py-3 text-[11px] font-black uppercase tracking-[0.22em] transition-all ${
                 mobileView === 'detail' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'
               }`}
             >
@@ -746,7 +746,7 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm">
+      <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8 [@media(max-height:800px)]:p-6">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
@@ -829,7 +829,7 @@ export default function StatsDashboard({
         ) : null}
       </div>
 
-      <div className={`${mobileView === 'detail' ? 'block' : 'hidden'} lg:block rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm`}>
+      <div className={`${mobileView === 'detail' ? 'block' : 'hidden'} lg:block rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8 [@media(max-height:800px)]:p-6`}>
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
             {t('Tu precision en los ultimos dias', 'Azken egunetako zure doitasuna')}
@@ -882,7 +882,7 @@ export default function StatsDashboard({
       </div>
 
       <div className={`${mobileView === 'detail' ? 'grid' : 'hidden'} lg:grid grid-cols-1 xl:grid-cols-3 gap-6 [@media(max-height:800px)]:gap-4`}>
-        <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm xl:col-span-1">
+        <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8 [@media(max-height:800px)]:p-6 xl:col-span-1">
           <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900 mb-6 [@media(max-height:800px)]:mb-4">
             {t('Como has repartido las sesiones', 'Nola banatu dituzun saioak')}
           </h3>
@@ -911,7 +911,7 @@ export default function StatsDashboard({
           </div>
         </div>
 
-        <div className="rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm xl:col-span-2">
+        <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8 [@media(max-height:800px)]:p-6 xl:col-span-2">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-2xl [@media(max-height:800px)]:text-xl font-black text-slate-900">
@@ -924,7 +924,7 @@ export default function StatsDashboard({
           </div>
 
           {results.length === 0 ? (
-            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 [@media(max-height:800px)]:p-6 text-slate-500">
+            <div className="rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 text-slate-500 sm:rounded-[2rem] sm:p-8 [@media(max-height:800px)]:p-6">
               {t('Aun no hay sesiones registradas.', 'Oraindik ez dago saiorik erregistratuta.')}
             </div>
           ) : (
@@ -1074,7 +1074,7 @@ export default function StatsDashboard({
         </div>
       </div>
 
-      <div className={`${mobileView === 'detail' ? 'block' : 'hidden'} lg:block rounded-[2.5rem] bg-white border border-slate-100 p-8 [@media(max-height:800px)]:p-6 shadow-sm`}>
+      <div className={`${mobileView === 'detail' ? 'block' : 'hidden'} lg:block rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8 [@media(max-height:800px)]:p-6`}>
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">

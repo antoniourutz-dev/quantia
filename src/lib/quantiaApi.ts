@@ -1,7 +1,13 @@
 import { getSafeSupabaseSession, supabase } from './supabaseClient';
 import { supabaseAnonKey, supabaseUrl } from './supabaseConfig';
 import { createId } from './id';
-import { QUESTION_BANK_LIST_SELECT, toDbGrupo, toOptionKey, toSyllabusType } from './questionContracts';
+import {
+  QUESTION_BANK_LIST_SELECT,
+  parseSyllabusType,
+  toDbGrupo,
+  toOptionKey,
+  toSyllabusType,
+} from './questionContracts';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -109,6 +115,17 @@ const SESSION_TABLE_SOURCES: TableSource[] = [
 const SESSION_SELECT_CANDIDATES = [
   'session_id, mode, title, started_at, finished_at, score, total',
   'id, mode, title, started_at, finished_at, score, total',
+] as const;
+
+const SESSION_ATTEMPTS_SELECT_CANDIDATES = [
+  'session_id, attempts',
+  'id, attempts',
+  'session_id, attempts_json',
+  'id, attempts_json',
+  'session_id, attempt_rows',
+  'id, attempt_rows',
+  'session_id, answers',
+  'id, answers',
 ] as const;
 
 const CURRICULUM_FIELD_ALIASES = [
@@ -1247,6 +1264,91 @@ const getQuestionsFromTables = async (params: {
   }
 
   return snapshot.slice(offset, offset + limit);
+};
+
+const extractAttemptRows = (row: Record<string, unknown>): Array<Record<string, unknown>> => {
+  const candidate =
+    row.attempts ??
+    row.attempt_rows ??
+    row.attempts_json ??
+    row.answers ??
+    row.items ??
+    null;
+  if (Array.isArray(candidate)) {
+    return candidate.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>;
+  }
+  if (typeof candidate === 'string') {
+    try {
+      const parsed = JSON.parse(candidate) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>;
+      }
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const getSeenQuestionsByScopeFromSessions = async (
+  curriculum: string,
+  scope: SyllabusType,
+): Promise<number | null> => {
+  let lastError: Error | null = null;
+
+  for (const source of SESSION_TABLE_SOURCES) {
+    if (isKnownMissingTableSource(source)) continue;
+
+    for (const selectFields of SESSION_ATTEMPTS_SELECT_CANDIDATES) {
+      let shouldTryNextSelect = false;
+
+      for (const field of CURRICULUM_FIELD_ALIASES) {
+        const { data, error } = await getSchemaClient(source.schema)
+          .from(source.table)
+          .select(selectFields)
+          .eq(field, curriculum)
+          .order('finished_at', { ascending: false })
+          .limit(250);
+
+        if (!error) {
+          const rows = (data ?? []) as Array<Record<string, unknown>>;
+          const seen = new Set<string>();
+          for (const row of rows) {
+            const attempts = extractAttemptRows(row);
+            for (const attempt of attempts) {
+              const questionId = readText(attempt.question_id ?? attempt.questionId ?? attempt.id);
+              if (!questionId) continue;
+              const attemptScope =
+                parseSyllabusType(attempt.question_scope ?? attempt.scope ?? attempt.grupo ?? attempt.syllabus) ?? null;
+              if (attemptScope !== scope) continue;
+              seen.add(questionId);
+            }
+          }
+          return seen.size;
+        }
+
+        if (isMissingColumnError(error)) {
+          shouldTryNextSelect = true;
+          break;
+        }
+        if (isMissingRelationError(error)) {
+          markTableSourceMissing(source);
+          shouldTryNextSelect = false;
+          break;
+        }
+        lastError = new Error(mapPracticeCloudError(error));
+        shouldTryNextSelect = false;
+        break;
+      }
+
+      if (!shouldTryNextSelect) {
+        break;
+      }
+    }
+  }
+
+  if (lastError) return null;
+  return null;
 };
 
 export const getCurriculumCategoryOptions = async (curriculum = DEFAULT_CURRICULUM) => {
@@ -2654,50 +2756,114 @@ export const recordPracticeSessionInCloud = async (
 export const loadDashboardBundle = async (
   curriculum = DEFAULT_CURRICULUM,
 ): Promise<DashboardBundle> => {
-  const [identity, practiceState, learningDashboardV2, pressureInsightsV2, catalog, weakCategories] =
-    await Promise.all([
-      getMyAccountIdentity(),
-      getMyPracticeState(curriculum),
-      getMyLearningDashboardV2(curriculum).catch(() => null),
-      getMyPressureDashboardV2(curriculum).catch(() => null),
-      getPracticeCatalogSummary(curriculum).catch(async () => ({
-        totalQuestions: await getQuestionCountFromTables(curriculum),
-      })),
-      getWeakCategorySummary(curriculum, 5).catch(() => []),
-    ]);
+  const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
+  return hydrateDashboardBundle(primaryBundle, curriculum);
+};
+
+export const loadDashboardPrimaryBundle = async (
+  curriculum = DEFAULT_CURRICULUM,
+): Promise<DashboardBundle> => {
+  const [identity, practiceState] = await Promise.all([
+    getMyAccountIdentity(),
+    getMyPracticeState(curriculum),
+  ]);
+
+  const inferredQuestionsCount = Math.max(
+    practiceState.learningDashboard?.totalQuestions ?? 0,
+    practiceState.learningDashboardV2?.totalQuestions ?? 0,
+  );
+
+  return {
+    identity,
+    practiceState,
+    questionsCount: inferredQuestionsCount,
+    weakCategories: [],
+  };
+};
+
+export const hydrateDashboardBundle = async (
+  primaryBundle: DashboardBundle,
+  curriculum = DEFAULT_CURRICULUM,
+): Promise<DashboardBundle> => {
+  const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories] = await Promise.all([
+    getMyLearningDashboardV2(curriculum).catch(() => null),
+    getMyPressureDashboardV2(curriculum).catch(() => null),
+    getPracticeCatalogSummary(curriculum).catch(async () => ({
+      totalQuestions: await getQuestionCountFromTables(curriculum),
+    })),
+    getWeakCategorySummary(curriculum, 5).catch(() => []),
+  ]);
+
+  const sharedCommonOverride = hasSharedQuestionSources(curriculum, 'common')
+    ? await (async () => {
+        const [totalCommon, seenCommon] = await Promise.all([
+          getQuestionCountFromTables(curriculum, 'common').catch(() => 0),
+          getSeenQuestionsByScopeFromSessions(curriculum, 'common').catch(() => null),
+        ]);
+        if (!(totalCommon > 0) || seenCommon == null) return null;
+        const safeSeen = Math.max(0, Math.min(totalCommon, seenCommon));
+        return {
+          total: totalCommon,
+          unseen: Math.max(0, totalCommon - safeSeen),
+          attempts: safeSeen,
+        };
+      })()
+    : null;
+
+  const patchedLearningDashboardV2 =
+    learningDashboardV2 && sharedCommonOverride
+      ? {
+          ...learningDashboardV2,
+          topicBreakdown: [
+            ...(learningDashboardV2.topicBreakdown ?? []).filter(
+              (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte común'),
+            ),
+            {
+              topicLabel: 'Parte común',
+              scope: 'common' as const,
+              attempts: sharedCommonOverride.attempts,
+              questionCount: sharedCommonOverride.total,
+              unseenCount: sharedCommonOverride.unseen,
+              correctAttempts: 0,
+              accuracyRate: 0,
+            },
+          ],
+        }
+      : learningDashboardV2;
 
   const dashboardReportedQuestions = Math.max(
-    practiceState.learningDashboard?.totalQuestions ?? 0,
-    learningDashboardV2?.totalQuestions ?? 0,
+    primaryBundle.practiceState.learningDashboard?.totalQuestions ?? 0,
+    patchedLearningDashboardV2?.totalQuestions ?? 0,
+    primaryBundle.questionsCount ?? 0,
   );
   const normalizedQuestionsCount =
     catalog.totalQuestions > 0 ? catalog.totalQuestions : dashboardReportedQuestions;
 
   const syncedPracticeState: CloudPracticeState = {
-    ...practiceState,
+    ...primaryBundle.practiceState,
     learningDashboard:
-      practiceState.learningDashboard && normalizedQuestionsCount > 0
+      primaryBundle.practiceState.learningDashboard && normalizedQuestionsCount > 0
         ? {
-            ...practiceState.learningDashboard,
+            ...primaryBundle.practiceState.learningDashboard,
             totalQuestions: normalizedQuestionsCount,
           }
-        : practiceState.learningDashboard,
+        : primaryBundle.practiceState.learningDashboard,
     learningDashboardV2:
-      learningDashboardV2 && normalizedQuestionsCount > 0
+      patchedLearningDashboardV2 && normalizedQuestionsCount > 0
         ? {
-            ...learningDashboardV2,
+            ...patchedLearningDashboardV2,
             totalQuestions: normalizedQuestionsCount,
             coverageRate: Math.max(
               0,
-              Math.min(1, (learningDashboardV2.seenQuestions ?? 0) / normalizedQuestionsCount),
+              Math.min(1, (patchedLearningDashboardV2.seenQuestions ?? 0) / normalizedQuestionsCount),
             ),
           }
-        : learningDashboardV2,
+        : patchedLearningDashboardV2,
     pressureInsightsV2,
   };
 
   return {
-    identity,
+    identity: primaryBundle.identity,
     practiceState: syncedPracticeState,
     questionsCount: normalizedQuestionsCount,
     weakCategories,

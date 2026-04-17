@@ -48,18 +48,18 @@ export default function ProgressOverview({
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 gap-3 sm:gap-6 md:grid-cols-4">
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-start gap-4 hover:shadow-md transition-all duration-300"
+          className="flex flex-col items-start gap-3 rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md sm:gap-4 sm:rounded-[2rem] sm:p-6"
         >
-          <div className={`p-3 ${stat.bgColor} ${stat.textColor} rounded-2xl`}>
+          <div className={`rounded-2xl p-2.5 sm:p-3 ${stat.bgColor} ${stat.textColor}`}>
             <stat.icon size={20} />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
-            <h3 className="text-2xl font-black text-slate-800 tracking-tight">{stat.value}</h3>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 sm:text-xs">{stat.label}</p>
+            <h3 className="text-xl font-black tracking-tight text-slate-800 sm:text-2xl">{stat.value}</h3>
           </div>
         </div>
       ))}

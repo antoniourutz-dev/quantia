@@ -57,9 +57,33 @@ export const toOptionKey = (
 };
 
 export const parseSyllabusType = (value: unknown): SyllabusType | null => {
-  const normalized = String(value ?? '').trim().toLowerCase();
-  if (normalized === 'common' || normalized === 'comun') return 'common';
-  if (normalized === 'specific' || normalized === 'especifico' || normalized === 'específico') return 'specific';
+  const raw = String(value ?? '').trim().toLowerCase();
+  const normalized = raw
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (
+    normalized === 'common' ||
+    normalized === 'comun' ||
+    normalized === 'parte comun' ||
+    normalized === 'comunes' ||
+    normalized === 'general' ||
+    normalized === 'generales'
+  ) {
+    return 'common';
+  }
+
+  if (
+    normalized === 'specific' ||
+    normalized === 'especifico' ||
+    normalized === 'especificos' ||
+    normalized === 'parte especifica'
+  ) {
+    return 'specific';
+  }
   return null;
 };
 

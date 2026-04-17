@@ -129,6 +129,7 @@ export default function PostTestStats({
     if (!showOnlyIncorrect) return reviewItems;
     return reviewItems.filter((item) => !item.isCorrect);
   }, [reviewItems, showOnlyIncorrect]);
+  const continuityFocus = sessionEnd.nextMove.kind === 'start_session' && mode !== 'simulacro';
 
   const summaryLine = isBasque
     ? `${questions.length} galderatik ${score} asmatu dituzu.`
@@ -187,10 +188,10 @@ export default function PostTestStats({
   ]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20">
-      <div className="relative overflow-hidden bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col md:flex-row items-center gap-12">
+    <div className="mx-auto max-w-6xl space-y-5 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-10 sm:space-y-8 sm:pb-20">
+      <div className="relative flex flex-col items-center gap-6 overflow-hidden rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-xl md:flex-row md:gap-12 sm:rounded-[3rem] sm:p-10">
         <div className="relative flex-shrink-0">
-          <svg className="w-48 h-48 transform -rotate-90">
+          <svg className="h-36 w-36 -rotate-90 transform sm:h-48 sm:w-48">
             <circle cx="96" cy="96" r="88" stroke="#f1f5f9" strokeWidth="16" fill="transparent" />
             <circle
               cx="96"
@@ -206,14 +207,14 @@ export default function PostTestStats({
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-5xl font-black text-slate-800">{percentage}%</span>
+            <span className="text-4xl font-black text-slate-800 sm:text-5xl">{percentage}%</span>
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
               {isBasque ? 'Emaitza' : 'Resultado'}
             </span>
           </div>
         </div>
 
-        <div className="flex-1 space-y-6 text-center md:text-left">
+        <div className="flex-1 space-y-5 text-center md:text-left sm:space-y-6">
           <div>
             {sessionEnd.continuityLine ? (
               <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-indigo-700 mb-5">
@@ -221,8 +222,8 @@ export default function PostTestStats({
                 {sessionEnd.continuityLine}
               </div>
             ) : null}
-            <h2 className="text-4xl font-black text-slate-800 mb-2">{sessionEnd.headline}</h2>
-            <p className="text-xl text-slate-500 font-medium leading-relaxed">
+            <h2 className="mb-2 text-2xl font-black text-slate-800 sm:text-4xl">{sessionEnd.headline}</h2>
+            <p className="text-base font-medium leading-relaxed text-slate-500 sm:text-xl">
               {sessionEnd.summary || summaryLine}
             </p>
             {sessionEnd.microReward ? (
@@ -240,16 +241,16 @@ export default function PostTestStats({
             <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-4">{summaryLine}</p>
           </div>
 
-          <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-            <div className="flex items-center gap-2 px-5 py-3 bg-emerald-50 text-emerald-700 rounded-2xl font-bold border border-emerald-100">
+          <div className="flex flex-wrap justify-center gap-3 md:justify-start sm:gap-4">
+            <div className="flex items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 font-bold text-emerald-700 sm:px-5">
               <CheckCircle2 size={20} />
               {score} {isBasque ? 'Asmatuta' : 'Aciertos'}
             </div>
-            <div className="flex items-center gap-2 px-5 py-3 bg-rose-50 text-rose-700 rounded-2xl font-bold border border-rose-100">
+            <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 font-bold text-rose-700 sm:px-5">
               <XCircle size={20} />
               {failed} {isBasque ? 'Huts' : 'Fallos'}
             </div>
-            <div className="flex items-center gap-2 px-5 py-3 bg-indigo-50 text-indigo-700 rounded-2xl font-bold border border-indigo-100">
+            <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 font-bold text-indigo-700 sm:px-5">
               <Clock size={20} />
               {avgTimeSec}s / {isBasque ? 'gal.' : 'preg.'}
             </div>
@@ -257,8 +258,9 @@ export default function PostTestStats({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
+      {!continuityFocus ? (
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 sm:gap-8">
+        <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-10">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-2xl font-black text-slate-800 tracking-tight">
               {isBasque ? 'Nola joan den legez lege' : 'Como ha ido por ley'}
@@ -310,7 +312,7 @@ export default function PostTestStats({
           )}
         </div>
 
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-10">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-2xl font-black text-slate-800 tracking-tight">
               {isBasque ? 'Galdera bakoitzeko denbora' : 'Tiempo por pregunta'}
@@ -337,9 +339,16 @@ export default function PostTestStats({
           </div>
         </div>
       </div>
+      ) : (
+        <div className="rounded-[2.25rem] border border-slate-100 bg-white px-5 py-5 font-medium text-slate-600 sm:rounded-[2.5rem] sm:px-8 sm:py-6">
+          {isBasque
+            ? 'Xehetasun osoa gero ikusi dezakezu; orain onena hurrengo saioarekin jarraitzea da.'
+            : 'Puedes revisar el detalle completo después; ahora lo útil es encadenar la siguiente sesión.'}
+        </div>
+      )}
 
       {mode === 'simulacro' ? (
-        <div id="session-end-review" className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
+        <div id="session-end-review" className="space-y-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2.5rem] sm:p-10">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div>
               <h3 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -438,7 +447,7 @@ export default function PostTestStats({
         </div>
       ) : null}
 
-      <div className="flex flex-col sm:flex-row gap-4 pt-4 items-stretch">
+      <div className="flex flex-col items-stretch gap-4 pt-2 sm:flex-row sm:pt-4">
         <button
           onClick={() => {
             trackEffect({
@@ -452,10 +461,6 @@ export default function PostTestStats({
                 nextMode: sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
               },
             });
-            if (sessionEnd.nextMove.kind === 'go_home') {
-              onGoHome();
-              return;
-            }
             if (sessionEnd.nextMove.kind === 'review_on_page') {
               setShowOnlyIncorrect(true);
               const anchor = document.getElementById('session-end-review');
@@ -472,7 +477,7 @@ export default function PostTestStats({
             }
             onRestart();
           }}
-          className="flex-1 py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 hover:-translate-y-1"
+          className="flex flex-1 items-center justify-center gap-3 rounded-[1.75rem] bg-indigo-600 py-4 text-lg font-black text-white shadow-xl shadow-indigo-200 transition-all hover:-translate-y-1 hover:bg-indigo-700 sm:rounded-[2rem] sm:py-5 sm:text-xl"
         >
           <RotateCcw size={24} />
           {sessionEnd.primaryCta}
@@ -482,7 +487,7 @@ export default function PostTestStats({
             trackEffect({ surface: 'session_end', curriculum, action: 'go_home', context: { mode } });
             onGoHome();
           }}
-          className="py-4 px-6 bg-white text-slate-600 rounded-[2rem] font-black text-base shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+          className="flex items-center justify-center gap-2 rounded-[1.75rem] border border-slate-100 bg-white px-6 py-4 text-base font-black text-slate-600 shadow-lg transition-all hover:bg-slate-50 sm:rounded-[2rem]"
         >
           <LayoutDashboard size={24} />
           {isBasque ? 'Panela berriz ikusi' : 'Volver al panel'}

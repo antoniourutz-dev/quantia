@@ -172,17 +172,17 @@ export default function TestSelection({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-        <h2 className="text-xl font-bold text-slate-800 mb-8 flex items-center gap-2">
+    <div className="mx-auto max-w-4xl space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-16 sm:space-y-8 sm:pb-20">
+      <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8">
+        <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-800 sm:mb-8 sm:text-xl">
           <Zap className="text-indigo-600 w-5 h-5" />
           {isBasque ? 'Nola praktikatu nahi duzu gaur?' : 'Como quieres practicar hoy'}
         </h2>
 
-        <div className="grid grid-cols-3 md:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 xl:grid-cols-5">
           <button
             onClick={() => setSelectionMode('standard')}
-            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'standard'
                 ? 'border-indigo-600 bg-indigo-50 shadow-xl shadow-indigo-100 ring-4 ring-indigo-500/10'
                 : 'border-slate-50 bg-white hover:border-indigo-100 hover:bg-slate-50'
@@ -223,7 +223,7 @@ export default function TestSelection({
 
           <button
             onClick={() => setSelectionMode('quick')}
-            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'quick'
                 ? 'border-amber-500 bg-amber-50 shadow-xl shadow-amber-100 ring-4 ring-amber-500/10'
                 : 'border-slate-50 bg-white hover:border-amber-100 hover:bg-slate-50'
@@ -242,7 +242,7 @@ export default function TestSelection({
 
           <button
             onClick={() => setSelectionMode('errors')}
-            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'errors'
                 ? 'border-rose-500 bg-rose-50 shadow-xl shadow-rose-100 ring-4 ring-rose-500/10'
                 : 'border-slate-50 bg-white hover:border-rose-100 hover:bg-slate-50'
@@ -261,7 +261,7 @@ export default function TestSelection({
 
           <button
             onClick={() => setSelectionMode('simulacro')}
-            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'simulacro'
                 ? 'border-slate-700 bg-slate-50 shadow-xl shadow-slate-200 ring-4 ring-slate-900/10'
                 : 'border-slate-50 bg-white hover:border-slate-200 hover:bg-slate-50'
@@ -287,7 +287,7 @@ export default function TestSelection({
               setSelectionMode('custom');
               void ensureCustomBounds();
             }}
-            className={`p-5 sm:p-7 lg:p-8 rounded-3xl border-2 transition-all duration-500 flex flex-col items-center gap-3 sm:gap-4 text-center ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'custom'
                 ? 'border-violet-600 bg-violet-50 shadow-xl shadow-violet-100 ring-4 ring-violet-500/10'
                 : 'border-slate-50 bg-white hover:border-violet-100 hover:bg-slate-50'
@@ -308,10 +308,10 @@ export default function TestSelection({
         </div>
       </div>
 
-      <div ref={configRef} className="scroll-mt-[calc(7rem+env(safe-area-inset-top))]" />
+      <div ref={configRef} className="scroll-mt-[calc(5.75rem+env(safe-area-inset-top))]" />
 
       {modeNeedsConfig ? (
-        <div className="lg:hidden bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="lg:hidden rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
           {selectionMode === 'standard' ? (
             <div className="space-y-6">
               {!usesSingleScope ? (
@@ -808,11 +808,11 @@ export default function TestSelection({
         </div>
       ) : null}
 
-      <div className="lg:static fixed left-0 right-0 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6">
+      <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static">
         <button
           onClick={handleStart}
           disabled={selectionMode === 'standard' && usesLawSelection && (!selectedLaw || lawOptions.length === 0)}
-          className={`w-full py-5 sm:py-6 rounded-[2rem] font-black text-lg sm:text-2xl shadow-2xl transition-all duration-500 flex items-center justify-center gap-4 ${
+          className={`flex w-full items-center justify-center gap-4 rounded-[1.75rem] py-4 text-base font-black shadow-2xl transition-all duration-500 sm:rounded-[2rem] sm:py-6 sm:text-2xl ${
             selectionMode === 'standard'
               ? 'bg-indigo-600 text-white shadow-indigo-200 hover:bg-indigo-700'
               : selectionMode === 'quick'
@@ -828,7 +828,7 @@ export default function TestSelection({
           <ChevronRight size={28} />
         </button>
       </div>
-      <div className="h-[220px] lg:hidden" />
+      <div className="h-[168px] lg:hidden" />
     </div>
   );
 }

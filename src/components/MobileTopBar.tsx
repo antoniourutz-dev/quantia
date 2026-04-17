@@ -1,26 +1,30 @@
 import { useMemo, useState } from 'react';
-import { Check, ChevronDown, Loader2, LogOut, ShieldCheck, User } from 'lucide-react';
+import { Check, ChevronDown, Loader2, LogOut, User } from 'lucide-react';
 import { useAppLocale } from '../lib/locale';
 import type { CurriculumOption } from '../lib/quantiaApi';
 
 export default function MobileTopBar({
   title,
-  readingLabel,
+  subtitle,
+  statusLabel,
   dotClass,
   curriculumLabel,
   curriculumId,
   curriculumOptions,
   curriculumOptionsLoading,
+  compact = false,
   onSelectCurriculum,
   onLogout,
 }: {
   title: string;
-  readingLabel: string;
+  subtitle: string;
+  statusLabel?: string | null;
   dotClass: string;
   curriculumLabel: string;
   curriculumId: string;
   curriculumOptions: CurriculumOption[];
   curriculumOptionsLoading: boolean;
+  compact?: boolean;
   onSelectCurriculum: (next: string) => void;
   onLogout: () => void;
 }) {
@@ -45,48 +49,58 @@ export default function MobileTopBar({
     if (lower.includes('auxiliar')) return 'Aux.';
     if (lower.includes('administrativo')) return 'Adm.';
     if (lower.includes('leyes')) return 'Leyes';
-    if (lower.includes('general')) return 'Gen.';
-    if (base.length <= 10) return base;
+    if (lower.includes('general')) return 'General';
+    if (base.length <= 14) return base;
     const first = base.split(/\s+/)[0] ?? base;
-    const cut = first.slice(0, 4);
-    return `${cut}.`;
+    return `${first.slice(0, 8)}.`;
   }, [curriculumLabel]);
 
   return (
     <>
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white/92 backdrop-blur-xl border-b border-slate-200">
-        <div className="px-4 pt-[calc(0.4rem+env(safe-area-inset-top))] pb-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-900 truncate">
+      <div className="lg:hidden fixed inset-x-0 top-0 z-40 border-b border-slate-200/80 bg-white/94 backdrop-blur-xl shadow-[0_10px_30px_-28px_rgba(15,23,42,0.45)]">
+        <div
+          className={`mx-auto max-w-7xl px-4 transition-[padding] duration-200 ${
+            compact
+              ? 'pb-2 pt-[calc(0.3rem+env(safe-area-inset-top))]'
+              : 'pb-3 pt-[calc(0.55rem+env(safe-area-inset-top))]'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className={`truncate font-black tracking-tight text-slate-900 ${compact ? 'text-[1rem]' : 'text-[1.08rem]'}`}>
                 {title}
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-2 text-[11px] font-bold leading-none text-slate-500">
+                {statusLabel ? <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} /> : null}
+                {statusLabel ? <span className="truncate">{statusLabel}</span> : null}
+                {statusLabel ? <span className="shrink-0 text-slate-300">/</span> : null}
+                <span className="truncate">{subtitle}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setAccountOpen(true)}
-                className="h-10 w-10 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
+                onClick={() => setSheetOpen(true)}
+                title={curriculumLabel}
+                aria-label={t('Cambiar oposicion', 'Oposizioa aldatu')}
+                className={`inline-flex items-center gap-2 rounded-[1.15rem] border border-indigo-100 bg-indigo-50 px-3 font-black text-indigo-700 shadow-sm shadow-indigo-100/50 transition-all ${
+                  compact ? 'h-10 max-w-[8.5rem] text-[11px]' : 'h-11 max-w-[9.75rem] text-[11px]'
+                }`}
               >
-                <User size={16} />
+                <span className="min-w-0 truncate">{shortCurriculumLabel}</span>
+                <ChevronDown size={14} className="shrink-0" />
               </button>
-              <div
-                title={readingLabel}
-                className="relative h-10 w-10 rounded-2xl border border-slate-200 bg-white flex items-center justify-center"
-              >
-                <ShieldCheck size={16} className="text-slate-600" />
-                <span className={`absolute top-2 right-2 h-2 w-2 ${dotClass} rounded-full`} />
-              </div>
 
               <button
                 type="button"
-                onClick={() => setSheetOpen(true)}
-                title={curriculumLabel}
-                className="h-10 max-w-[9.5rem] rounded-2xl border border-indigo-100 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 inline-flex items-center justify-between gap-2"
+                onClick={() => setAccountOpen(true)}
+                aria-label={t('Abrir cuenta', 'Kontua ireki')}
+                className={`flex items-center justify-center rounded-[1.15rem] border border-slate-200 bg-white text-slate-600 shadow-sm transition-all ${
+                  compact ? 'h-10 w-10' : 'h-11 w-11'
+                }`}
               >
-                <span className="min-w-0 truncate">{shortCurriculumLabel}</span>
-                <ChevronDown size={14} />
+                <User size={16} />
               </button>
             </div>
           </div>
@@ -101,14 +115,13 @@ export default function MobileTopBar({
             className="absolute inset-0 bg-black/40"
             aria-hidden="true"
           />
-          <div className="absolute left-0 right-0 bottom-0 rounded-t-[2.5rem] border border-slate-200 bg-white shadow-2xl overflow-hidden">
-            <div className="px-6 pt-6 pb-4">
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                {t('Cuenta', 'Kontua')}
-              </div>
-              <div className="mt-2 text-2xl font-black text-slate-900">
-                {t('Acciones', 'Ekintzak')}
-              </div>
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-[2.5rem] border border-slate-200 bg-white shadow-2xl">
+            <div className="px-6 pt-3">
+              <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" />
+            </div>
+            <div className="px-6 pt-5 pb-4">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Cuenta', 'Kontua')}</div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Acciones rapidas', 'Ekintza azkarrak')}</div>
             </div>
             <div className="px-6 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <button
@@ -117,10 +130,10 @@ export default function MobileTopBar({
                   setAccountOpen(false);
                   onLogout();
                 }}
-                className="w-full rounded-[2rem] border border-rose-200 bg-rose-50 px-6 py-5 text-rose-700 font-black text-lg flex items-center justify-center gap-3"
+                className="flex w-full items-center justify-center gap-3 rounded-[1.75rem] border border-rose-200 bg-rose-50 px-6 py-5 text-lg font-black text-rose-700"
               >
                 <LogOut size={18} />
-                {t('Cerrar sesión', 'Saioa itxi')}
+                {t('Cerrar sesion', 'Saioa itxi')}
               </button>
             </div>
           </div>
@@ -135,14 +148,15 @@ export default function MobileTopBar({
             className="absolute inset-0 bg-black/40"
             aria-hidden="true"
           />
-          <div className="absolute left-0 right-0 bottom-0 rounded-t-[2.5rem] border border-slate-200 bg-white shadow-2xl overflow-hidden">
-            <div className="px-6 pt-6 pb-4">
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-[2.5rem] border border-slate-200 bg-white shadow-2xl">
+            <div className="px-6 pt-3">
+              <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" />
+            </div>
+            <div className="px-6 pt-5 pb-4">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                {t('Selecciona oposición', 'Hautatu oposizioa')}
+                {t('Selecciona oposicion', 'Hautatu oposizioa')}
               </div>
-              <div className="mt-2 text-2xl font-black text-slate-900">
-                {t('Temarios', 'Temarioak')}
-              </div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Temarios', 'Temarioak')}</div>
               <div className="mt-4">
                 <input
                   value={query}
@@ -155,7 +169,7 @@ export default function MobileTopBar({
 
             <div className="max-h-[55vh] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {curriculumOptionsLoading ? (
-                <div className="px-6 py-10 text-slate-500 flex items-center justify-center gap-3 font-bold">
+                <div className="flex items-center justify-center gap-3 px-6 py-10 font-bold text-slate-500">
                   <Loader2 className="h-5 w-5 animate-spin" />
                   {t('Cargando...', 'Kargatzen...')}
                 </div>
@@ -170,14 +184,14 @@ export default function MobileTopBar({
                         setSheetOpen(false);
                         setQuery('');
                       }}
-                      className="w-full flex items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 hover:bg-slate-100 transition-all"
+                      className="flex w-full items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-left transition-all hover:bg-slate-100"
                     >
-                      <div className="min-w-0 text-left">
-                        <div className="text-sm font-black text-slate-900 truncate">{opt.label}</div>
-                        <div className="mt-1 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 truncate">{opt.id}</div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black text-slate-900">{opt.label}</div>
+                        <div className="mt-1 truncate text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{opt.id}</div>
                       </div>
                       {opt.id === curriculumId ? (
-                        <div className="h-10 w-10 rounded-2xl border border-emerald-200 bg-emerald-50 flex items-center justify-center">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
                           <Check className="h-5 w-5 text-emerald-700" />
                         </div>
                       ) : null}

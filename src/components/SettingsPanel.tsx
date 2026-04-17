@@ -56,18 +56,18 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
   }, [dailyNewCapacity, dailyReviewCapacity]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-10 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-10">
+    <div className="mx-auto max-w-4xl space-y-6 pb-10 animate-in fade-in slide-in-from-bottom-4 duration-700 sm:space-y-10 sm:pb-20">
+      <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-10">
         <div className="flex items-start justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 text-slate-400">
               <Calendar size={16} />
               <span className="text-[10px] font-black uppercase tracking-[0.3em]">{isBasque ? 'Helburua' : 'Objetivo'}</span>
             </div>
-            <h2 className="mt-3 text-3xl font-black text-slate-900 tracking-tight">
+            <h2 className="mt-3 text-2xl font-black text-slate-900 tracking-tight sm:text-3xl">
               {isBasque ? 'Azterketa plana' : 'Plan de examen'}
             </h2>
-            <p className="mt-2 text-slate-500 text-lg font-medium leading-relaxed">
+            <p className="mt-2 text-base font-medium leading-relaxed text-slate-500 sm:text-lg">
               {isBasque
                 ? 'Hemen jartzen duzu zure data eta egunean benetan egin dezakezun kopurua. Horrekin hobeto doitzen dira gomendioak.'
                 : 'Aqui ajustas la fecha y la cantidad real que puedes sostener cada dia. Con eso la app afina mejor lo que te conviene hacer.'}
@@ -91,8 +91,8 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
           ) : null}
         </div>
 
-        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 space-y-6">
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:mt-10 md:grid-cols-2 md:gap-8">
+          <div className="space-y-5 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:rounded-[2rem] sm:p-8 sm:space-y-6">
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
                 {isBasque ? 'Azterketa data' : 'Fecha de examen'}
@@ -114,7 +114,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-white px-6 py-5">
+            <div className="rounded-2xl border border-slate-100 bg-white px-5 py-4 sm:px-6 sm:py-5">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
                 {isBasque ? 'Eguneko gaitasun osoa' : 'Capacidad diaria total'}
               </div>
@@ -127,7 +127,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-8 space-y-6">
+          <div className="space-y-5 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:rounded-[2rem] sm:p-8 sm:space-y-6">
             <div>
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
                 {isBasque ? 'Errepasoa (galdera/egun)' : 'Repaso (preguntas/dia)'}
@@ -176,7 +176,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
           </div>
         ) : null}
 
-        <div className="mt-10 flex flex-col sm:flex-row gap-4">
+        <div className="mt-8 flex flex-col gap-4 sm:mt-10 sm:flex-row">
           <button
             onClick={() =>
               onSave({
@@ -186,7 +186,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
               })
             }
             disabled={saving}
-            className="flex-1 flex items-center justify-center gap-3 rounded-[2rem] bg-indigo-600 px-6 py-5 text-white font-black text-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all hover:-translate-y-1 disabled:bg-slate-300 disabled:shadow-none"
+            className="flex flex-1 items-center justify-center gap-3 rounded-[1.75rem] bg-indigo-600 px-6 py-4 text-lg font-black text-white shadow-xl shadow-indigo-200 transition-all hover:-translate-y-1 hover:bg-indigo-700 disabled:bg-slate-300 disabled:shadow-none sm:rounded-[2rem] sm:py-5 sm:text-xl"
           >
             <Save size={20} />
             {saving
@@ -197,7 +197,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
             <button
               type="button"
               onClick={onOpenAdmin}
-              className="sm:w-auto px-6 py-5 rounded-[2rem] bg-white text-slate-700 font-black text-base shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+              className="flex items-center justify-center gap-3 rounded-[1.75rem] border border-slate-100 bg-white px-6 py-4 text-base font-black text-slate-700 shadow-lg transition-all hover:bg-slate-50 sm:w-auto sm:rounded-[2rem] sm:py-5"
             >
               <span>{isBasque ? 'BD kudeaketa' : 'Gestión BD'}</span>
             </button>
@@ -206,12 +206,12 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
             <button
               type="button"
               onClick={onOpenTelemetry}
-              className="sm:w-auto px-6 py-5 rounded-[2rem] bg-white text-slate-700 font-black text-base shadow-lg border border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+              className="flex items-center justify-center gap-3 rounded-[1.75rem] border border-slate-100 bg-white px-6 py-4 text-base font-black text-slate-700 shadow-lg transition-all hover:bg-slate-50 sm:w-auto sm:rounded-[2rem] sm:py-5"
             >
               {isBasque ? 'Telemetria' : 'Telemetría'}
             </button>
           ) : null}
-          <div className="flex-1 rounded-[2rem] border border-slate-100 bg-white px-6 py-5">
+          <div className="flex-1 rounded-[1.75rem] border border-slate-100 bg-white px-5 py-4 sm:rounded-[2rem] sm:px-6 sm:py-5">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">
               {isBasque ? 'Honek zer aldatzen duen' : 'Que cambia con esto'}
             </div>

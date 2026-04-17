@@ -178,73 +178,70 @@ export default function TestInterface({
   }
 
   return (
-    <div className={`max-w-6xl mx-auto space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all ${isFocusMode ? 'py-8' : ''}`}>
+    <div className={`mx-auto max-w-6xl space-y-2.5 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all pb-24 ${isFocusMode ? 'py-4 sm:py-8' : ''}`}>
       {!isFocusMode && (
-        <div className="animate-in slide-in-from-top-4 duration-500">
-          <div className="flex justify-between items-center bg-white p-3 sm:p-4 rounded-2xl shadow-sm border border-slate-100">
-            <div className="flex items-center gap-6">
-              {isSimulacro && (
-                <div className="flex items-center gap-2 text-slate-500 font-medium">
-                  <Timer size={18} className="text-indigo-600" />
-                  {formatTime(timeLeft)}
-                </div>
-              )}
-              {isSimulacro ? (
-                <div className="flex items-center gap-2 text-slate-500 font-medium">
-                  <Trophy size={18} className="text-slate-400" />
-                  {isBasque ? 'Erantzunda' : 'Respondidas'} {answeredCount}/{questions.length}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-slate-500 font-medium">
-                  <Trophy size={18} className="text-emerald-600" />
-                  {score}/{questions.length} {isBasque ? 'zuzen' : 'correctas'}
-                </div>
-              )}
+        <div className="animate-in slide-in-from-top-4 duration-500 px-2 sm:px-0">
+          <div className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm sm:p-4 mt-2 sm:mt-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                {isSimulacro ? (
+                  <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-500">
+                    <Timer size={14} className="text-indigo-600" />
+                    <span className="w-8 sm:w-9 font-mono tabular-nums">{formatTime(timeLeft)}</span>
+                    <span className="mx-0.5 text-slate-200">|</span>
+                    <Trophy size={14} className="text-slate-400" />
+                    <span>{answeredCount}/{questions.length}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-600">
+                    <Trophy size={14} className="text-emerald-600" />
+                    <span>{score}/{questions.length}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setIsFocusMode(true)}
+                  disabled={closingSession}
+                  className={`hidden sm:flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold transition-all ${
+                    closingSession
+                      ? 'cursor-not-allowed bg-slate-50 text-slate-300'
+                      : 'bg-slate-50 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'
+                  }`}
+                >
+                  <Zap size={12} />
+                  Focus
+                </button>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {currentIndex + 1} / {questions.length}
+                </span>
+                <button
+                  onClick={onCancel}
+                  disabled={closingSession}
+                  className={`text-xs mx-1 font-bold transition-colors ${
+                    closingSession ? 'cursor-not-allowed text-rose-200' : 'text-rose-500 hover:text-rose-600'
+                  }`}
+                >
+                  {isBasque ? 'Irten' : 'Salir'}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setIsFocusMode(true)}
-                disabled={closingSession}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition-all border ${
-                  closingSession
-                    ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
-                    : 'bg-slate-50 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 border-slate-100'
-                }`}
-              >
-                <Zap size={14} />
-                {isBasque ? 'Focus modua' : 'Modo Focus'}
-              </button>
-              <div className="h-6 w-px bg-slate-100" />
-              <span className="text-sm font-bold text-slate-400">
-                {isBasque ? 'Galdera' : 'Pregunta'} {currentIndex + 1} {isBasque ? '/' : 'de'} {questions.length}
-              </span>
-              <button
-                onClick={onCancel}
-                disabled={closingSession}
-                className={`text-sm font-semibold transition-colors ${
-                  closingSession ? 'text-rose-200 cursor-not-allowed' : 'text-rose-500 hover:text-rose-600'
-                }`}
-              >
-                {isBasque ? 'Irten' : 'Salir'}
-              </button>
+            <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full bg-indigo-600 transition-all duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+              />
             </div>
-          </div>
-
-          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-3">
-            <div
-              className="bg-indigo-600 h-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
-            />
           </div>
         </div>
       )}
 
       {isFocusMode && (
-        <div className="fixed top-8 right-8 z-50">
+        <div className="fixed right-4 top-[calc(0.75rem+env(safe-area-inset-top))] z-50 sm:right-8 sm:top-8">
           <button
             onClick={() => setIsFocusMode(false)}
             disabled={closingSession}
-            className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm shadow-xl border transition-all ${
+            className={`flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-bold shadow-xl transition-all sm:px-6 sm:py-3 ${
               closingSession
                 ? 'bg-white/70 backdrop-blur-md text-slate-300 border-white cursor-not-allowed'
                 : 'bg-white/80 backdrop-blur-md text-slate-600 border-white hover:bg-white'
@@ -256,9 +253,9 @@ export default function TestInterface({
         </div>
       )}
 
-      <div className={`bg-white rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-4 transition-all duration-500 ${isFocusMode ? 'p-16 shadow-2xl scale-[1.02]' : 'p-6'}`}>
+      <div className={`mx-2 sm:mx-0 flex flex-col bg-white transition-all duration-500 rounded-3xl sm:rounded-[2.25rem] border border-slate-100 shadow-sm sm:p-6 overflow-hidden sm:gap-4 ${isFocusMode ? 'p-8 shadow-2xl scale-[1.02]' : 'pb-4 sm:pb-6'}`}>
         {closingSession ? (
-          <div className="flex min-h-[420px] flex-col justify-between gap-8 py-4">
+          <div className="flex min-h-[360px] flex-col justify-between gap-8 py-2 sm:min-h-[420px] sm:py-4">
             <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
               <Loader2 size={14} className="animate-spin text-indigo-500" />
               {isBasque ? 'Saioa ixten' : 'Cierre de sesion'}
@@ -268,16 +265,16 @@ export default function TestInterface({
               <div className="flex h-16 w-16 items-center justify-center rounded-[1.75rem] border border-indigo-100 bg-indigo-50 text-indigo-600 shadow-sm shadow-indigo-100/60">
                 <Loader2 size={28} className="animate-spin" />
               </div>
-              <h2 className="mt-6 text-3xl font-black tracking-tight text-slate-900">
+              <h2 className="mt-6 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
                 {isBasque ? 'Zure analisia prestatzen' : 'Preparando tu analisis'}
               </h2>
-              <p className="mt-3 max-w-2xl text-base font-medium leading-relaxed text-slate-500">
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-slate-500 sm:text-base">
                 {isBasque
                   ? 'Emaitzak gordetzen ari gara eta benetan axola duena kalkulatzen.'
                   : 'Guardando resultados y calculando lo importante.'}
               </p>
 
-              <div className="mt-10 grid w-full max-w-4xl grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="mt-8 grid w-full max-w-4xl grid-cols-1 gap-3 md:mt-10 md:grid-cols-3 md:gap-4">
                 {[0, 1, 2].map((item) => (
                   <div
                     key={item}
@@ -296,30 +293,31 @@ export default function TestInterface({
           </div>
         ) : (
           <>
-            <div className={`px-2 ${isFocusMode ? '' : 'sticky top-0 z-20 bg-white/95 backdrop-blur-xl border-b border-slate-100 -mx-6 px-6 pt-4 pb-4 rounded-t-[2.5rem]'}`}>
-              <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                <AlertCircle size={14} />
-                {currentQuestion.category || (isBasque ? 'Praktika-galdera' : 'Pregunta de practica')}
+            <div className={`px-4 sm:px-0 pb-4 pt-4 ${isFocusMode ? '' : 'sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 sm:border-transparent transition-all shadow-sm sm:shadow-none'}`}>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
+                  {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
+                </span>
                 {selectedAnswer !== null && !isSimulacro && (
-                  <div className={`px-2 py-0.5 rounded ml-2 ${selectedAnswer === currentQuestion.correctAnswer ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                  <span className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${selectedAnswer === currentQuestion.correctAnswer ? 'text-emerald-500' : 'text-rose-500'}`}>
                     {selectedAnswer === currentQuestion.correctAnswer
-                      ? isBasque ? 'Zuzena' : 'Correcto'
-                      : isBasque ? 'Okerra' : 'Incorrecto'}
-                  </div>
+                      ? isBasque ? '✓ Zuzena' : '✓ Correcto'
+                      : isBasque ? '✗ Okerra' : '✗ Incorrecto'}
+                  </span>
                 )}
               </div>
 
-              <h2 className="text-xl font-bold text-slate-800 leading-tight">
+              <h2 className="text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
                 {currentQuestion.text}
               </h2>
             </div>
 
-            <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden divide-y divide-slate-100 max-h-[calc(100svh-360px)] sm:max-h-none overflow-y-auto">
+            <div className="flex flex-col flex-1 divide-y divide-slate-100 bg-slate-50/30 sm:rounded-2xl sm:border sm:border-slate-100 overflow-hidden">
               {currentQuestion.options.map((option) => {
                 const isSelected = selectedAnswer === option.id;
                 const isAnswerCorrect = option.id === currentQuestion.correctAnswer;
 
-                let itemClass = 'w-full p-5 transition-all duration-300 flex items-center justify-between text-left group relative overflow-hidden ';
+                let itemClass = 'relative flex w-full items-center justify-between overflow-hidden p-4 text-left transition-all duration-300 group sm:p-5 ';
 
                 if (selectedAnswer === null) {
                   itemClass += 'hover:bg-white hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-0.5 cursor-pointer border-transparent';
@@ -352,9 +350,9 @@ export default function TestInterface({
                       />
                     )}
 
-                    <div className="flex items-center gap-5 relative z-10">
+                    <div className="relative z-10 flex items-center gap-4 sm:gap-5">
                       <span
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0 transition-all duration-500 ${
+                        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-sm font-black transition-all duration-500 ${
                           isSimulacro && isSelected
                             ? 'bg-indigo-600 text-white scale-110 shadow-lg shadow-indigo-200'
                             : isSelected
@@ -371,7 +369,7 @@ export default function TestInterface({
                         {option.id.toUpperCase()}
                       </span>
                       <span
-                        className={`font-bold text-lg leading-snug transition-colors duration-300 ${
+                        className={`text-base font-bold leading-snug transition-colors duration-300 sm:text-lg ${
                           isSelected || (!isSimulacro && isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                         }`}
                       >
@@ -397,21 +395,21 @@ export default function TestInterface({
             </div>
 
             {showExplanation && !isSimulacro && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-500">
+              <div className="animate-in fade-in slide-in-from-top-2 duration-500 px-4 sm:px-0 py-4 sm:py-0 sm:mt-4">
                 {!manualExplanationOpen ? (
                   <button
                     onClick={() => setManualExplanationOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-xl font-bold text-xs hover:bg-indigo-50 transition-all border border-indigo-100 ml-2"
+                    className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white px-4 py-2 text-xs font-bold text-indigo-600 transition-all hover:bg-indigo-50"
                   >
                     <Info size={14} />
-                    {isBasque ? 'Azalpen teknikoa ikusi' : 'Ver explicacion tecnica'}
+                    {isBasque ? 'Azalpena ikusi' : 'Ver explicación'}
                   </button>
                 ) : (
-                  <div className="p-6 bg-slate-50 text-slate-800 rounded-2xl border border-slate-200 animate-in zoom-in-95 duration-300">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2 text-indigo-600 font-bold text-sm">
-                        <Info size={18} />
-                        {isBasque ? 'Erantzunaren azalpena' : 'Explicacion de la respuesta'}
+                  <div className="animate-in zoom-in-95 rounded-2xl border border-slate-200 bg-indigo-50/30 p-4 text-slate-800 duration-300 sm:p-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase tracking-widest">
+                        <Info size={16} />
+                        {isBasque ? 'Azalpena' : 'Explicación'}
                       </div>
                       <button
                         onClick={() => setManualExplanationOpen(false)}
@@ -430,56 +428,88 @@ export default function TestInterface({
       </div>
 
       {closingSession ? (
-        <div className="flex justify-end">
+        <div className="flex justify-end px-4 sm:px-0">
           <button
             disabled
-            className="flex min-w-[260px] items-center justify-center gap-3 rounded-2xl bg-slate-900 px-8 py-4 font-bold text-white shadow-lg shadow-slate-900/10 cursor-wait"
+            className="flex min-w-[240px] items-center justify-center gap-3 rounded-2xl bg-slate-900 px-6 py-4 font-bold text-white shadow-lg shadow-slate-900/10 cursor-wait sm:min-w-[260px] sm:px-8"
           >
             <Loader2 size={20} className="animate-spin" />
             {isBasque ? 'Saioa ixten...' : 'Cerrando sesion...'}
           </button>
         </div>
       ) : (
-        <div className="flex justify-between items-center gap-4">
-          <button
-            onClick={prevQuestion}
-            disabled={closingSession || currentIndex === 0}
-            className={`flex items-center gap-2 px-6 py-4 rounded-2xl font-bold transition-all ${
-              closingSession || currentIndex === 0
-                ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
-                : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-100'
-            }`}
-          >
-            <ChevronLeft size={20} />
-            {isBasque ? 'Aurrekoa' : 'Anterior'}
-          </button>
+        <>
+          <div className="hidden sm:flex items-center justify-between gap-4 px-4 sm:px-0 pt-2 mb-safe">
+            <button
+              onClick={prevQuestion}
+              disabled={closingSession || currentIndex === 0}
+              className={`flex items-center gap-2 rounded-2xl px-6 py-4 font-bold transition-all ${
+                closingSession || currentIndex === 0
+                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-100 shadow-sm'
+              }`}
+            >
+              <ChevronLeft size={20} />
+              <span>{isBasque ? 'Aurrekoa' : 'Anterior'}</span>
+            </button>
 
-          <button
-            onClick={nextQuestion}
-            disabled={closingSession || selectedAnswer === null}
-            className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-bold transition-all shadow-lg ${
-              closingSession
-                ? 'bg-slate-900 text-white cursor-wait'
+            <button
+              onClick={nextQuestion}
+              disabled={closingSession || selectedAnswer === null}
+              className={`flex items-center gap-2 rounded-2xl px-8 py-4 font-bold transition-all shadow-lg ${
+                closingSession
+                  ? 'bg-slate-900 text-white cursor-wait'
                 : selectedAnswer === null
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:translate-y-[-2px]'
-            }`}
-          >
-            {closingSession ? (
-              <>
-                <Loader2 size={20} className="animate-spin" />
-                {isBasque ? 'Saioa ixten...' : 'Cerrando sesion...'}
-              </>
-            ) : (
-              <>
-                {currentIndex === questions.length - 1
-                  ? isBasque ? 'Amaitu' : 'Finalizar'
-                  : isBasque ? 'Hurrengoa' : 'Siguiente'}
-                <ChevronRight size={20} />
-              </>
-            )}
-          </button>
-        </div>
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:translate-y-[-2px]'
+              }`}
+            >
+              {closingSession ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>{isBasque ? 'Saioa ixten...' : 'Cerrando sesion...'}</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    {currentIndex === questions.length - 1
+                      ? isBasque ? 'Amaitu' : 'Finalizar'
+                      : isBasque ? 'Hurrengoa' : 'Siguiente'}
+                  </span>
+                  <ChevronRight size={20} />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* ÚNICA NAVEGACIÓN EN MÓVIL (flotante tras responder) */}
+          {!closingSession && selectedAnswer !== null && (
+            <div className="fixed bottom-4 left-4 right-4 z-50 animate-in slide-in-from-bottom-8 fade-in duration-300 sm:hidden">
+              <div className="flex items-center gap-2 rounded-2xl bg-slate-900/95 p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.3)] backdrop-blur-xl ring-1 ring-white/10">
+                {currentIndex > 0 && (
+                  <button
+                    onClick={prevQuestion}
+                    className="flex shrink-0 items-center justify-center rounded-xl p-3.5 text-slate-300 transition-all hover:bg-white/10 hover:text-white"
+                    aria-label="Anterior"
+                  >
+                    <ChevronLeft size={22} className="relative -left-[1px]" />
+                  </button>
+                )}
+                
+                <button
+                  onClick={nextQuestion}
+                  disabled={closingSession}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-indigo-500/20 transition-all active:scale-[0.98]"
+                >
+                  {currentIndex === questions.length - 1
+                    ? isBasque ? 'Amaitu test' : 'Finalizar test'
+                    : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
+                  <ChevronRight size={20} className="relative left-[1px]" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

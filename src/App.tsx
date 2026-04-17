@@ -19,6 +19,8 @@ import {
   ChevronDown,
   Check,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import EntryScreen from './components/EntryScreen';
@@ -47,7 +49,8 @@ import {
   getQuestionsByNumberRange,
   getStudyQuestionsSlice,
   getWeakPracticeBatch,
-  loadDashboardBundle,
+  hydrateDashboardBundle,
+  loadDashboardPrimaryBundle,
   recordPracticeSessionInCloud,
   signOut,
   updateMyExamTarget,
@@ -56,7 +59,21 @@ import {
 } from './lib/quantiaApi';
 import { buildCoachPlanV2, buildExecutableSessionPlanFromCoach } from './lib/coach';
 import { getContinuityLine } from './lib/continuity';
+import {
+  createHomeLoadTrace,
+  markHomeCtaVisible,
+  markHomeHydrated,
+  markHomePrimaryReady,
+  type HomeLoadTrace,
+} from './lib/homeLoadMetrics';
 import { trackDecisionOnce, trackEffect } from './lib/telemetry';
+import {
+  buildPracticeEmptyStateModel,
+  resolveEmptyStateReason,
+  type PracticeEmptyStateAction,
+  type PracticeEmptyStateModel,
+} from './lib/practiceEmptyState';
+import { resolveFollowUpSession } from './lib/followUpSession';
 
 const StatsDashboard = lazy(() => import('./components/StatsDashboard'));
 const StudyQuestionBank = lazy(() => import('./components/StudyQuestionBank'));
@@ -200,7 +217,9 @@ export default function App() {
   const [unauthView, setUnauthView] = useState<'entry' | 'login'>('entry');
   const [bundle, setBundle] = useState<DashboardBundle | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
+  const [dashboardSecondaryHydrating, setDashboardSecondaryHydrating] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [practiceEmptyState, setPracticeEmptyState] = useState<PracticeEmptyStateModel | null>(null);
   const [syncingSession, setSyncingSession] = useState(false);
   const [activeSession, setActiveSession] = useState<ActivePracticeSession | null>(null);
   const [lastTestPayload, setLastTestPayload] = useState<FinishedTestPayload | null>(null);
@@ -211,9 +230,14 @@ export default function App() {
   );
   const [discoveredLawOptions, setDiscoveredLawOptions] = useState<string[]>([]);
   const [discoveredLawOptionsLoading, setDiscoveredLawOptionsLoading] = useState(false);
+  const [mobileChromeCompact, setMobileChromeCompact] = useState(false);
   const curriculumMenuRef = useRef<HTMLDivElement | null>(null);
   const curriculumTriggerRef = useRef<HTMLButtonElement | null>(null);
   const curriculumMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const dashboardLoadCycleRef = useRef(0);
+  const homeLoadTraceRef = useRef<HomeLoadTrace | null>(null);
+  const homeCtaMarkedRef = useRef(false);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
   const locale = getLocaleForCurriculum(curriculum);
   const isBasque = locale === 'eu';
   const t = useCallback((es: string, eu: string) => (isBasque ? eu : es), [isBasque]);
@@ -288,17 +312,38 @@ export default function App() {
     if (!session) return;
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
+    const loadCycle = ++dashboardLoadCycleRef.current;
+    const trace = createHomeLoadTrace(curriculum);
+    homeLoadTraceRef.current = trace;
+    homeCtaMarkedRef.current = false;
+
     setDataLoading(true);
+    setDashboardSecondaryHydrating(false);
     setDataError(null);
     try {
-      const nextBundle = await loadDashboardBundle(curriculum);
+      const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
+
+      setBundle(primaryBundle);
+      setDataLoading(false);
+      setDashboardSecondaryHydrating(true);
+      markHomePrimaryReady(trace);
+
+      const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum);
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
+
       setBundle(nextBundle);
+      setDashboardSecondaryHydrating(false);
+      markHomeHydrated(trace);
     } catch (error) {
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
       setDataError(
         error instanceof Error ? error.message : t('No se ha podido cargar el panel.', 'Ezin izan da panela kargatu.'),
       );
     } finally {
-      setDataLoading(false);
+      if (dashboardLoadCycleRef.current === loadCycle) {
+        setDataLoading(false);
+      }
     }
   }, [curriculum, restrictedCurriculum, session, t]);
 
@@ -307,7 +352,8 @@ export default function App() {
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
     try {
-      const nextBundle = await loadDashboardBundle(curriculum);
+      const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
+      const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum);
       setBundle(nextBundle);
     } catch {
       void 0;
@@ -478,6 +524,21 @@ export default function App() {
     void refreshDashboard();
   }, [refreshDashboard, session]);
 
+  useEffect(() => {
+    if (currentView !== 'dashboard') return;
+    if (!bundle) return;
+    if (homeCtaMarkedRef.current) return;
+    const trace = homeLoadTraceRef.current;
+    if (!trace) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      markHomeCtaVisible(trace);
+      homeCtaMarkedRef.current = true;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [bundle, currentView]);
+
   const coachPlan = useMemo(() => {
     if (!bundle) return null;
 
@@ -626,7 +687,8 @@ export default function App() {
         total += questionCount;
         seen += Math.max(0, questionCount - unseenCount);
       }
-      return total > 0 ? Math.round((seen / total) * 100) : null;
+      if (total > 0) return Math.round((seen / total) * 100);
+      return (bundle.questionsCount ?? 0) > 0 ? 0 : null;
     };
 
     const now = new Date();
@@ -723,6 +785,7 @@ export default function App() {
       setSelectedSyllabus(syllabus ?? null);
       setSelectedLawFilter(null);
       setDataError(null);
+      setPracticeEmptyState(null);
 
       try {
         let questions: Question[] = [];
@@ -752,6 +815,38 @@ export default function App() {
         if (mode === 'review') {
           try {
             questions = await getWeakPracticeBatch(batchSize, curriculum, scope);
+            if (questions.length === 0) {
+              questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
+              if (questions.length === 0) {
+                const request = {
+                  kind: 'test' as const,
+                  mode,
+                  syllabus: syllabus ?? null,
+                  count: batchSize,
+                };
+                const kind = resolveEmptyStateReason({
+                  request,
+                  bundleQuestionsCount:
+                    typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
+                });
+                const model = buildPracticeEmptyStateModel({
+                  locale,
+                  kind,
+                  request,
+                });
+                setPracticeEmptyState(model);
+                trackEffect({
+                  surface: 'test',
+                  curriculum,
+                  action: 'session_abandoned',
+                  context: { reason: kind, requestedMode: mode, syllabus: syllabus ?? null, count: batchSize },
+                });
+                return;
+              }
+
+              resolvedMode = 'mixed';
+              resolvedTitle = t('Repaso guiado', 'Errepaso gidatua');
+            }
           } catch (error) {
             questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
             if (questions.length === 0) {
@@ -768,12 +863,30 @@ export default function App() {
         }
 
         if (questions.length === 0) {
-          throw new Error(
-            t(
-              'No hay preguntas disponibles para ese temario en este momento.',
-              'Une honetan ez dago galderarik eskuragarri temario horretarako.',
-            ),
-          );
+          const request = {
+            kind: 'test' as const,
+            mode,
+            syllabus: syllabus ?? null,
+            count: batchSize,
+          };
+          const kind = resolveEmptyStateReason({
+            request,
+            bundleQuestionsCount:
+              typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
+          });
+          const model = buildPracticeEmptyStateModel({
+            locale,
+            kind,
+            request,
+          });
+          setPracticeEmptyState(model);
+          trackEffect({
+            surface: 'test',
+            curriculum,
+            action: 'session_abandoned',
+            context: { reason: kind, requestedMode: mode, syllabus: syllabus ?? null, count: batchSize },
+          });
+          return;
         }
 
         trackEffect({
@@ -802,14 +915,22 @@ export default function App() {
         setActiveSession(session);
         setCurrentView('test-active');
       } catch (error) {
-        setDataError(
-          error instanceof Error
-            ? error.message
-            : t('No se ha podido arrancar la sesion de test.', 'Ezin izan da test saioa abiatu.'),
-        );
+        const request = {
+          kind: 'test' as const,
+          mode,
+          syllabus: syllabus ?? null,
+          count: count ?? null,
+        };
+        const model = buildPracticeEmptyStateModel({
+          locale,
+          kind: 'error',
+          request,
+          errorMessage: error instanceof Error ? error.message : null,
+        });
+        setPracticeEmptyState(model);
       }
     },
-    [curriculum, isSingleScopePracticeCurriculum, locale, t],
+    [bundle?.questionsCount, curriculum, isSingleScopePracticeCurriculum, locale, t],
   );
 
   const handleStartLawTest = useCallback(
@@ -825,16 +946,30 @@ export default function App() {
       setSelectedSyllabus(null);
       setSelectedLawFilter(normalizedLaw);
       setDataError(null);
+      setPracticeEmptyState(null);
 
       try {
         const questions = await getPracticeBatchByCategory(count, curriculum, normalizedLaw);
         if (questions.length === 0) {
-          throw new Error(
-            t(
-              'No hay preguntas disponibles para esa ley en este momento.',
-              'Une honetan ez dago galderarik lege horretarako.',
-            ),
-          );
+          const request = { kind: 'law' as const, law: normalizedLaw, count };
+          const kind = resolveEmptyStateReason({
+            request,
+            bundleQuestionsCount:
+              typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
+          });
+          const model = buildPracticeEmptyStateModel({
+            locale,
+            kind,
+            request,
+          });
+          setPracticeEmptyState(model);
+          trackEffect({
+            surface: 'test',
+            curriculum,
+            action: 'session_abandoned',
+            context: { reason: kind, law: normalizedLaw, count },
+          });
+          return;
         }
 
         const session: ActivePracticeSession = {
@@ -852,18 +987,24 @@ export default function App() {
         setActiveSession(session);
         setCurrentView('test-active');
       } catch (error) {
-        setDataError(
-          error instanceof Error
-            ? error.message
-            : t('No se ha podido arrancar el test por ley.', 'Ezin izan da lege bidezko testa abiatu.'),
-        );
+        const request = { kind: 'law' as const, law: normalizedLaw, count };
+        const model = buildPracticeEmptyStateModel({
+          locale,
+          kind: 'error',
+          request,
+          errorMessage: error instanceof Error ? error.message : null,
+        });
+        setPracticeEmptyState(model);
       }
     },
-    [curriculum, t],
+    [bundle?.questionsCount, curriculum, locale, t],
   );
 
   const handleStartCoachSession = useCallback(async () => {
-    if (!coachExecutablePlan) return;
+    if (!coachExecutablePlan) {
+      await handleStartTest('standard', undefined, 20);
+      return;
+    }
     await handleStartTest(
       coachExecutablePlan.mode,
       coachExecutablePlan.syllabus ?? undefined,
@@ -878,6 +1019,33 @@ export default function App() {
     );
   }, [coachExecutablePlan, handleStartTest]);
 
+  const handleRunFollowUp = useCallback(
+    async (trigger: 'recommended' | 'clean' | 'errors') => {
+      const action = resolveFollowUpSession({
+        trigger,
+        executablePlan: coachExecutablePlan,
+        weakCategory: weakCategory?.category ?? null,
+        fallbackCount: 20,
+      });
+
+      await handleStartTest(
+        action.mode,
+        coachExecutablePlan?.syllabus ?? undefined,
+        action.count ?? undefined,
+        coachExecutablePlan
+          ? {
+              primaryAction: coachExecutablePlan.primaryAction,
+              tone: coachExecutablePlan.tone,
+              confidence: coachExecutablePlan.confidence,
+              reasons: coachExecutablePlan.reasons,
+              dominantState: coachExecutablePlan.dominantState ?? null,
+            }
+          : null,
+      );
+    },
+    [coachExecutablePlan, handleStartTest, weakCategory?.category],
+  );
+
   const handleLoadCustomBounds = useCallback(
     async () => getCurriculumQuestionNumberBounds(curriculum),
     [curriculum],
@@ -887,6 +1055,7 @@ export default function App() {
     async (params: { from: number; to: number; randomize: boolean }) => {
       setSelectedSyllabus(null);
       setDataError(null);
+      setPracticeEmptyState(null);
       try {
         const questions = await getQuestionsByNumberRange({
           curriculum,
@@ -896,12 +1065,25 @@ export default function App() {
         });
 
         if (questions.length === 0) {
-          throw new Error(
-            t(
-              'No hay preguntas disponibles para ese rango en este momento.',
-              'Une honetan ez dago galderarik tarte horretarako.',
-            ),
-          );
+          const request = { kind: 'custom' as const, from: params.from, to: params.to, randomize: params.randomize };
+          const kind = resolveEmptyStateReason({
+            request,
+            bundleQuestionsCount:
+              typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
+          });
+          const model = buildPracticeEmptyStateModel({
+            locale,
+            kind,
+            request,
+          });
+          setPracticeEmptyState(model);
+          trackEffect({
+            surface: 'test',
+            curriculum,
+            action: 'session_abandoned',
+            context: { reason: kind, from: params.from, to: params.to, randomize: params.randomize },
+          });
+          return;
         }
 
         const session: ActivePracticeSession = {
@@ -922,14 +1104,52 @@ export default function App() {
         setActiveSession(session);
         setCurrentView('test-active');
       } catch (error) {
-        setDataError(
-          error instanceof Error
-            ? error.message
-            : t('No se ha podido arrancar el test personalizado.', 'Ezin izan da test pertsonalizatua abiatu.'),
-        );
+        const request = { kind: 'custom' as const, from: params.from, to: params.to, randomize: params.randomize };
+        const model = buildPracticeEmptyStateModel({
+          locale,
+          kind: 'error',
+          request,
+          errorMessage: error instanceof Error ? error.message : null,
+        });
+        setPracticeEmptyState(model);
       }
     },
-    [curriculum, t],
+    [bundle?.questionsCount, curriculum, locale, t],
+  );
+
+  const handlePracticeEmptyStateAction = useCallback(
+    (action: PracticeEmptyStateAction) => {
+      setPracticeEmptyState(null);
+      setDataError(null);
+      if (action.type === 'start_recommended') {
+        void handleStartCoachSession();
+        return;
+      }
+      if (action.type === 'start_test') {
+        void handleStartTest(
+          action.mode,
+          action.syllabus ?? undefined,
+          action.count ?? undefined,
+        );
+        return;
+      }
+      if (action.type === 'start_law') {
+        void handleStartLawTest(action.law, action.count ?? 20);
+        return;
+      }
+      if (action.type === 'start_custom') {
+        void handleStartCustomTest({ from: action.from, to: action.to, randomize: action.randomize });
+        return;
+      }
+      if (action.type === 'go_test_selection') {
+        setSelectedSyllabus(null);
+        setSelectedLawFilter(null);
+        setCurrentView('test-selection');
+        return;
+      }
+      setCurrentView('dashboard');
+    },
+    [handleStartCoachSession, handleStartCustomTest, handleStartLawTest, handleStartTest],
   );
 
   const handleFinishTest = useCallback(
@@ -1215,6 +1435,99 @@ export default function App() {
     return { xp, level, streak };
   }, [bundle]);
 
+  const activeQuestions = activeSession?.questions ?? [];
+  const activeStudyQuestions = activeStudySession?.questions ?? [];
+  const isTesting = currentView === 'test-active' || currentView === 'study-active';
+  const isAdminView =
+    currentView === 'admin-dashboard' ||
+    currentView === 'admin-students' ||
+    currentView === 'admin-questions' ||
+    currentView === 'admin-catalogs';
+  const showMobileTopBar =
+    !isTesting && !isAdminView && currentView !== 'telemetry' && currentView !== 'study-bank';
+  const showMobileBottomNav = showMobileTopBar && currentView !== 'test-results';
+  const activeMobileTab = (() => {
+    if (currentView === 'test-selection' || currentView === 'test-results') return 'test-selection';
+    if (currentView === 'stats') return 'stats';
+    if (currentView === 'study') return 'study';
+    if (currentView === 'settings') return 'settings';
+    return 'dashboard';
+  })();
+
+  const mobileTitle =
+    currentView === 'dashboard'
+      ? t('Inicio', 'Hasiera')
+      : currentView === 'study'
+        ? t('Estudio', 'Ikasketa')
+        : currentView === 'test-selection'
+          ? t('Test', 'Test')
+          : currentView === 'stats'
+            ? t('Stats', 'Stats')
+            : currentView === 'test-results'
+              ? t('Análisis', 'Analisia')
+              : currentView === 'settings'
+                ? t('Ajustes', 'Doikuntzak')
+                : isAdminView
+                  ? t('Admin', 'Admin')
+                  : t('Quantia', 'Quantia');
+  const mobileSubtitle = useMemo(() => {
+    if (currentView === 'dashboard') {
+      return t('Direccion clara y siguiente paso', 'Norabide argia eta hurrengo pausoa');
+    }
+    if (currentView === 'study') {
+      return t('Explora sin perder el hilo', 'Arakatu haria galdu gabe');
+    }
+    if (currentView === 'test-selection') {
+      return t('Prepara el bloque exacto que quieres hacer', 'Prestatu egin nahi duzun bloke zehatza');
+    }
+    if (currentView === 'stats') {
+      return t('Lectura ejecutiva de tu avance', 'Zure aurrerapenaren irakurketa exekutiboa');
+    }
+    if (currentView === 'test-results') {
+      return t('Cierre util antes del siguiente paso', 'Itxiera erabilgarria hurrengo pausoaren aurretik');
+    }
+    if (currentView === 'settings') {
+      return t('Ajusta el plan real que puedes sostener', 'Doitu benetan eutsi diezaiokezun plana');
+    }
+    return headerStatus.readingLabel;
+  }, [currentView, headerStatus.readingLabel, t]);
+  const mobileStatusLabel =
+    currentView === 'dashboard' || currentView === 'stats' ? headerStatus.readingLabel : null;
+
+  useEffect(() => {
+    if (!showMobileTopBar) {
+      setMobileChromeCompact(false);
+      return;
+    }
+
+    const node = mainScrollRef.current;
+    if (!node) return;
+
+    const threshold = currentView === 'dashboard' ? 28 : 18;
+    let frame = 0;
+
+    const syncCompact = () => {
+      const nextCompact = node.scrollTop > threshold;
+      setMobileChromeCompact((prev) => (prev === nextCompact ? prev : nextCompact));
+    };
+
+    syncCompact();
+
+    const handleScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        syncCompact();
+      });
+    };
+
+    node.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      node.removeEventListener('scroll', handleScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [currentView, showMobileTopBar]);
+
   if (supabaseConfigError) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 p-10 text-center">
@@ -1260,36 +1573,6 @@ export default function App() {
     );
   }
 
-  const activeQuestions = activeSession?.questions ?? [];
-  const activeStudyQuestions = activeStudySession?.questions ?? [];
-  const isTesting = currentView === 'test-active' || currentView === 'study-active';
-  const isAdminView = currentView === 'admin-dashboard' || currentView === 'admin-students' || currentView === 'admin-questions';
-  const showMobileTabs =
-    !isTesting && !isAdminView && currentView !== 'telemetry' && currentView !== 'study-bank';
-  const activeMobileTab = (() => {
-    if (currentView === 'test-selection' || currentView === 'test-results') return 'test-selection';
-    if (currentView === 'stats') return 'stats';
-    if (currentView === 'study') return 'study';
-    if (currentView === 'settings') return 'settings';
-    return 'dashboard';
-  })();
-
-  const mobileTitle =
-    currentView === 'dashboard'
-      ? t('Inicio', 'Hasiera')
-      : currentView === 'study'
-        ? t('Estudio', 'Ikasketa')
-        : currentView === 'test-selection'
-          ? t('Test', 'Test')
-          : currentView === 'stats'
-            ? t('Stats', 'Stats')
-            : currentView === 'test-results'
-              ? t('Análisis', 'Analisia')
-              : currentView === 'settings'
-                ? t('Ajustes', 'Doikuntzak')
-                : isAdminView
-                  ? t('Admin', 'Admin')
-                  : t('Quantia', 'Quantia');
 
   return (
     <LocaleProvider locale={locale}>
@@ -1643,15 +1926,17 @@ export default function App() {
         </>
       )}
 
-      {showMobileTabs && !isTesting ? (
+      {showMobileTopBar && !isTesting ? (
         <MobileTopBar
           title={mobileTitle}
-          readingLabel={headerStatus.readingLabel}
+          subtitle={mobileSubtitle}
+          statusLabel={mobileStatusLabel}
           dotClass={headerStatus.dotClass}
           curriculumLabel={activeCurriculumLabel}
           curriculumId={curriculum}
           curriculumOptions={visibleCurriculumOptions}
           curriculumOptionsLoading={curriculumOptionsLoading}
+          compact={mobileChromeCompact}
           onSelectCurriculum={(next) => setCurriculum(next)}
           onLogout={() => {
             setSidebarOpen(false);
@@ -1662,15 +1947,22 @@ export default function App() {
 
       {/* Main Content */}
       <main
+        ref={mainScrollRef}
         className={`flex-1 overflow-y-auto relative z-10 transition-all duration-700 ${
           isTesting
             ? 'p-3 sm:p-4 lg:p-10'
             : `px-4 sm:px-6 lg:px-12 xl:px-16 pb-10 lg:pb-16 ${
-                showMobileTabs
-                  ? 'pt-[calc(3.7rem+env(safe-area-inset-top))]'
-                  : 'pt-5 sm:pt-8 lg:pt-12'
-              } [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10`
-        } ${showMobileTabs ? 'pb-[calc(7.25rem+env(safe-area-inset-bottom))]' : ''}`}
+                showMobileTopBar
+                  ? 'pt-[calc(5.15rem+env(safe-area-inset-top))]'
+                  : 'pt-5 sm:pt-8 lg:pt-12 [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10'
+              }`
+        } ${
+          showMobileBottomNav
+            ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]'
+            : showMobileTopBar
+              ? 'pb-[calc(1rem+env(safe-area-inset-bottom))]'
+              : ''
+        }`}
       >
         {!isTesting && (
           <header className="hidden lg:flex mb-10 lg:mb-16 flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000">
@@ -1764,35 +2056,121 @@ export default function App() {
           </header>
         )}
 
-        {dataError ? (
+        {practiceEmptyState ? (
+          <div
+            className={`mb-8 rounded-3xl border px-6 py-6 ${
+              practiceEmptyState.tone === 'positive'
+                ? 'border-emerald-200 bg-emerald-50'
+                : practiceEmptyState.tone === 'error'
+                  ? 'border-rose-200 bg-rose-50'
+                  : 'border-slate-200 bg-white'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+              <div
+                className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                  practiceEmptyState.tone === 'positive'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : practiceEmptyState.tone === 'error'
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                {practiceEmptyState.tone === 'positive' ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div
+                  className={`text-xl font-black tracking-tight ${
+                    practiceEmptyState.tone === 'error' ? 'text-rose-900' : 'text-slate-900'
+                  }`}
+                >
+                  {practiceEmptyState.title}
+                </div>
+                <div
+                  className={`mt-2 text-sm font-medium ${
+                    practiceEmptyState.tone === 'error' ? 'text-rose-700' : 'text-slate-600'
+                  }`}
+                >
+                  {practiceEmptyState.body}
+                </div>
+                <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handlePracticeEmptyStateAction(practiceEmptyState.primaryCta.action)}
+                    className={`h-12 px-6 rounded-2xl font-black ${
+                      practiceEmptyState.tone === 'error'
+                        ? 'bg-rose-600 text-white hover:bg-rose-700'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    }`}
+                  >
+                    {practiceEmptyState.primaryCta.label}
+                  </button>
+                  {practiceEmptyState.secondaryCta ? (
+                    <button
+                      type="button"
+                      onClick={() => handlePracticeEmptyStateAction(practiceEmptyState.secondaryCta!.action)}
+                      className="h-12 px-6 rounded-2xl font-black border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    >
+                      {practiceEmptyState.secondaryCta.label}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : dataError ? (
           <div className="mb-8 rounded-3xl border border-rose-200 bg-rose-50 px-6 py-4 text-rose-700">
             {dataError}
           </div>
         ) : null}
 
-        {dataLoading && !bundle && currentView !== 'test-active' ? (
+        {dataLoading && !bundle && currentView !== 'test-active' && currentView !== 'dashboard' ? (
           <div className="flex items-center justify-center rounded-[2rem] border border-slate-100 bg-white p-20 text-slate-500">
             <Loader2 className="mr-3 h-6 w-6 animate-spin" />
             {t('Cargando panel...', 'Panela kargatzen...')}
           </div>
         ) : null}
 
-        {!dataLoading && bundle && currentView === 'dashboard' ? (
+        {currentView === 'dashboard' ? (
           <Dashboard
-            coachLabel={heroCopy.eyebrow ?? t('Sugerencia de hoy', 'Gaurko proposamena')}
-            coachTitle={heroCopy.line1}
-            coachDescription={`${continuityLine ? `${continuityLine} ` : ''}${heroCopy.line2 ?? dashboardMetrics.weeklyInsightSummary}`}
-            coachCtaLabel={heroCopy.cta ?? t('Practicar ahora', 'Orain praktikatu')}
+            secondaryHydrated={Boolean(bundle) && !dashboardSecondaryHydrating}
+            actionsDisabled={!bundle}
+            coachLabel={
+              bundle
+                ? heroCopy.eyebrow ?? t('Sugerencia de hoy', 'Gaurko proposamena')
+                : t('Direccion inmediata', 'Berehalako norabidea')
+            }
+            coachTitle={
+              bundle
+                ? heroCopy.line1
+                : t('Preparando tu siguiente paso', 'Zure hurrengo pausoa prestatzen')
+            }
+            coachDescription={
+              bundle
+                ? `${continuityLine ? `${continuityLine} ` : ''}${heroCopy.line2 ?? dashboardMetrics.weeklyInsightSummary}`
+                : t(
+                    'Primero vamos a fijar la recomendacion principal. El resto del contexto llega despues.',
+                    'Lehenengo gomendio nagusia finkatuko dugu. Gainerako testuingurua ondoren iritsiko da.',
+                  )
+            }
+            coachCtaLabel={bundle ? heroCopy.cta ?? t('Practicar ahora', 'Orain praktikatu') : t('Preparando recomendacion', 'Gomendioa prestatzen')}
             commonProgress={dashboardMetrics.commonProgress}
             specificProgress={dashboardMetrics.specificProgress}
             weeklyQuestions={dashboardMetrics.weeklyQuestions}
             accuracyRate={dashboardMetrics.accuracyRate}
             primaryCardTitle={homeCardCopy.line1}
-            primaryCardDescription={homeCardCopy.line2 ?? dashboardMetrics.weeklyInsightSummary}
-            primaryCardCtaLabel={homeCardCopy.cta ?? t('Seguir por aqui', 'Hemendik jarraitu')}
+            primaryCardDescription={
+              bundle
+                ? homeCardCopy.line2 ?? dashboardMetrics.weeklyInsightSummary
+                : t(
+                    'En cuanto terminemos de leer tu estado, esta accion quedara lista para arrancar.',
+                    'Zure egoera irakurtzen amaitzean, ekintza hau prest geratuko da hasteko.',
+                  )
+            }
+            primaryCardCtaLabel={bundle ? homeCardCopy.cta ?? t('Seguir por aqui', 'Hemendik jarraitu') : t('Preparando sesion', 'Saioa prestatzen')}
             primaryCardProgressLabel={t('Temario visto', 'Ikusitako temarioa')}
             primaryCardProgressValue={Math.round(
-              (bundle.practiceState.learningDashboardV2?.coverageRate ?? 0) * 100,
+              (bundle?.practiceState.learningDashboardV2?.coverageRate ?? 0) * 100,
             )}
             weakTitle={weakAreaCopy.title}
             weakDescription={weakAreaCopy.description}
@@ -1817,7 +2195,7 @@ export default function App() {
                 action: 'cta_clicked',
                 context: { cta: homeCardCopy.cta ?? null, primaryAction: coachPlan?.primaryAction ?? null, source: 'homeCard' },
               });
-              void handleStartCoachSession();
+              void handleRunFollowUp('clean');
             }}
             onWeakCardAction={() => {
               trackEffect({
@@ -1831,11 +2209,7 @@ export default function App() {
                   source: 'weakCard',
                 },
               });
-              if (weakCategory?.category) {
-                void handleStartLawTest(weakCategory.category, coachExecutablePlan?.questionCount ?? 20);
-                return;
-              }
-              void handleStartCoachSession();
+              void handleRunFollowUp('errors');
             }}
             onStartTest={(syllabus) => {
               setSelectedSyllabus(syllabus);
@@ -1843,8 +2217,7 @@ export default function App() {
             }}
             onShowStats={() => setCurrentView('stats')}
             onReviewErrors={() => {
-              setSelectedSyllabus('specific');
-              setCurrentView('test-selection');
+              void handleRunFollowUp('errors');
             }}
           />
         ) : null}
@@ -2079,7 +2452,7 @@ export default function App() {
           </Suspense>
         ) : null}
       </main>
-      {showMobileTabs ? (
+      {showMobileBottomNav ? (
         <MobileTabBar
           active={activeMobileTab}
           onChange={(next) => {

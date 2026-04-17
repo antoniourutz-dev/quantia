@@ -23,36 +23,40 @@ export default function MobileTabBar({
     { key: 'test-selection', label: t('Test', 'Test'), Icon: ClipboardList },
     { key: 'stats', label: t('Stats', 'Stats'), Icon: TrendingUp },
     { key: 'study', label: t('Estudio', 'Ikasketa'), Icon: BookOpen },
-    { key: 'settings', label: t('Ajustes', 'Doikuntzak'), Icon: Settings },
+    { key: 'settings', label: t('Perfil', 'Profila'), Icon: Settings },
   ];
 
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white via-white to-transparent opacity-95" />
-      <div className="relative mx-auto max-w-7xl px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
-        <div className="grid grid-cols-5 gap-2 rounded-[2rem] border border-slate-200 bg-white/90 backdrop-blur-xl p-2 shadow-xl">
-          {tabs.map(({ key, label, Icon }) => {
-            const selected = key === active;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => onChange(key)}
-                className={`w-full h-[56px] flex flex-col items-center justify-center gap-1 rounded-[1.5rem] px-1.5 py-2 transition-all overflow-hidden ${
-                  selected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                <Icon size={18} className={selected ? 'text-white' : 'text-slate-500'} />
-                <span
-                  className={`w-full text-center whitespace-nowrap overflow-hidden text-ellipsis text-[9px] font-black uppercase tracking-[0.18em] leading-none ${
-                    selected ? 'text-white' : 'text-slate-500'
+    <div className="lg:hidden fixed inset-x-0 bottom-0 z-40">
+      <div className="mx-auto max-w-7xl px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2">
+        <div className="rounded-[1.75rem] border border-slate-200/80 bg-white/96 p-1.5 shadow-[0_-12px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
+          <div className="grid grid-cols-5 gap-1.5">
+            {tabs.map(({ key, label, Icon }) => {
+              const selected = key === active;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onChange(key)}
+                  aria-current={selected ? 'page' : undefined}
+                  className={`flex min-h-[62px] w-full flex-col items-center justify-center gap-1.5 rounded-[1.15rem] px-1.5 py-2 transition-all ${
+                    selected
+                      ? 'bg-indigo-50 text-indigo-700 shadow-[inset_0_0_0_1px_rgba(79,70,229,0.12)]'
+                      : 'text-slate-500 hover:bg-slate-50'
                   }`}
                 >
-                  {label}
-                </span>
-              </button>
-            );
-          })}
+                  <Icon size={18} className={selected ? 'text-indigo-700' : 'text-slate-500'} />
+                  <span
+                    className={`w-full truncate text-center text-[11px] font-bold leading-none ${
+                      selected ? 'text-indigo-700' : 'text-slate-500'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

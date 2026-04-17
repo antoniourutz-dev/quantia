@@ -364,7 +364,14 @@ export const mapLearningDashboardV2 = (
         shortTitle: readText(law.short_title ?? law.shortTitle),
         trainingIntent: readText(law.training_intent ?? law.trainingIntent),
         blocks: blocks && blocks.length > 0 ? blocks : undefined,
-        scope: normalizeQuestionScope(law.raw_scope) ?? 'unknown',
+        scope:
+          normalizeQuestionScope(law.raw_scope) ??
+          normalizeQuestionScope(law.scope) ??
+          normalizeQuestionScope(law.question_scope) ??
+          normalizeQuestionScope(law.question_scope_key) ??
+          normalizeQuestionScope(law.scope_key) ??
+          normalizeQuestionScope(law.grupo) ??
+          'unknown',
         attempts: readNumber(law.attempts),
         questionCount: readNumber(law.question_count),
         consolidatedCount: readNumber(law.consolidated_count),
@@ -379,7 +386,14 @@ export const mapLearningDashboardV2 = (
       return [
         {
           topicLabel,
-          scope: normalizeQuestionScope(topic.raw_scope) ?? 'unknown',
+          scope:
+            normalizeQuestionScope(topic.raw_scope) ??
+            normalizeQuestionScope(topic.scope) ??
+            normalizeQuestionScope(topic.question_scope) ??
+            normalizeQuestionScope(topic.question_scope_key) ??
+            normalizeQuestionScope(topic.scope_key) ??
+            normalizeQuestionScope(topic.grupo) ??
+            'unknown',
           attempts: readNumber(topic.attempts),
           questionCount: readNumber(topic.question_count),
           consolidatedCount: readNumber(topic.consolidated_count),
