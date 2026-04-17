@@ -27,37 +27,27 @@ export default function MobileTabBar({
   ];
 
   return (
-    <div className="lg:hidden fixed inset-x-0 bottom-0 z-40">
-      <div className="mx-auto max-w-7xl px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2">
-        <div className="rounded-[1.75rem] border border-slate-200/80 bg-white/96 p-1.5 shadow-[0_-12px_40px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-          <div className="grid grid-cols-5 gap-1.5">
-            {tabs.map(({ key, label, Icon }) => {
-              const selected = key === active;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => onChange(key)}
-                  aria-current={selected ? 'page' : undefined}
-                  className={`flex min-h-[62px] w-full flex-col items-center justify-center gap-1.5 rounded-[1.15rem] px-1.5 py-2 transition-all ${
-                    selected
-                      ? 'bg-indigo-50 text-indigo-700 shadow-[inset_0_0_0_1px_rgba(79,70,229,0.12)]'
-                      : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  <Icon size={18} className={selected ? 'text-indigo-700' : 'text-slate-500'} />
-                  <span
-                    className={`w-full truncate text-center text-[11px] font-bold leading-none ${
-                      selected ? 'text-indigo-700' : 'text-slate-500'
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+    <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex h-[52px] max-w-md items-center justify-between px-2">
+        {tabs.map(({ key, label, Icon }) => {
+          const selected = key === active;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onChange(key)}
+              aria-current={selected ? 'page' : undefined}
+              className={`flex h-full flex-1 flex-col items-center justify-center gap-0.5 transition-all ${
+                selected ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              <Icon size={20} strokeWidth={selected ? 2.5 : 2} className={selected ? 'scale-110 mb-0.5' : 'mb-0.5'} />
+              <span className={`text-[10px] tracking-tight ${selected ? 'font-black' : 'font-bold'}`}>
+                {label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -115,6 +115,12 @@ const SESSION_TABLE_SOURCES: TableSource[] = [
 const SESSION_SELECT_CANDIDATES = [
   'session_id, mode, title, started_at, finished_at, score, total',
   'id, mode, title, started_at, finished_at, score, total',
+  'session_id, mode, title, startedAt, finishedAt, score, total',
+  'id, mode, title, startedAt, finishedAt, score, total',
+  'session_id, mode, title, started_at, score, total',
+  'id, mode, title, started_at, score, total',
+  'session_id, mode, title, startedAt, score, total',
+  'id, mode, title, startedAt, score, total',
 ] as const;
 
 const SESSION_ATTEMPTS_SELECT_CANDIDATES = [
@@ -436,6 +442,20 @@ const mapPracticeCloudError = (error: PostgrestLikeError) => {
 
 const getErrorSignature = (error: PostgrestLikeError) =>
   `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
+
+const isMissingColumnForField = (error: PostgrestLikeError, field: string) => {
+  const signature = getErrorSignature(error);
+  const target = String(field).trim().toLowerCase();
+  if (!target) return false;
+  return (
+    signature.includes(`"${target}"`) ||
+    signature.includes(`'${target}'`) ||
+    signature.includes(` ${target} `) ||
+    signature.includes(`.${target}`) ||
+    signature.includes(`=${target}`) ||
+    signature.includes(` ${target}.`)
+  );
+};
 
 const isSchemaCacheSignatureError = (error: PostgrestLikeError) => {
   const signature = getErrorSignature(error);
@@ -1141,16 +1161,19 @@ const getPracticeSessions = async (curriculum: string) => {
       for (const field of CURRICULUM_FIELD_ALIASES) {
         const { data, error } = await getSchemaClient(source.schema)
           .from(source.table)
-          .select(selectFields)
+          .select(selectFields as any)
           .eq(field, curriculum)
-          .order('finished_at', { ascending: false })
           .limit(250);
 
         if (!error) {
-          return ((data ?? []) as Array<Record<string, unknown>>).map(mapSession);
+          const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+          return rows.map(mapSession);
         }
 
         if (isMissingColumnError(error)) {
+          if (isMissingColumnForField(error, field)) {
+            continue;
+          }
           shouldTryNextSelect = true;
           break;
         }
@@ -1290,11 +1313,23 @@ const extractAttemptRows = (row: Record<string, unknown>): Array<Record<string, 
   return [];
 };
 
-const getSeenQuestionsByScopeFromSessions = async (
+const COMMON_PROGRESS_DEBUG_KEY = 'quantia.debug.common_progress.v1';
+
+const isCommonProgressDebugEnabled = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(COMMON_PROGRESS_DEBUG_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const getAttemptedQuestionIdsFromSessions = async (
   curriculum: string,
-  scope: SyllabusType,
-): Promise<number | null> => {
+): Promise<Set<string> | null> => {
   let lastError: Error | null = null;
+  const candidates = await resolveCurriculumCandidates(curriculum).catch(() => []);
+  const candidateList = candidates.length > 0 ? candidates : buildCurriculumCandidates(curriculum);
 
   for (const source of SESSION_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
@@ -1305,29 +1340,28 @@ const getSeenQuestionsByScopeFromSessions = async (
       for (const field of CURRICULUM_FIELD_ALIASES) {
         const { data, error } = await getSchemaClient(source.schema)
           .from(source.table)
-          .select(selectFields)
-          .eq(field, curriculum)
-          .order('finished_at', { ascending: false })
+          .select(selectFields as any)
+          .in(field, candidateList)
           .limit(250);
 
         if (!error) {
-          const rows = (data ?? []) as Array<Record<string, unknown>>;
-          const seen = new Set<string>();
+          const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+          const attempted = new Set<string>();
           for (const row of rows) {
             const attempts = extractAttemptRows(row);
             for (const attempt of attempts) {
               const questionId = readText(attempt.question_id ?? attempt.questionId ?? attempt.id);
               if (!questionId) continue;
-              const attemptScope =
-                parseSyllabusType(attempt.question_scope ?? attempt.scope ?? attempt.grupo ?? attempt.syllabus) ?? null;
-              if (attemptScope !== scope) continue;
-              seen.add(questionId);
+              attempted.add(questionId);
             }
           }
-          return seen.size;
+          return attempted;
         }
 
         if (isMissingColumnError(error)) {
+          if (isMissingColumnForField(error, field)) {
+            continue;
+          }
           shouldTryNextSelect = true;
           break;
         }
@@ -2796,15 +2830,37 @@ export const hydrateDashboardBundle = async (
 
   const sharedCommonOverride = hasSharedQuestionSources(curriculum, 'common')
     ? await (async () => {
-        const [totalCommon, seenCommon] = await Promise.all([
-          getQuestionCountFromTables(curriculum, 'common').catch(() => 0),
-          getSeenQuestionsByScopeFromSessions(curriculum, 'common').catch(() => null),
-        ]);
-        if (!(totalCommon > 0) || seenCommon == null) return null;
+        const commonSnapshot = await getQuestionSnapshotFromTables({
+          curriculum,
+          maxQuestions: 4000,
+          questionScope: 'common',
+        }).catch(() => []);
+        const commonQuestionIds = new Set(commonSnapshot.map((q) => q.id).filter(Boolean));
+        const attemptedIds = await getAttemptedQuestionIdsFromSessions(curriculum).catch(() => null);
+        if (commonQuestionIds.size === 0 || !attemptedIds) return null;
+
+        let seenCommon = 0;
+        for (const id of attemptedIds) {
+          if (commonQuestionIds.has(id)) seenCommon += 1;
+        }
+
+        const totalCommon = commonQuestionIds.size;
         const safeSeen = Math.max(0, Math.min(totalCommon, seenCommon));
+        const unseen = Math.max(0, totalCommon - safeSeen);
+
+        if (isCommonProgressDebugEnabled()) {
+          console.info('[commonProgress]', {
+            curriculum,
+            totalCommon,
+            seenCommon: safeSeen,
+            commonQuestionIds: commonQuestionIds.size,
+            attemptedIds: attemptedIds.size,
+          });
+        }
+
         return {
           total: totalCommon,
-          unseen: Math.max(0, totalCommon - safeSeen),
+          unseen,
           attempts: safeSeen,
         };
       })()

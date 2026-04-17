@@ -91,6 +91,10 @@ export default function TestInterface({
     finishStartedRef.current = false;
   }, [mode, questions]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [currentIndex]);
+
   const requestFinish = useCallback(() => {
     if (finishStartedRef.current) return;
     finishStartedRef.current = true;

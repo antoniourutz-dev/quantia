@@ -188,123 +188,124 @@ export default function PostTestStats({
   ]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-10 sm:space-y-8 sm:pb-20">
-      <div className="relative flex flex-col items-center gap-6 overflow-hidden rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-xl md:flex-row md:gap-12 sm:rounded-[3rem] sm:p-10">
-        <div className="relative flex-shrink-0">
-          <svg className="h-36 w-36 -rotate-90 transform sm:h-48 sm:w-48">
-            <circle cx="96" cy="96" r="88" stroke="#f1f5f9" strokeWidth="16" fill="transparent" />
-            <circle
-              cx="96"
-              cy="96"
-              r="88"
-              stroke={percentage >= 70 ? '#10b981' : percentage >= 50 ? '#f59e0b' : '#ef4444'}
-              strokeWidth="16"
-              fill="transparent"
-              strokeDasharray={552.9}
-              strokeDashoffset={552.9 * (1 - percentage / 100)}
-              strokeLinecap="round"
-              className="transition-all duration-1000 ease-out"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-4xl font-black text-slate-800 sm:text-5xl">{percentage}%</span>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
-              {isBasque ? 'Emaitza' : 'Resultado'}
-            </span>
+    <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
+      <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+        
+        {/* TOP ROW: Continuity & Metrics Compact */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+             <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 border border-slate-100 min-w-[3rem]">
+                <span className={`text-[17px] leading-none font-black ${percentage >= 70 ? 'text-emerald-500' : percentage >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
+                  {percentage}%
+                </span>
+             </div>
+             <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{isBasque ? 'Emaitza' : 'Resultado'}</div>
+                <div className="text-[13px] font-bold text-slate-600 leading-none">
+                  {score} {isBasque ? 'zuzen' : 'bien'} · {failed} {isBasque ? 'huts' : 'mal'}
+                </div>
+             </div>
           </div>
+          {sessionEnd.continuityLine && (
+             <div className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-indigo-600">
+               <Zap size={12} />
+               {sessionEnd.continuityLine}
+             </div>
+          )}
         </div>
 
-        <div className="flex-1 space-y-5 text-center md:text-left sm:space-y-6">
-          <div>
-            {sessionEnd.continuityLine ? (
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-indigo-700 mb-5">
-                <Zap size={14} />
-                {sessionEnd.continuityLine}
-              </div>
-            ) : null}
-            <h2 className="mb-2 text-2xl font-black text-slate-800 sm:text-4xl">{sessionEnd.headline}</h2>
-            <p className="text-base font-medium leading-relaxed text-slate-500 sm:text-xl">
-              {sessionEnd.summary || summaryLine}
-            </p>
-            {sessionEnd.microReward ? (
-              <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4">
-                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                  {isBasque ? 'Aurrerapen txikia' : 'Progreso de proceso'}
-                </div>
-                <div className="mt-2 text-sm font-black text-slate-900">{sessionEnd.microReward.title}</div>
-                <div className="mt-1 text-sm font-medium text-slate-500">{sessionEnd.microReward.detail}</div>
-              </div>
-            ) : null}
-            {sessionEnd.continuityMessage ? (
-              <p className="text-sm text-slate-500 font-bold mt-4">{sessionEnd.continuityMessage}</p>
-            ) : null}
-            <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-4">{summaryLine}</p>
-          </div>
+        {/* HEADLINE & MACRO LECTURE */}
+        <div className="mb-6 mt-1">
+          <h2 className="text-[22px] sm:text-[28px] font-black text-slate-900 tracking-tight leading-[1.15] mb-2.5">{sessionEnd.headline}</h2>
+          <p className="text-[15px] font-medium text-slate-500 leading-snug">{sessionEnd.summary || summaryLine}</p>
+        </div>
 
-          <div className="flex flex-wrap justify-center gap-3 md:justify-start sm:gap-4">
-            <div className="flex items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 font-bold text-emerald-700 sm:px-5">
-              <CheckCircle2 size={20} />
-              {score} {isBasque ? 'Asmatuta' : 'Aciertos'}
-            </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 font-bold text-rose-700 sm:px-5">
-              <XCircle size={20} />
-              {failed} {isBasque ? 'Huts' : 'Fallos'}
-            </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 font-bold text-indigo-700 sm:px-5">
-              <Clock size={20} />
-              {avgTimeSec}s / {isBasque ? 'gal.' : 'preg.'}
-            </div>
-          </div>
+        {/* CTA INTEGRADO & NEXT STEP */}
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 mb-5">
+           {(sessionEnd.continuityMessage || sessionEnd.microReward) && (
+             <div className="mb-4 space-y-3">
+               {sessionEnd.continuityMessage && (
+                 <p className="text-[13px] font-bold text-slate-700 leading-snug">{sessionEnd.continuityMessage}</p>
+               )}
+               {sessionEnd.microReward && (
+                 <div className="inline-flex items-center gap-2 text-[10px] font-extrabold text-slate-500 uppercase tracking-[0.15em] bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                   {sessionEnd.microReward.title}
+                 </div>
+               )}
+             </div>
+           )}
+           
+           <button
+             onClick={() => {
+               trackEffect({
+                 surface: 'session_end',
+                 curriculum,
+                 action: 'cta_clicked',
+                 context: { cta: sessionEnd.primaryCta, mode, nextMoveKind: sessionEnd.nextMove.kind }
+               });
+               if (sessionEnd.nextMove.kind === 'review_on_page') {
+                 setShowOnlyIncorrect(true);
+                 document.getElementById('session-end-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                 return;
+               }
+               if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
+                 onStartNextSession({ mode: sessionEnd.nextMove.mode, questionCount: sessionEnd.nextMove.questionCount, syllabus: sessionEnd.nextMove.syllabus });
+                 return;
+               }
+               onRestart();
+             }}
+             className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-[15px] font-black text-white shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] transition-all active:scale-[0.98] hover:bg-indigo-700"
+           >
+             {sessionEnd.nextMove.kind === 'review_on_page' && <RotateCcw size={18} />}
+             {sessionEnd.primaryCta}
+           </button>
+        </div>
+
+        {/* SECONDARY MINIMAL METRICS */}
+        <div className="flex divide-x divide-slate-100 border-t border-slate-100 pt-4">
+           <div className="flex-1 flex flex-col items-center px-1">
+             <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+               <Clock size={12} /> {isBasque ? 'Seg/gal' : 'Seg/preg'}
+             </span>
+             <span className="text-[13px] font-black text-slate-700">{avgTimeSec}s</span>
+           </div>
+           <div className="flex-1 flex flex-col items-center px-1">
+             <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+               <CheckCircle2 size={12} /> {isBasque ? 'Zuzenak' : 'Aciertos'}
+             </span>
+             <span className="text-[13px] font-bold text-emerald-600">{score} </span>
+           </div>
+           <div className="flex-1 flex flex-col items-center px-1">
+             <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+               <XCircle size={12} /> {isBasque ? 'Hutsak' : 'Fallos'}
+             </span>
+             <span className="text-[13px] font-bold text-rose-600">{failed}</span>
+           </div>
         </div>
       </div>
 
       {!continuityFocus ? (
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 sm:gap-8">
-        <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-10">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Nola joan den legez lege' : 'Como ha ido por ley'}
-            </h3>
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
-              <BarChart3 size={24} />
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+        <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <BarChart3 size={20} />
             </div>
+            <h3 className="text-lg font-black text-slate-800 tracking-tight">
+              {isBasque ? 'Legez lege' : 'Por ley'}
+            </h3>
           </div>
           {lawsSeen.length === 0 ? (
-            <div className="mb-8 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-medium text-slate-600">
-              {isBasque
-                ? 'Saio honetan ez da legeka irakurketa argirik atera.'
-                : 'En esta sesion no se ha podido sacar una lectura por ley.'}
+            <div className="rounded-xl bg-slate-50 p-4 text-xs font-medium text-slate-500">
+              {isBasque ? 'Ez dago datu nahikorik.' : 'Sin datos por ley.'}
             </div>
           ) : (
-            <div className="mb-8 rounded-2xl border border-slate-100 bg-slate-50 overflow-hidden">
-              <div className="px-6 py-4 flex items-center justify-between">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {isBasque ? 'Landutako legea' : 'Ley trabajada'}
-                </div>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {isBasque ? 'Acierto' : 'Acierto'}
-                </div>
-              </div>
+            <div className="rounded-xl bg-slate-50 overflow-hidden text-sm">
               <div className="divide-y divide-slate-100">
                 {lawData.slice(0, 12).map((law) => (
-                  <div key={law.fullName} className="px-6 py-4 bg-white flex items-center justify-between gap-6">
-                    <div className="min-w-0">
-                      <div className="text-sm font-black text-slate-900 truncate">{law.fullName}</div>
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                        {law.total} {isBasque ? 'gal.' : 'preg.'}
-                      </div>
-                    </div>
-                    <div
-                      className={`shrink-0 text-xl font-black ${
-                        law.accuracy >= 80
-                          ? 'text-emerald-600'
-                          : law.accuracy >= 60
-                            ? 'text-amber-600'
-                            : 'text-rose-600'
-                      }`}
-                    >
-                      {law.accuracy}%
-                    </div>
+                  <div key={law.fullName} className="px-4 py-3 flex items-center justify-between gap-4 bg-white">
+                    <div className="truncate font-bold text-slate-700 text-xs sm:text-sm">{law.fullName}</div>
+                    <div className={`shrink-0 font-black text-sm lg:text-base ${law.accuracy >= 80 ? 'text-emerald-600' : law.accuracy >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{law.accuracy}%</div>
                   </div>
                 ))}
               </div>
@@ -312,40 +313,25 @@ export default function PostTestStats({
           )}
         </div>
 
-        <div className="flex flex-col justify-between rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-10">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Galdera bakoitzeko denbora' : 'Tiempo por pregunta'}
+        <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+              <Zap size={20} />
+            </div>
+            <h3 className="text-lg font-black text-slate-800 tracking-tight">
+              {isBasque ? 'Denbora' : 'Tiempo'}
             </h3>
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
-              <Zap size={24} />
-            </div>
           </div>
-
-          <div className="flex-1 flex flex-col items-center justify-center space-y-6">
-            <div className="text-center">
-              <span className="text-7xl font-black text-slate-800">{avgTimeSec}</span>
-              <span className="text-2xl font-bold text-slate-400 ml-2">{isBasque ? 'segundo' : 'segundos'}</span>
-              <p className="text-slate-500 font-medium mt-2">
-                {isBasque ? 'Galdera bakoitzeko batez bestekoa' : 'Media por pregunta'}
-              </p>
-            </div>
-
-            <div className={`p-6 rounded-[2rem] w-full text-center border-2 ${
-              Number(avgTimeSec) < 30 ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-amber-50 border-amber-100 text-amber-800'
-            }`}>
-              <p className="font-bold">{speedMessage}</p>
-            </div>
+          <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 text-center mt-2 border border-slate-100/60">
+             <span className="text-4xl font-black text-slate-800 tracking-tight">{avgTimeSec}s</span>
+             <span className="text-[11px] font-extrabold text-slate-400 mt-1 uppercase tracking-widest">{isBasque ? 'Galderako' : 'Por pregunta'}</span>
+             <p className={`mt-5 text-[13px] font-bold leading-snug px-3 py-2 rounded-xl text-center shadow-sm w-full max-w-[240px] ${Number(avgTimeSec) < 30 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+               {speedMessage}
+             </p>
           </div>
         </div>
       </div>
-      ) : (
-        <div className="rounded-[2.25rem] border border-slate-100 bg-white px-5 py-5 font-medium text-slate-600 sm:rounded-[2.5rem] sm:px-8 sm:py-6">
-          {isBasque
-            ? 'Xehetasun osoa gero ikusi dezakezu; orain onena hurrengo saioarekin jarraitzea da.'
-            : 'Puedes revisar el detalle completo después; ahora lo útil es encadenar la siguiente sesión.'}
-        </div>
-      )}
+      ) : null}
 
       {mode === 'simulacro' ? (
         <div id="session-end-review" className="space-y-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2.5rem] sm:p-10">
@@ -447,50 +433,15 @@ export default function PostTestStats({
         </div>
       ) : null}
 
-      <div className="flex flex-col items-stretch gap-4 pt-2 sm:flex-row sm:pt-4">
-        <button
-          onClick={() => {
-            trackEffect({
-              surface: 'session_end',
-              curriculum,
-              action: 'cta_clicked',
-              context: {
-                cta: sessionEnd.primaryCta,
-                mode,
-                nextMoveKind: sessionEnd.nextMove.kind,
-                nextMode: sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
-              },
-            });
-            if (sessionEnd.nextMove.kind === 'review_on_page') {
-              setShowOnlyIncorrect(true);
-              const anchor = document.getElementById('session-end-review');
-              anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              return;
-            }
-            if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
-              onStartNextSession({
-                mode: sessionEnd.nextMove.mode,
-                questionCount: sessionEnd.nextMove.questionCount,
-                syllabus: sessionEnd.nextMove.syllabus,
-              });
-              return;
-            }
-            onRestart();
-          }}
-          className="flex flex-1 items-center justify-center gap-3 rounded-[1.75rem] bg-indigo-600 py-4 text-lg font-black text-white shadow-xl shadow-indigo-200 transition-all hover:-translate-y-1 hover:bg-indigo-700 sm:rounded-[2rem] sm:py-5 sm:text-xl"
-        >
-          <RotateCcw size={24} />
-          {sessionEnd.primaryCta}
-        </button>
+      <div className="flex justify-center pt-2 pb-6">
         <button
           onClick={() => {
             trackEffect({ surface: 'session_end', curriculum, action: 'go_home', context: { mode } });
             onGoHome();
           }}
-          className="flex items-center justify-center gap-2 rounded-[1.75rem] border border-slate-100 bg-white px-6 py-4 text-base font-black text-slate-600 shadow-lg transition-all hover:bg-slate-50 sm:rounded-[2rem]"
+          className="text-[12px] font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest px-6 py-4"
         >
-          <LayoutDashboard size={24} />
-          {isBasque ? 'Panela berriz ikusi' : 'Volver al panel'}
+          {isBasque ? 'Panelera itzuli' : 'Volver al panel principal'}
         </button>
       </div>
     </div>
