@@ -26,11 +26,17 @@ const cleanupLegacyBrowserState = async () => {
   }
 }
 
-if (import.meta.env.DEV) {
+const isLocalHost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+
+if (import.meta.env.DEV || isLocalHost) {
   void cleanupLegacyBrowserState()
 }
 
-registerSW({ immediate: true })
+if (!isLocalHost) {
+  registerSW({ immediate: true })
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

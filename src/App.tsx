@@ -54,7 +54,7 @@ import {
   type CurriculumOption,
   type DashboardBundle,
 } from './lib/quantiaApi';
-import { buildCoachPlanV2 } from './lib/coach';
+import { buildCoachPlanV2, buildExecutableSessionPlanFromCoach } from './lib/coach';
 import { getContinuityLine } from './lib/continuity';
 import { trackDecisionOnce, trackEffect } from './lib/telemetry';
 
@@ -302,6 +302,18 @@ export default function App() {
     }
   }, [curriculum, restrictedCurriculum, session, t]);
 
+  const refreshDashboardSilently = useCallback(async () => {
+    if (!session) return;
+    if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
+
+    try {
+      const nextBundle = await loadDashboardBundle(curriculum);
+      setBundle(nextBundle);
+    } catch {
+      void 0;
+    }
+  }, [curriculum, restrictedCurriculum, session]);
+
   useEffect(() => {
     let disposed = false;
 
@@ -486,6 +498,14 @@ export default function App() {
     () => resolveCoachSurfaceState(coachPlan, bundle),
     [bundle, coachPlan],
   );
+  const coachExecutablePlan = useMemo(() => {
+    if (!coachPlan) return null;
+    return buildExecutableSessionPlanFromCoach(coachPlan, {
+      defaultQuestionCount: 20,
+      syllabus: null,
+      dominantState: coachSurfaceState,
+    });
+  }, [coachPlan, coachSurfaceState]);
   const coachCopySeed = useMemo(
     () =>
       buildCoachCopySeed({
@@ -694,7 +714,12 @@ export default function App() {
   }, [t]);
 
   const handleStartTest = useCallback(
-    async (mode: PracticeMode, syllabus?: SyllabusType, count?: number) => {
+    async (
+      mode: PracticeMode,
+      syllabus?: SyllabusType,
+      count?: number,
+      coachContext?: ActivePracticeSession['coach'] | null,
+    ) => {
       setSelectedSyllabus(syllabus ?? null);
       setSelectedLawFilter(null);
       setDataError(null);
@@ -769,6 +794,10 @@ export default function App() {
           batchStartIndex: null,
           nextStandardBatchStartIndex: null,
         };
+        if (coachContext) {
+          session.source = 'coach';
+          session.coach = coachContext;
+        }
 
         setActiveSession(session);
         setCurrentView('test-active');
@@ -834,18 +863,20 @@ export default function App() {
   );
 
   const handleStartCoachSession = useCallback(async () => {
-    const primaryAction = coachPlan?.primaryAction ?? 'standard';
-    const coachMode: PracticeMode =
-      primaryAction === 'review'
-        ? 'review'
-        : primaryAction === 'simulacro'
-          ? 'simulacro'
-          : primaryAction === 'anti_trap'
-            ? 'anti_trap'
-            : 'standard';
-
-    await handleStartTest(coachMode, undefined, 20);
-  }, [coachPlan, handleStartTest]);
+    if (!coachExecutablePlan) return;
+    await handleStartTest(
+      coachExecutablePlan.mode,
+      coachExecutablePlan.syllabus ?? undefined,
+      coachExecutablePlan.questionCount ?? undefined,
+      {
+        primaryAction: coachExecutablePlan.primaryAction,
+        tone: coachExecutablePlan.tone,
+        confidence: coachExecutablePlan.confidence,
+        reasons: coachExecutablePlan.reasons,
+        dominantState: coachExecutablePlan.dominantState ?? null,
+      },
+    );
+  }, [coachExecutablePlan, handleStartTest]);
 
   const handleLoadCustomBounds = useCallback(
     async () => getCurriculumQuestionNumberBounds(curriculum),
@@ -918,11 +949,12 @@ export default function App() {
             score: payload.score,
             total: activeSession.questions.length,
             finishedAt: new Date().toISOString(),
+            coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
           },
         });
         await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
-        await refreshDashboard();
         setCurrentView('test-results');
+        void refreshDashboardSilently();
       } catch (error) {
         setDataError(
           error instanceof Error
@@ -933,7 +965,7 @@ export default function App() {
         setSyncingSession(false);
       }
     },
-    [activeSession, curriculum, refreshDashboard, t],
+    [activeSession, curriculum, refreshDashboardSilently, t],
   );
 
   const handleLogout = useCallback(async () => {
@@ -1778,6 +1810,33 @@ export default function App() {
               });
               void handleStartCoachSession();
             }}
+            onPrimaryCardAction={() => {
+              trackEffect({
+                surface: 'home',
+                curriculum,
+                action: 'cta_clicked',
+                context: { cta: homeCardCopy.cta ?? null, primaryAction: coachPlan?.primaryAction ?? null, source: 'homeCard' },
+              });
+              void handleStartCoachSession();
+            }}
+            onWeakCardAction={() => {
+              trackEffect({
+                surface: 'home',
+                curriculum,
+                action: 'cta_clicked',
+                context: {
+                  cta: weakAreaCopy.cta ?? null,
+                  primaryAction: coachPlan?.primaryAction ?? null,
+                  weakCategory: weakCategory?.category ?? null,
+                  source: 'weakCard',
+                },
+              });
+              if (weakCategory?.category) {
+                void handleStartLawTest(weakCategory.category, coachExecutablePlan?.questionCount ?? 20);
+                return;
+              }
+              void handleStartCoachSession();
+            }}
             onStartTest={(syllabus) => {
               setSelectedSyllabus(syllabus);
               setCurrentView('test-selection');
@@ -1928,6 +1987,7 @@ export default function App() {
             questions={activeQuestions}
             mode={activeSession.mode}
             onFinish={handleFinishTest}
+            isFinishing={syncingSession}
             onCancel={() => {
               setActiveSession(null);
               setCurrentView('test-selection');
@@ -1957,6 +2017,18 @@ export default function App() {
             mode={activeSession.mode}
             curriculum={curriculum}
             username={bundle?.identity.current_username ?? session?.user.email ?? null}
+            coachContext={activeSession.coach ?? null}
+            onStartNextSession={({ mode, questionCount, syllabus }) => {
+              if (selectedLawFilter) {
+                void handleStartLawTest(
+                  selectedLawFilter,
+                  questionCount ?? (activeSession.questions.length || 20),
+                );
+                return;
+              }
+              const resolvedSyllabus = syllabus ?? selectedSyllabus ?? undefined;
+              void handleStartTest(mode, resolvedSyllabus, questionCount ?? undefined);
+            }}
             onRestart={() => {
               if (selectedLawFilter) {
                 void handleStartLawTest(selectedLawFilter, activeSession.questions.length || 20);
@@ -1985,6 +2057,7 @@ export default function App() {
               bundle={bundle}
               curriculum={curriculum}
               coachPlan={coachPlan}
+              executablePlan={coachExecutablePlan}
               onStartRecommended={() => {
                 trackEffect({
                   surface: 'stats',
@@ -1998,8 +2071,8 @@ export default function App() {
                 void handleStartCoachSession();
               }}
               levelLabel={
-                coachPlan
-                  ? formatModeLabel(coachPlan.primaryAction === 'review' ? 'mixed' : 'standard', locale)
+                coachExecutablePlan
+                  ? formatModeLabel(coachExecutablePlan.mode, locale)
                   : t('Ritmo actual', 'Uneko erritmoa')
               }
             />

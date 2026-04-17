@@ -30,6 +30,8 @@ interface DashboardProps {
   weeklyInsightSummary: string;
   weeklyInsightDelta: string;
   onCoachAction: () => void;
+  onPrimaryCardAction: () => void;
+  onWeakCardAction: () => void;
   onStartTest: (syllabus: SyllabusType) => void;
   onShowStats: () => void;
   onReviewErrors: () => void;
@@ -57,6 +59,8 @@ export default function Dashboard({
   weeklyInsightSummary,
   weeklyInsightDelta,
   onCoachAction,
+  onPrimaryCardAction,
+  onWeakCardAction,
   onStartTest,
   onShowStats,
   onReviewErrors,
@@ -119,7 +123,7 @@ export default function Dashboard({
           </button>
         </div>
 
-        <div className="md:col-span-2 lg:col-span-2 hover-lift">
+        <div className="md:col-span-2 lg:col-span-2 hover-lift h-full">
           <PrimaryActionCard
             title={primaryCardTitle}
             description={primaryCardDescription}
@@ -127,18 +131,18 @@ export default function Dashboard({
             progressLabel={primaryCardProgressLabel}
             progressValue={primaryCardProgressValue}
             ctaText={primaryCardCtaLabel}
-            onAction={() => onStartTest('common')}
+            onAction={onPrimaryCardAction}
             variant="indigo"
           />
         </div>
 
-        <div className="md:col-span-2 lg:col-span-2 hover-lift">
+        <div className="md:col-span-2 lg:col-span-2 hover-lift h-full">
           <PrimaryActionCard
             title={weakTitle}
             description={weakDescription}
             icon={<AlertCircle size={32} />}
             ctaText={weakCardCtaLabel}
-            onAction={onReviewErrors}
+            onAction={onWeakCardAction}
             variant="rose"
           />
         </div>

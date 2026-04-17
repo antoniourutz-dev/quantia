@@ -19,7 +19,8 @@ import {
   Swords,
   Zap,
 } from 'lucide-react';
-import { TestResult, formatModeLabel } from '../types';
+import type { ExecutableSessionPlan, TestResult } from '../types';
+import { formatModeLabel } from '../types';
 import { DashboardBundle } from '../lib/quantiaApi';
 import type { CoachPlanV2 } from '../lib/coach';
 import {
@@ -41,6 +42,7 @@ interface StatsDashboardProps {
   curriculum: string;
   levelLabel?: string;
   coachPlan?: CoachPlanV2 | null;
+  executablePlan?: ExecutableSessionPlan | null;
   onStartRecommended?: () => void;
 }
 
@@ -50,6 +52,7 @@ export default function StatsDashboard({
   curriculum,
   levelLabel = 'Ritmo actual',
   coachPlan = null,
+  executablePlan = null,
   onStartRecommended,
 }: StatsDashboardProps) {
   const locale = useAppLocale();
@@ -80,7 +83,8 @@ export default function StatsDashboard({
   const observedOk = Boolean(learningV2?.observedAccuracySampleOk);
 
   const recommendedCount = learningV2?.recommendedTodayCount ?? 0;
-  const recommendedMode = coachPlan?.primaryAction ?? learningV2?.recommendedMode ?? 'standard';
+  const recommendedPracticeMode = executablePlan?.mode ?? learningV2?.recommendedMode ?? 'standard';
+  const coachSeedKey = executablePlan?.primaryAction ?? learningV2?.recommendedMode ?? 'standard';
 
   const examSection = useMemo(() => {
     const learningAccuracy = pressureV2?.learningAccuracy;
@@ -244,9 +248,9 @@ export default function StatsDashboard({
         curriculum,
         username: bundle?.identity.current_username,
         state: coachSurfaceState,
-        extra: `stats:${recommendedMode}`,
+        extra: `stats:${coachSeedKey}`,
       }),
-    [bundle?.identity.current_username, coachSurfaceState, curriculum, recommendedMode],
+    [bundle?.identity.current_username, coachSeedKey, coachSurfaceState, curriculum],
   );
 
   const statsCopy = useMemo(
@@ -286,14 +290,7 @@ export default function StatsDashboard({
   const sampleLabel = (enough: boolean) =>
     enough ? t('Lectura suficiente', 'Irakurketa nahikoa') : t('Aun con pocos datos', 'Oraindik datu gutxirekin');
 
-  const recommendedModeLabel = formatModeLabel(
-    recommendedMode === 'push'
-      ? 'standard'
-      : recommendedMode === 'recovery'
-        ? 'review'
-        : recommendedMode,
-    locale,
-  );
+  const recommendedModeLabel = formatModeLabel(recommendedPracticeMode, locale);
 
   const rankedWeakCategories = useMemo(() => {
     return [...weakCategories]

@@ -8,12 +8,18 @@ import {
   Clock,
   Zap,
 } from 'lucide-react';
-import { FinishedTestPayload, PracticeMode, Question } from '../types';
+import type {
+  ActivePracticeSession,
+  FinishedTestPayload,
+  PracticeMode,
+  Question,
+  SyllabusType,
+} from '../types';
 import { buildReviewSurfaceCopy } from '../lib/coachCopyV2';
 import { useAppLocale } from '../lib/locale';
-import { getContinuityLine, storeSessionCloseSummary } from '../lib/continuity';
+import { storeSessionCloseSummary } from '../lib/continuity';
 import { trackDecision, trackEffect } from '../lib/telemetry';
-import { buildSessionEndDecision } from '../lib/sessionEndAdapter';
+import { buildSessionEndExperience } from '../lib/sessionEndExperience';
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
@@ -21,6 +27,12 @@ interface PostTestStatsProps {
   mode: PracticeMode;
   curriculum: string;
   username?: string | null;
+  coachContext?: ActivePracticeSession['coach'] | null;
+  onStartNextSession?: (params: {
+    mode: PracticeMode;
+    questionCount: number | null;
+    syllabus: SyllabusType | null;
+  }) => void;
   onRestart: () => void;
   onGoHome: () => void;
 }
@@ -31,6 +43,8 @@ export default function PostTestStats({
   mode,
   curriculum,
   username,
+  coachContext = null,
+  onStartNextSession,
   onRestart,
   onGoHome,
 }: PostTestStatsProps) {
@@ -45,18 +59,19 @@ export default function PostTestStats({
     : 0;
   const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
 
-  const continuityLine = getContinuityLine(locale, curriculum);
-  const didReturnAfterGap = Boolean(continuityLine);
-
-  const sessionEndDecision = buildSessionEndDecision({
-    locale,
-    payload,
-    questionsCount: questions.length,
-    mode,
-    curriculum,
-    username,
-    didReturnAfterGap,
-  });
+  const sessionEnd = useMemo(
+    () =>
+      buildSessionEndExperience({
+        locale,
+        payload,
+        questionsCount: questions.length,
+        mode,
+        curriculum,
+        username,
+        coachContext,
+      }),
+    [coachContext, curriculum, locale, mode, payload, questions.length, username],
+  );
 
   const reviewCopy = buildReviewSurfaceCopy({
     locale,
@@ -131,14 +146,18 @@ export default function PostTestStats({
     trackDecision({
       surface: 'session_end',
       curriculum,
-      dominantState: sessionEndDecision.dominantState,
-      primaryAction: 'restart',
-      visibleCta: sessionEndDecision.primaryCta,
+      dominantState: sessionEnd.dominantState,
+      primaryAction: coachContext?.primaryAction ?? null,
+      tone: coachContext?.tone ?? null,
+      visibleCta: sessionEnd.primaryCta,
       context: {
         mode,
         score,
         total: questions.length,
         percentage,
+        closeState: sessionEnd.dominantState,
+        nextMoveKind: sessionEnd.nextMove.kind,
+        nextMode: sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
       },
     });
 
@@ -146,13 +165,26 @@ export default function PostTestStats({
       timestamp: new Date().toISOString(),
       curriculum,
       mode,
-      dominantState: sessionEndDecision.dominantState,
-      thesis: sessionEndDecision.dominantTitle,
-      nextCta: sessionEndDecision.primaryCta,
+      dominantState: sessionEnd.dominantState,
+      thesis: sessionEnd.headline,
+      nextCta: sessionEnd.primaryCta,
       score,
       total: questions.length,
     });
-  }, [curriculum, mode, percentage, questions.length, score, sessionEndDecision.dominantState, sessionEndDecision.dominantTitle, sessionEndDecision.primaryCta]);
+  }, [
+    coachContext?.primaryAction,
+    coachContext?.tone,
+    curriculum,
+    mode,
+    percentage,
+    questions.length,
+    score,
+    sessionEnd.dominantState,
+    sessionEnd.headline,
+    sessionEnd.primaryCta,
+    sessionEnd.nextMove.kind,
+    sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
+  ]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20">
@@ -183,24 +215,27 @@ export default function PostTestStats({
 
         <div className="flex-1 space-y-6 text-center md:text-left">
           <div>
-            {continuityLine ? (
+            {sessionEnd.continuityLine ? (
               <div className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.25em] text-indigo-700 mb-5">
                 <Zap size={14} />
-                {continuityLine}
+                {sessionEnd.continuityLine}
               </div>
             ) : null}
-            <h2 className="text-4xl font-black text-slate-800 mb-2">{sessionEndDecision.dominantTitle}</h2>
+            <h2 className="text-4xl font-black text-slate-800 mb-2">{sessionEnd.headline}</h2>
             <p className="text-xl text-slate-500 font-medium leading-relaxed">
-              {sessionEndDecision.dominantBody || summaryLine}
+              {sessionEnd.summary || summaryLine}
             </p>
-            {sessionEndDecision.microReward ? (
+            {sessionEnd.microReward ? (
               <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
                   {isBasque ? 'Aurrerapen txikia' : 'Progreso de proceso'}
                 </div>
-                <div className="mt-2 text-sm font-black text-slate-900">{sessionEndDecision.microReward.title}</div>
-                <div className="mt-1 text-sm font-medium text-slate-500">{sessionEndDecision.microReward.detail}</div>
+                <div className="mt-2 text-sm font-black text-slate-900">{sessionEnd.microReward.title}</div>
+                <div className="mt-1 text-sm font-medium text-slate-500">{sessionEnd.microReward.detail}</div>
               </div>
+            ) : null}
+            {sessionEnd.continuityMessage ? (
+              <p className="text-sm text-slate-500 font-bold mt-4">{sessionEnd.continuityMessage}</p>
             ) : null}
             <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-4">{summaryLine}</p>
           </div>
@@ -304,7 +339,7 @@ export default function PostTestStats({
       </div>
 
       {mode === 'simulacro' ? (
-        <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
+        <div id="session-end-review" className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div>
               <h3 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -410,14 +445,37 @@ export default function PostTestStats({
               surface: 'session_end',
               curriculum,
               action: 'cta_clicked',
-              context: { cta: sessionEndDecision.primaryCta, mode },
+              context: {
+                cta: sessionEnd.primaryCta,
+                mode,
+                nextMoveKind: sessionEnd.nextMove.kind,
+                nextMode: sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
+              },
             });
+            if (sessionEnd.nextMove.kind === 'go_home') {
+              onGoHome();
+              return;
+            }
+            if (sessionEnd.nextMove.kind === 'review_on_page') {
+              setShowOnlyIncorrect(true);
+              const anchor = document.getElementById('session-end-review');
+              anchor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              return;
+            }
+            if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
+              onStartNextSession({
+                mode: sessionEnd.nextMove.mode,
+                questionCount: sessionEnd.nextMove.questionCount,
+                syllabus: sessionEnd.nextMove.syllabus,
+              });
+              return;
+            }
             onRestart();
           }}
           className="flex-1 py-5 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 hover:-translate-y-1"
         >
           <RotateCcw size={24} />
-          {sessionEndDecision.primaryCta}
+          {sessionEnd.primaryCta}
         </button>
         <button
           onClick={() => {

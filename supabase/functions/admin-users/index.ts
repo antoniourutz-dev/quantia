@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { createRemoteJWKSet, jwtVerify } from 'jsr:@panva/jose@6';
 
 type Json = Record<string, unknown>;
 
@@ -28,33 +29,76 @@ const readMetaUsername = (value: unknown) => {
   return typeof username === 'string' ? username : null;
 };
 
-const assertAdmin = async (req: Request) => {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  if (!supabaseUrl || !anonKey) {
+let supabaseJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+const getSupabaseUrl = () => Deno.env.get('SUPABASE_URL') ?? '';
+const getJwtIssuer = () => Deno.env.get('SB_JWT_ISSUER') ?? `${getSupabaseUrl()}/auth/v1`;
+const getSupabaseJwks = () => {
+  const supabaseUrl = getSupabaseUrl();
+  if (!supabaseUrl) {
     throw new Error('Supabase env missing.');
   }
+  if (!supabaseJwks) {
+    supabaseJwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
+  }
+  return supabaseJwks;
+};
+
+const getServiceRoleKey = () =>
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
+  Deno.env.get('SERVICE_ROLE_KEY') ??
+  '';
+
+const getAuthToken = (req: Request) => {
   const authHeader = req.headers.get('authorization') ?? '';
-  const tokenMatch = authHeader.match(/^\s*bearer\s+(.+)\s*$/i);
-  const accessToken = tokenMatch?.[1]?.trim() ?? '';
-  if (!accessToken) {
+  const [scheme, token] = authHeader.split(/\s+/, 2);
+  if (!scheme || !token || scheme.toLowerCase() !== 'bearer') {
     throw new Error('Missing authorization header.');
   }
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data, error } = await userClient.auth.getUser(accessToken);
-  if (error) throw error;
-  const email = (data.user?.email ?? '').trim().toLowerCase();
-  if (!email || email !== ADMIN_EMAIL) {
+  return token.trim();
+};
+
+const assertAdmin = async (req: Request) => {
+  const supabaseUrl = getSupabaseUrl();
+  if (!supabaseUrl) {
+    throw new Error('Supabase env missing.');
+  }
+  const accessToken = getAuthToken(req);
+  let userId = '';
+  try {
+    const verified = await jwtVerify(accessToken, getSupabaseJwks(), {
+      issuer: getJwtIssuer(),
+    });
+    userId = readText(verified.payload.sub);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('admin-users jwt verify failed', { message });
+    throw new Error('Sesion no valida.');
+  }
+
+  if (!userId) {
+    throw new Error('Sesion no valida.');
+  }
+
+  const service = getServiceClient(supabaseUrl);
+  const { data, error } = await service.auth.admin.getUserById(userId);
+  if (error || !data.user) {
+    console.error('admin-users auth user lookup failed', {
+      userId,
+      message: error?.message ?? 'Missing user.',
+    });
+    throw new Error('Sesion no valida.');
+  }
+
+  const email = readText(data.user.email).toLowerCase();
+  if (email !== ADMIN_EMAIL) {
     throw new Error('Acceso denegado.');
   }
-  return { supabaseUrl, anonKey, authHeader };
+  return { supabaseUrl, service, userId, email };
 };
 
 const getServiceClient = (supabaseUrl: string) => {
-  const serviceKey = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
+  const serviceKey = getServiceRoleKey();
   if (!serviceKey) {
     throw new Error('Service role key missing.');
   }
@@ -162,8 +206,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { supabaseUrl } = await assertAdmin(req);
-    const service = getServiceClient(supabaseUrl);
+    const { service } = await assertAdmin(req);
     const body = (await req.json().catch(() => ({}))) as Json;
     const action = readText(body.action).toLowerCase();
 
@@ -173,19 +216,19 @@ Deno.serve(async (req) => {
       const search = readText(body.search).toLowerCase();
 
       let data: { users?: unknown[]; total?: unknown } = {};
-      console.log('admin-users env', {
-        supabaseUrl: Deno.env.get('SUPABASE_URL') ?? null,
-        serviceRoleKeyExists: Boolean(Deno.env.get('SERVICE_ROLE_KEY')),
-        supabaseServiceRoleKeyExists: Boolean(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')),
-        serviceRoleKeyPrefix: 'redacted',
-        supabaseServiceRoleKeyPrefix: 'redacted',
-      });
       try {
         const result = await service.auth.admin.listUsers({ page, perPage });
         data = result.data ?? {};
         if (result.error) throw result.error;
       } catch (error) {
-        const serviceRoleExists = Boolean(Deno.env.get('SERVICE_ROLE_KEY'));
+        const serviceRoleExists = Boolean(
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY'),
+        );
+        const serviceKeySource = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+          ? 'SUPABASE_SERVICE_ROLE_KEY'
+          : Deno.env.get('SERVICE_ROLE_KEY')
+            ? 'SERVICE_ROLE_KEY'
+            : 'missing';
         const err = error as Record<string, unknown> | null;
         const name = typeof err?.name === 'string' ? err.name : null;
         const message = typeof err?.message === 'string' ? err.message : String(error);
@@ -193,6 +236,7 @@ Deno.serve(async (req) => {
         console.error('admin-users listUsers failed', {
           supabaseUrl,
           serviceRoleExists,
+          serviceKeySource,
           errorType: typeof error,
           name,
           message,
@@ -200,12 +244,6 @@ Deno.serve(async (req) => {
         });
         return jsonResponse({ error: 'listUsers failed', detail: message }, { status: 500 });
       }
-
-      return jsonResponse({
-        ok: true,
-        usersCount: Array.isArray(data.users) ? data.users.length : 0,
-        total: typeof data.total === 'number' ? data.total : null,
-      });
 
       const users = (data.users ?? []).filter((u) => {
         if (!search) return true;
@@ -348,9 +386,12 @@ Deno.serve(async (req) => {
       try {
         const base = service.schema('app').from('practice_sessions');
         const userIdColumn = await pickUserIdColumn(service, 'app', 'practice_sessions');
-        const totalRes = await base.select('id', { count: 'exact', head: true }).eq(userIdColumn, userId);
+        const totalRes = await base.select('session_id', { count: 'exact', head: true }).eq(userIdColumn, userId);
         if (!totalRes.error) sessionsTotal = totalRes.count ?? null;
-        const lastRes = await base.select('id', { count: 'exact', head: true }).eq(userIdColumn, userId).gte('finished_at', since);
+        const lastRes = await base
+          .select('session_id', { count: 'exact', head: true })
+          .eq(userIdColumn, userId)
+          .gte('finished_at', since);
         if (!lastRes.error) sessionsLast7d = lastRes.count ?? null;
 
         const aggRes = await base
@@ -520,7 +561,7 @@ Deno.serve(async (req) => {
     const status =
       message === 'Acceso denegado.'
         ? 403
-        : message === 'Missing authorization header.'
+        : message === 'Missing authorization header.' || message === 'Sesion no valida.'
           ? 401
           : 500;
     return jsonResponse({ error: message }, { status });

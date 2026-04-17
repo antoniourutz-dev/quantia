@@ -9,6 +9,7 @@ import type {
   Question,
 } from '../types';
 import { createId } from './id';
+import { parseSyllabusType, toOptionKey } from './questionContracts';
 
 const OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
 
@@ -29,14 +30,7 @@ export const toNullableNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export const normalizeQuestionScope = (value: unknown) => {
-  const normalized = String(value ?? '').trim().toLowerCase();
-  if (normalized === 'common' || normalized === 'comun') return 'common' as const;
-  if (normalized === 'specific' || normalized === 'especifico' || normalized === 'específico') {
-    return 'specific' as const;
-  }
-  return null;
-};
+export const normalizeQuestionScope = (value: unknown) => parseSyllabusType(value);
 
 export const mapPracticeMode = (value: unknown): PracticeSessionSummary['mode'] => {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -54,9 +48,6 @@ export const mapPracticeMode = (value: unknown): PracticeSessionSummary['mode'] 
       return 'standard';
   }
 };
-
-const normalizeComparable = (value: string) =>
-  value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
 
 const pickFirstText = (row: Record<string, unknown>, fieldNames: string[]) => {
   for (const fieldName of fieldNames) {
@@ -126,7 +117,6 @@ const extractOptions = (row: Record<string, unknown>) => {
       'opcion_1',
       'respuesta1',
       'respuesta_1',
-      'a',
     ],
     b: [
       'opcion_b',
@@ -138,7 +128,6 @@ const extractOptions = (row: Record<string, unknown>) => {
       'opcion_2',
       'respuesta2',
       'respuesta_2',
-      'b',
     ],
     c: [
       'opcion_c',
@@ -150,7 +139,6 @@ const extractOptions = (row: Record<string, unknown>) => {
       'opcion_3',
       'respuesta3',
       'respuesta_3',
-      'c',
     ],
     d: [
       'opcion_d',
@@ -162,18 +150,12 @@ const extractOptions = (row: Record<string, unknown>) => {
       'opcion_4',
       'respuesta4',
       'respuesta_4',
-      'd',
     ],
   };
 
   const entries = OPTION_KEYS.map((key) => [key, pickFirstText(row, aliases[key])] as const);
   if (entries.some(([, value]) => !value)) return null;
   return Object.fromEntries(entries) as Record<(typeof OPTION_KEYS)[number], string>;
-};
-
-const mapNumericOption = (value: number) => {
-  const index = Math.trunc(value) - 1;
-  return OPTION_KEYS[index] ?? null;
 };
 
 const extractCorrectOption = (
@@ -192,47 +174,7 @@ const extractCorrectOption = (
     row.respuesta ??
     row.answer;
 
-  if (typeof rawCorrectValue === 'number' && Number.isFinite(rawCorrectValue)) {
-    return mapNumericOption(rawCorrectValue);
-  }
-
-  if (rawCorrectValue && typeof rawCorrectValue === 'object') {
-    const source = rawCorrectValue as Record<string, unknown>;
-    const nestedText =
-      readText(source.id) ??
-      readText(source.key) ??
-      readText(source.value) ??
-      readText(source.text) ??
-      readText(source.label);
-    if (nestedText) {
-      const normalizedNested = normalizeComparable(nestedText);
-      if (OPTION_KEYS.includes(normalizedNested as (typeof OPTION_KEYS)[number])) {
-        return normalizedNested as (typeof OPTION_KEYS)[number];
-      }
-
-      const numericNested = Number(nestedText);
-      if (Number.isFinite(numericNested)) {
-        return mapNumericOption(numericNested);
-      }
-    }
-  }
-
-  const correctText = readText(rawCorrectValue);
-  if (!correctText) return null;
-
-  const normalizedCorrect = normalizeComparable(correctText);
-  if (OPTION_KEYS.includes(normalizedCorrect as (typeof OPTION_KEYS)[number])) {
-    return normalizedCorrect as (typeof OPTION_KEYS)[number];
-  }
-
-  const numericCandidate = Number(correctText);
-  if (Number.isFinite(numericCandidate)) {
-    return mapNumericOption(numericCandidate);
-  }
-
-  return (
-    OPTION_KEYS.find((key) => normalizeComparable(options[key]) === normalizedCorrect) ?? null
-  );
+  return toOptionKey(rawCorrectValue, options);
 };
 
 export const mapQuestion = (row: Record<string, unknown>): Question | null => {

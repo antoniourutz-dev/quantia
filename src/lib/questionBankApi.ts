@@ -1,9 +1,9 @@
 import { supabase } from './supabaseClient';
 import {
   mapQuestion,
-  normalizeQuestionScope,
   readText,
 } from './quantiaMappers';
+import { QUESTION_BANK_LIST_SELECT, toDbGrupo, toOptionKey, toSyllabusType } from './questionContracts';
 import type {
   OptionKey,
   PracticeQuestionScopeFilter,
@@ -37,9 +37,6 @@ type QuestionBankTarget = {
 };
 
 const DEFAULT_CURRICULUM = 'osakidetza_admin';
-const QUESTION_BANK_LIST_SELECT =
-  'id, numero, pregunta, respuesta_correcta, grupo, ley_referencia, temario_pregunta';
-const QUESTION_BANK_OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
 
 const questionBankIndexCache = new Map<string, Promise<QuestionBankCacheRow[]>>();
 const questionBankDetailCache = new Map<string, Question>();
@@ -192,21 +189,6 @@ const normalizeCategoryLabel = (value: string | null | undefined) =>
     .trim()
     .toLowerCase();
 
-const toOptionKey = (value: unknown): OptionKey | null => {
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (QUESTION_BANK_OPTION_KEYS.includes(raw as OptionKey)) {
-    return raw as OptionKey;
-  }
-
-  const numeric = Number(raw);
-  if (Number.isFinite(numeric)) {
-    const mapped = QUESTION_BANK_OPTION_KEYS[Math.trunc(numeric) - 1];
-    return mapped ?? null;
-  }
-
-  return null;
-};
-
 const normalizeQuestionBankText = (value: string) =>
   value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -252,14 +234,15 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
   );
   const category = readQuestionCategoryLabel(row);
   const syllabus =
-    normalizeQuestionScope(
+    toSyllabusType(
       row.question_scope ??
         row.question_scope_key ??
         row.raw_scope ??
         row.scope ??
         row.scope_key ??
         row.grupo,
-    ) ?? 'common';
+      'common',
+    );
 
   return {
     id,
@@ -289,9 +272,9 @@ const queryQuestionBankRowsForTarget = async (target: QuestionBankTarget) => {
     .in('curriculum', target.candidates);
 
   if (target.scope === 'common') {
-    query = query.eq('grupo', 'comun');
+    query = query.eq('grupo', toDbGrupo('common'));
   } else if (target.scope === 'specific') {
-    query = query.eq('grupo', 'especifico');
+    query = query.eq('grupo', toDbGrupo('specific'));
   }
 
   const { data, error } = await query

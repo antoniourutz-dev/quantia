@@ -46,7 +46,7 @@ export default function PrimaryActionCard({
   const colors = colorMap[variant];
 
   return (
-    <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-premium-xl flex flex-col items-start gap-10 transition-all duration-700 group relative overflow-hidden hover-lift">
+    <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-premium-xl flex flex-col items-start gap-10 transition-all duration-700 group relative overflow-hidden hover-lift h-full">
       <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-slate-50 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition-colors duration-700"></div>
       
       <div className={`p-6 ${colors.bg} ${colors.text} rounded-[2.5rem] group-hover:scale-110 group-hover:rotate-6 transition-all duration-700 shadow-sm relative z-10`}>

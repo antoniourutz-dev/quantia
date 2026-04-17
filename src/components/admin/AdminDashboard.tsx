@@ -33,7 +33,7 @@ export default function AdminDashboard({
   const t = (es: string, eu: string) => (isBasque ? eu : es);
 
   const [range, setRange] = useState<RangeKey>('7d');
-  const [curriculum, setCurriculum] = useState<string>('');
+  const [curriculum, setCurriculum] = useState<string>(defaultCurriculum);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -70,8 +70,8 @@ export default function AdminDashboard({
 
       try {
         const sessionsBase = supabase.schema('app').from('practice_sessions');
-        const startedQ = sessionsBase.select('id', { count: 'exact', head: true }).gte('started_at', fromIso);
-        const completedQ = sessionsBase.select('id', { count: 'exact', head: true }).gte('finished_at', fromIso);
+        const startedQ = sessionsBase.select('session_id', { count: 'exact', head: true }).gte('started_at', fromIso);
+        const completedQ = sessionsBase.select('session_id', { count: 'exact', head: true }).gte('finished_at', fromIso);
         const startedRes = await (curriculum ? startedQ.eq('curriculum', curriculum) : startedQ);
         const completedRes = await (curriculum ? completedQ.eq('curriculum', curriculum) : completedQ);
         setSessionsStarted(startedRes.error ? null : startedRes.count ?? null);

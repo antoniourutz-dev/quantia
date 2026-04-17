@@ -1,14 +1,18 @@
 import type {
+  CoachPrimaryAction,
+  ExecutableSessionPlan,
   PracticeExamTarget,
   PracticeLearningDashboard,
   PracticeLearningDashboardV2,
+  PracticeMode,
   PracticePressureInsights,
   PracticePressureInsightsV2,
   PracticeSessionSummary,
+  SyllabusType,
 } from '../types';
 
 export type CoachPlanV2 = {
-  primaryAction: 'review' | 'standard' | 'simulacro' | 'anti_trap' | 'recovery' | 'push';
+  primaryAction: CoachPrimaryAction;
   intensity: 'low' | 'medium' | 'high';
   duration: 'short' | 'normal' | 'long';
   tone: 'rescue' | 'protect' | 'build' | 'push' | 'maintain';
@@ -36,6 +40,46 @@ export type CoachPlanV2 = {
     defaultsUsed: string[];
     decisionMargin: number | null;
     signalCompleteness: number;
+  };
+};
+
+export const coachPrimaryActionToPracticeMode = (primaryAction: CoachPrimaryAction): PracticeMode => {
+  switch (primaryAction) {
+    case 'push':
+    case 'recovery':
+      return 'standard';
+    default:
+      return primaryAction;
+  }
+};
+
+export const buildExecutableSessionPlanFromCoach = (
+  plan: CoachPlanV2,
+  context: {
+    defaultQuestionCount?: number;
+    syllabus?: SyllabusType | null;
+    dominantState?: string | null;
+  } = {},
+): ExecutableSessionPlan => {
+  const mode = coachPrimaryActionToPracticeMode(plan.primaryAction);
+  const target = typeof plan.sessionSpec.targetQuestions === 'number' && Number.isFinite(plan.sessionSpec.targetQuestions)
+    ? Math.max(1, Math.round(plan.sessionSpec.targetQuestions))
+    : null;
+  const fallback =
+    typeof context.defaultQuestionCount === 'number' && Number.isFinite(context.defaultQuestionCount)
+      ? Math.max(1, Math.round(context.defaultQuestionCount))
+      : null;
+
+  return {
+    source: 'coach',
+    primaryAction: plan.primaryAction,
+    mode,
+    syllabus: context.syllabus ?? null,
+    questionCount: target ?? fallback,
+    tone: plan.tone,
+    confidence: plan.confidence,
+    reasons: plan.reasons,
+    dominantState: context.dominantState ?? null,
   };
 };
 

@@ -961,7 +961,7 @@ export const buildWeakAreaCopy = ({
         locale === 'eu'
           ? 'Ez dago gaur bereziki esku hartu beharreko bloketik. Jarraitu erritmo onean.'
           : 'Hoy no aparece un bloque que exija entrar de inmediato. Mantén una sesión limpia.',
-      cta: locale === 'eu' ? 'Nire hutsetara joan' : 'Ir a mis fallos',
+      cta: locale === 'eu' ? 'Gomendatutako saioa egin' : 'Hacer sesión recomendada',
     };
   }
 

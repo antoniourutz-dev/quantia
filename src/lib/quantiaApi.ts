@@ -1,6 +1,7 @@
 import { getSafeSupabaseSession, supabase } from './supabaseClient';
 import { supabaseAnonKey, supabaseUrl } from './supabaseConfig';
 import { createId } from './id';
+import { QUESTION_BANK_LIST_SELECT, toDbGrupo, toOptionKey, toSyllabusType } from './questionContracts';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -100,8 +101,6 @@ const CURRICULUM_TABLE_SOURCES: TableSource[] = [
 const QUESTION_TABLE_SOURCES: TableSource[] = [
   { schema: 'public', table: 'preguntas' },
 ];
-
-const QUESTION_BANK_LIST_SELECT = 'id, numero, pregunta, respuesta_correcta, grupo, ley_referencia, temario_pregunta';
 
 const SESSION_TABLE_SOURCES: TableSource[] = [
   { schema: 'app', table: 'practice_sessions' },
@@ -474,23 +473,6 @@ const normalizeCategoryLabel = (value: string | null | undefined) =>
 
 const readQuestionCategoryLabel = (row: Record<string, unknown>) =>
   readFirstText(row, QUESTION_CATEGORY_FIELD_ALIASES);
-
-const QUESTION_BANK_OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
-
-const toOptionKey = (value: unknown): OptionKey | null => {
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (QUESTION_BANK_OPTION_KEYS.includes(raw as OptionKey)) {
-    return raw as OptionKey;
-  }
-
-  const numeric = Number(raw);
-  if (Number.isFinite(numeric)) {
-    const mapped = QUESTION_BANK_OPTION_KEYS[Math.trunc(numeric) - 1];
-    return mapped ?? null;
-  }
-
-  return null;
-};
 
 const normalizeQuestionBankText = (value: string) =>
   value.normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -991,7 +973,7 @@ const shuffleQuestions = (questions: Question[]) => {
   return shuffled;
 };
 
-const getAccessTokenForFunctionsInvoke = async () => {
+const getFreshSessionForFunctionInvoke = async (requiredEmail?: string) => {
   const {
     data: { session: initialSession },
     error,
@@ -1014,6 +996,27 @@ const getAccessTokenForFunctionsInvoke = async () => {
     throw new Error('No se ha podido refrescar la sesion. Inicia sesion de nuevo.');
   }
 
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser(session.access_token);
+
+  if (userError || !user?.email) {
+    throw new Error('La sesion no es valida. Cierra sesion y vuelve a iniciar sesion.');
+  }
+
+  if (requiredEmail && normalizeEmail(user.email) !== normalizeEmail(requiredEmail)) {
+    throw new Error('Acceso denegado.');
+  }
+
+  return {
+    ...session,
+    user,
+  };
+};
+
+const getAccessTokenForFunctionsInvoke = async () => {
+  const session = await getFreshSessionForFunctionInvoke();
   return session.access_token;
 };
 
@@ -1854,12 +1857,7 @@ export const getQuestionBankSnapshot = async (params: {
 const ADMIN_EMAIL = 'admin@oposik.app';
 const normalizeEmail = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
 const assertAdminSession = async () => {
-  const session = await getSafeSupabaseSession();
-  const email = normalizeEmail(session?.user?.email);
-  if (!session || email !== ADMIN_EMAIL) {
-    throw new Error('Acceso denegado.');
-  }
-  return session;
+  return await getFreshSessionForFunctionInvoke(ADMIN_EMAIL);
 };
 
 const adminInvokeFunction = async <T = unknown>(functionName: string, body: Record<string, unknown>): Promise<T> => {
@@ -1878,48 +1876,58 @@ const adminInvokeFunction = async <T = unknown>(functionName: string, body: Reco
   const session = await assertAdminSession();
   const response = await send(session.access_token);
 
+  const contentType = response.headers.get('content-type') ?? '';
   const raw = await response.text();
+  const normalizedRaw = raw.trim();
+  const looksLikeHtml =
+    contentType.includes('text/html') ||
+    /^<!doctype html\b/i.test(normalizedRaw) ||
+    /^<html\b/i.test(normalizedRaw) ||
+    /^<head\b/i.test(normalizedRaw) ||
+    /^<body\b/i.test(normalizedRaw);
+
+  if (looksLikeHtml) {
+    const snippet = normalizedRaw.replace(/\s+/g, ' ').slice(0, 140);
+    const deploymentHint =
+      response.status === 404
+        ? `La Edge Function ${functionName} no parece estar desplegada en Supabase.`
+        : `La Edge Function ${functionName} ha respondido con HTML en lugar de JSON.`;
+    throw new Error(`${deploymentHint} Revisa el despliegue de funciones. ${snippet}`.trim());
+  }
+
   let parsed: unknown = null;
   try {
     parsed = raw ? (JSON.parse(raw) as unknown) : null;
   } catch {
-    parsed = raw;
+    if (raw) {
+      throw new Error(`La Edge Function ${functionName} ha devuelto una respuesta no valida para JSON.`);
+    }
   }
 
   if (!response.ok) {
     if (response.status === 401) {
       throw new Error('Sesion no valida para invocar Edge Functions. Cierra sesion y vuelve a iniciar sesion.');
     }
+    const parsedObject =
+      parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    const errorLabel =
+      parsedObject && typeof parsedObject.error === 'string'
+        ? String(parsedObject.error)
+        : parsedObject && typeof parsedObject.message === 'string'
+          ? String(parsedObject.message)
+          : typeof parsed === 'string'
+            ? parsed
+            : '';
+    const detail =
+      parsedObject && typeof parsedObject.detail === 'string' ? String(parsedObject.detail) : '';
     const message =
-      (parsed && typeof parsed === 'object' && typeof (parsed as Record<string, unknown>).error === 'string'
-        ? String((parsed as Record<string, unknown>).error)
-        : typeof parsed === 'string'
-          ? parsed
-          : '') || `Edge Function ${functionName} fallo (${response.status}).`;
+      (detail ? `${errorLabel}: ${detail}` : errorLabel) ||
+      `Edge Function ${functionName} fallo (${response.status}).`;
     throw new Error(message);
   }
 
   return parsed as T;
 };
-
-const normalizeOptionKeyFromUnknown = (value: unknown): OptionKey | null => {
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'a' || normalized === 'b' || normalized === 'c' || normalized === 'd') return normalized;
-    if (normalized === '1' || normalized === '2' || normalized === '3' || normalized === '4') {
-      return (['a', 'b', 'c', 'd'] as const)[Number(normalized) - 1] ?? null;
-    }
-  }
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const index = Math.round(value) - 1;
-    return (['a', 'b', 'c', 'd'] as const)[index] ?? null;
-  }
-  return null;
-};
-
-const toSyllabusFromGrupo = (value: unknown): SyllabusType =>
-  String(value ?? '').toLowerCase() === 'comun' ? 'common' : 'specific';
-const toGrupoFromSyllabus = (value: SyllabusType): 'comun' | 'especifico' => (value === 'common' ? 'comun' : 'especifico');
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -1929,8 +1937,8 @@ const mapAdminQuestionListItem = (row: Record<string, unknown>): AdminQuestionLi
   if (!id) return null;
   const text = readText(row.pregunta ?? row.question_text ?? row.text);
   if (!text) return null;
-  const syllabus = toSyllabusFromGrupo(row.grupo ?? row.scope ?? row.syllabus);
-  const correctAnswer = normalizeOptionKeyFromUnknown(row.respuesta_correcta ?? row.correct_answer ?? row.correctAnswer);
+  const syllabus = toSyllabusType(row.grupo ?? row.scope ?? row.syllabus);
+  const correctAnswer = toOptionKey(row.respuesta_correcta ?? row.correct_answer ?? row.correctAnswer);
   const number = readNumber(row.numero ?? row.question_number ?? row.number);
   return {
     id,
@@ -1948,6 +1956,52 @@ const mapAdminQuestionListItem = (row: Record<string, unknown>): AdminQuestionLi
     difficulty: readNumber(row.difficulty) ?? null,
     updatedAt: readText(row.updated_at ?? row.updatedAt) ?? null,
   };
+};
+
+export const adminFindAdjacentQuestionId = async (params: {
+  direction: 'prev' | 'next';
+  oppositionId: string;
+  curriculum?: string | null;
+  curriculumKey?: string | null;
+  syllabus: SyllabusType;
+  fromNumber: number;
+  languageCode?: string | null;
+  topic?: string | null;
+}): Promise<{ id: string; number: number } | null> => {
+  await assertAdminSession();
+  const oppositionId = readText(params.oppositionId);
+  if (!oppositionId) throw new Error('opposition_id inválido.');
+  const fromNumber = typeof params.fromNumber === 'number' && Number.isFinite(params.fromNumber) ? params.fromNumber : NaN;
+  if (!Number.isFinite(fromNumber)) throw new Error('Número inválido.');
+
+  let query = supabase
+    .from('preguntas')
+    .select('id,numero')
+    .eq('opposition_id', oppositionId)
+    .eq('grupo', toDbGrupo(params.syllabus));
+
+  const curriculum = readText(params.curriculum);
+  if (curriculum) query = query.eq('curriculum', curriculum);
+  const curriculumKey = readText(params.curriculumKey);
+  if (curriculumKey) query = query.eq('curriculum_key', curriculumKey);
+  const languageCode = readText(params.languageCode);
+  if (languageCode) query = query.eq('language_code', languageCode);
+  const topic = readText(params.topic);
+  if (topic) query = query.eq('temario_pregunta', topic);
+
+  query =
+    params.direction === 'next'
+      ? query.gt('numero', fromNumber).order('numero', { ascending: true }).order('id', { ascending: true })
+      : query.lt('numero', fromNumber).order('numero', { ascending: false }).order('id', { ascending: false });
+
+  const { data, error } = await query.limit(1);
+  if (error) throw new Error(mapPracticeCloudError(error));
+  const row = Array.isArray(data) ? ((data[0] ?? null) as Record<string, unknown> | null) : null;
+  if (!row) return null;
+  const id = readText(row.id);
+  const number = readNumber(row.numero, NaN);
+  if (!id || !Number.isFinite(number)) return null;
+  return { id, number };
 };
 
 export const adminListQuestions = async (params: {
@@ -2119,7 +2173,7 @@ export const adminCreateQuestion = async (input: {
     opposition_id: oppositionId,
     curriculum,
     curriculum_key: curriculumKey ?? null,
-    grupo: toGrupoFromSyllabus(input.syllabus),
+    grupo: toDbGrupo(input.syllabus),
     numero: typeof input.number === 'number' && Number.isFinite(input.number) ? input.number : null,
     pregunta: text,
     opcion_a: a,
@@ -2206,7 +2260,7 @@ export const adminUpdateQuestion = async (
     opposition_id: oppositionId,
     curriculum,
     curriculum_key: curriculumKey ?? null,
-    grupo: toGrupoFromSyllabus(input.syllabus),
+    grupo: toDbGrupo(input.syllabus),
     numero: typeof input.number === 'number' && Number.isFinite(input.number) ? input.number : null,
     pregunta: text,
     opcion_a: a,

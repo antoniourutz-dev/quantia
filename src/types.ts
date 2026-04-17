@@ -13,6 +13,26 @@ export type PracticeMode =
   | 'anti_trap'
   | 'custom';
 
+export type CoachPrimaryAction =
+  | 'review'
+  | 'standard'
+  | 'simulacro'
+  | 'anti_trap'
+  | 'recovery'
+  | 'push';
+
+export type ExecutableSessionPlan = {
+  source: 'coach';
+  primaryAction: CoachPrimaryAction;
+  mode: PracticeMode;
+  syllabus: SyllabusType | null;
+  questionCount: number | null;
+  tone: 'rescue' | 'protect' | 'build' | 'push' | 'maintain';
+  confidence: number;
+  reasons: string[];
+  dominantState?: string | null;
+};
+
 import type { AppLocale } from './lib/locale';
 
 export interface Option {
@@ -290,6 +310,14 @@ export interface ActivePracticeSession {
   totalBatches: number;
   batchStartIndex: number | null;
   nextStandardBatchStartIndex: number | null;
+  source?: 'coach' | 'manual';
+  coach?: {
+    primaryAction: CoachPrimaryAction;
+    tone: ExecutableSessionPlan['tone'];
+    confidence: number;
+    reasons: string[];
+    dominantState?: string | null;
+  } | null;
 }
 
 export const formatSyllabusLabel = (syllabus: SyllabusType, locale: AppLocale = 'es') => {

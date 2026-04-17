@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Database, Loader2, Pencil, Plus, Save, Search, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Database, Loader2, Pencil, Plus, Save, Search, X } from 'lucide-react';
 import type { AdminQuestionDetail, AdminQuestionListItem, OptionKey, PracticeQuestionScopeFilter, SyllabusType } from '../../types';
 import { useAppLocale } from '../../lib/locale';
 import type { CurriculumOption } from '../../lib/quantiaApi';
 import {
   adminCreateQuestion,
+  adminFindAdjacentQuestionId,
   adminGetQuestionDetail,
   adminListQuestions,
   adminResolveOppositionConfigByOppositionId,
@@ -131,6 +132,7 @@ export default function AdminQuestions({
   const [hasNextPage, setHasNextPage] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [navLoading, setNavLoading] = useState<'prev' | 'next' | null>(null);
   const [editorMode, setEditorMode] = useState<EditorMode>('create');
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultCurriculum));
   const [saving, setSaving] = useState(false);
@@ -274,6 +276,42 @@ export default function AdminQuestions({
       });
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const canNavigate = editorMode === 'edit' && Boolean(selectedId) && Boolean(draft.oppositionId.trim()) && Boolean(draft.number.trim());
+
+  const navigate = async (direction: 'prev' | 'next') => {
+    if (!canNavigate) return;
+    if (navLoading) return;
+    const fromNumber = Number(draft.number.trim());
+    if (!Number.isFinite(fromNumber)) return;
+    setNavLoading(direction);
+    setNotice(null);
+    try {
+      const next = await adminFindAdjacentQuestionId({
+        direction,
+        oppositionId: draft.oppositionId.trim(),
+        curriculum: draft.curriculum.trim() || null,
+        curriculumKey: draft.curriculumKey.trim() || null,
+        syllabus: draft.syllabus,
+        fromNumber,
+      });
+      if (!next) {
+        setNotice({
+          kind: 'success',
+          text: direction === 'next' ? t('No hay más preguntas.', 'Ez dago galdera gehiagorik.') : t('No hay anteriores.', 'Ez dago aurreko galderarik.'),
+        });
+        return;
+      }
+      await openQuestion(next.id);
+    } catch (error) {
+      setNotice({
+        kind: 'error',
+        text: error instanceof Error ? error.message : t('No se ha podido navegar.', 'Ezin izan da nabigatu.'),
+      });
+    } finally {
+      setNavLoading(null);
     }
   };
 
@@ -626,30 +664,52 @@ export default function AdminQuestions({
                 {editorMode === 'create' ? t('Crear', 'Sortu') : selectedId ? `#${selectedId}` : t('Editar', 'Editatu')}
               </div>
             </div>
-            {editorMode === 'edit' && selectedId ? (
-              <button
-                type="button"
-                onClick={startCreate}
-                className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
-                title={t('Nueva', 'Berria')}
-              >
-                <Plus size={18} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedId(null);
-                  setDraft(emptyDraft(filterCurriculum.trim() || defaultCurriculum));
-                  setEditorMode('create');
-                  setNotice(null);
-                }}
-                className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
-                title={t('Limpiar', 'Garbitu')}
-              >
-                <X size={18} />
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {editorMode === 'edit' && selectedId ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void navigate('prev')}
+                    disabled={!canNavigate || navLoading !== null}
+                    className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
+                    title={t('Anterior', 'Aurrekoa')}
+                  >
+                    {navLoading === 'prev' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronLeft size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void navigate('next')}
+                    disabled={!canNavigate || navLoading !== null}
+                    className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
+                    title={t('Siguiente', 'Hurrengoa')}
+                  >
+                    {navLoading === 'next' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight size={18} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={startCreate}
+                    className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
+                    title={t('Nueva', 'Berria')}
+                  >
+                    <Plus size={18} />
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(null);
+                    setDraft(emptyDraft(filterCurriculum.trim() || defaultCurriculum));
+                    setEditorMode('create');
+                    setNotice(null);
+                  }}
+                  className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
+                  title={t('Limpiar', 'Garbitu')}
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
           </div>
 
           {detailLoading ? (

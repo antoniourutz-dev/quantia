@@ -1,3 +1,2 @@
 [functions.admin-users]
 verify_jwt = false
-
