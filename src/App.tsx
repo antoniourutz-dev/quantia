@@ -1361,6 +1361,8 @@ export default function App() {
           [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
         selected = shuffled.slice(0, Math.max(1, Math.min(count, shuffled.length)));
+      }
+
       if (resumeId) {
         const pool = await getStudyQuestionsSlice(1000, 0, curriculum);
         const target = pool.find(q => q.id === resumeId);
