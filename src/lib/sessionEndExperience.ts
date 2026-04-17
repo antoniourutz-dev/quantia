@@ -68,14 +68,7 @@ export const buildSessionEndExperience = (input: {
       syllabus: null,
       questionCount: input.questionsCount,
     };
-    primaryCta =
-      input.mode === 'review'
-        ? isBasque
-          ? 'Hurrengo errepasoa hasi'
-          : 'Empezar siguiente repaso'
-        : isBasque
-          ? 'Beste test bat egin'
-          : 'Hacer otro test';
+    primaryCta = decision.primaryCta;
   }
 
   const continuityMessage = isBasque

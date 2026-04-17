@@ -112,6 +112,13 @@ const SESSION_TABLE_SOURCES: TableSource[] = [
   { schema: 'app', table: 'practice_sessions' },
 ];
 
+const ATTEMPT_TABLE_SOURCES: TableSource[] = [
+  { schema: 'app', table: 'user_question_state' },
+  { schema: 'app', table: 'question_attempt_events' },
+  { schema: 'app', table: 'practice_attempts' },
+  { schema: 'app', table: 'practice_sessions' },
+];
+
 const SESSION_SELECT_CANDIDATES = [
   'session_id, mode, title, started_at, finished_at, score, total',
   'id, mode, title, started_at, finished_at, score, total',
@@ -798,9 +805,145 @@ const extractCurriculumId = (row: Record<string, unknown>) => {
   );
 
   if (candidates.length === 0) return null;
+  return candidates[0];
+};
+
+// ==========================================
+// STUDY MODE LOCAL ACTIONS
+// ==========================================
+
+import type { TextHighlight } from '../components/HighlightableText';
+
+export interface StudyQuestionData {
+  highlights: Record<string, TextHighlight[]>;
+  notes: Record<string, string>;
+}
+
+const STUDY_STORE_KEY = 'quantia_study_state';
+
+const readStudyState = (): StudyQuestionData => {
+  try {
+    const raw = window.localStorage.getItem(STUDY_STORE_KEY);
+    if (!raw) return { highlights: {}, notes: {} };
+    return JSON.parse(raw);
+  } catch {
+    return { highlights: {}, notes: {} };
+  }
+};
+
+const writeStudyState = (state: StudyQuestionData) => {
+  try {
+    window.localStorage.setItem(STUDY_STORE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore quota errors
+  }
+};
+
+export const getStudyData = async (questionIds: string[]): Promise<StudyQuestionData> => {
+  // In a real scenario we'd query user_highlights and user_notes from DB here.
+  // For now we use the local persistence as requested.
+  const state = readStudyState();
+  const res: StudyQuestionData = { highlights: {}, notes: {} };
+  
+  for (const qid of questionIds) {
+    if (state.highlights[qid]) res.highlights[qid] = state.highlights[qid];
+    if (state.highlights[`${qid}_exp`]) res.highlights[`${qid}_exp`] = state.highlights[`${qid}_exp`];
+    if (state.notes[qid]) res.notes[qid] = state.notes[qid];
+  }
+  return res;
+};
+
+export const saveStudyData = async (
+  questionId: string, 
+  data: { highlights?: TextHighlight[], notes?: string }
+) => {
+  const state = readStudyState();
+  if (data.highlights) {
+    state.highlights[questionId] = data.highlights;
+  }
+  if (data.notes !== undefined) {
+    state.notes[questionId] = data.notes;
+  }
+  writeStudyState(state);
+};
 
   const preferredCandidate = candidates.find((value) => !isOpaqueCurriculumValue(value));
   return preferredCandidate ?? candidates[0];
+};
+
+const buildNormalizedCurriculumCandidateSet = (values: string[]) => {
+  const normalized = new Set<string>();
+  for (const value of values) {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) continue;
+    normalized.add(trimmed.toLowerCase());
+    normalized.add(canonicalizeCurriculumId(trimmed));
+  }
+  return normalized;
+};
+
+const rowMatchesCurriculumCandidates = (
+  row: Record<string, unknown>,
+  normalizedCandidates: Set<string>,
+) => {
+  const rawValues = [
+    ...CURRICULUM_VALUE_PREFERENCE_ALIASES.map((key) => readText(row[key])),
+    ...CURRICULUM_LABEL_ALIASES.map((key) => readText(row[key])),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const value of rawValues) {
+    const trimmed = String(value).trim();
+    if (!trimmed) continue;
+    if (normalizedCandidates.has(trimmed.toLowerCase())) return true;
+    if (normalizedCandidates.has(canonicalizeCurriculumId(trimmed))) return true;
+  }
+
+  return false;
+};
+
+const rowHasCurriculumMetadata = (row: Record<string, unknown>) => {
+  const rawValues = [
+    ...CURRICULUM_VALUE_PREFERENCE_ALIASES.map((key) => readText(row[key])),
+    ...CURRICULUM_LABEL_ALIASES.map((key) => readText(row[key])),
+  ].filter((value): value is string => Boolean(value));
+
+  return rawValues.length > 0;
+};
+
+const sortSessionSummariesByRecency = <T extends { finishedAt?: string | null; startedAt?: string | null }>(
+  rows: T[],
+) =>
+  [...rows].sort((left, right) => {
+    const leftDate = Date.parse(left.finishedAt || left.startedAt || '');
+    const rightDate = Date.parse(right.finishedAt || right.startedAt || '');
+    if (Number.isFinite(leftDate) && Number.isFinite(rightDate)) return rightDate - leftDate;
+    if (Number.isFinite(rightDate)) return 1;
+    if (Number.isFinite(leftDate)) return -1;
+    return 0;
+  });
+
+const getSessionTableRows = async (source: TableSource, limit: number) => {
+  const client = getSchemaClient(source.schema).from(source.table);
+  const orderedQueries = [
+    client.select('*').order('finished_at', { ascending: false, nullsFirst: false }).limit(limit),
+    client.select('*').order('started_at', { ascending: false, nullsFirst: false }).limit(limit),
+    client.select('*').limit(limit),
+  ];
+
+  for (const query of orderedQueries) {
+    const { data, error } = await query;
+    if (!error) {
+      return { data: (data ?? []) as Array<Record<string, unknown>>, error: null as PostgrestLikeError | null };
+    }
+    if (isMissingColumnError(error)) continue;
+    if (isMissingRelationError(error)) {
+      markTableSourceMissing(source);
+      return { data: [] as Array<Record<string, unknown>>, error };
+    }
+    return { data: [] as Array<Record<string, unknown>>, error };
+  }
+
+  return { data: [] as Array<Record<string, unknown>>, error: null as PostgrestLikeError | null };
 };
 
 const extractCurriculumOption = (row: Record<string, unknown>): CurriculumOption | null => {
@@ -1151,46 +1294,37 @@ export const getAvailableCurriculums = async (preferredCurriculum?: string) => {
 
 const getPracticeSessions = async (curriculum: string) => {
   let lastError: Error | null = null;
+  const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
+    buildCurriculumCandidates(curriculum),
+  );
+  const normalizedCandidates = buildNormalizedCurriculumCandidateSet(curriculumCandidates);
 
   for (const source of SESSION_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
 
-    for (const selectFields of SESSION_SELECT_CANDIDATES) {
-      let shouldTryNextSelect = false;
+    const { data, error } = await getSessionTableRows(source, 1000);
 
-      for (const field of CURRICULUM_FIELD_ALIASES) {
-        const { data, error } = await getSchemaClient(source.schema)
-          .from(source.table)
-          .select(selectFields as any)
-          .eq(field, curriculum)
-          .limit(250);
+    if (!error) {
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      if (rows.length === 0) return [];
 
-        if (!error) {
-          const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
-          return rows.map(mapSession);
-        }
-
-        if (isMissingColumnError(error)) {
-          if (isMissingColumnForField(error, field)) {
-            continue;
-          }
-          shouldTryNextSelect = true;
-          break;
-        }
-        if (isMissingRelationError(error)) {
-          markTableSourceMissing(source);
-          shouldTryNextSelect = false;
-          break;
-        }
-        lastError = new Error(mapPracticeCloudError(error));
-        shouldTryNextSelect = false;
-        break;
+      const rowsWithCurriculumMetadata = rows.filter(rowHasCurriculumMetadata);
+      if (rowsWithCurriculumMetadata.length === 0) {
+        return sortSessionSummariesByRecency(rows.map(mapSession));
       }
 
-      if (!shouldTryNextSelect) {
-        break;
-      }
+      return sortSessionSummariesByRecency(
+        rowsWithCurriculumMetadata
+          .filter((row) => rowMatchesCurriculumCandidates(row, normalizedCandidates))
+          .map(mapSession),
+      );
     }
+
+    if (isMissingRelationError(error)) {
+      markTableSourceMissing(source);
+      continue;
+    }
+    lastError = new Error(mapPracticeCloudError(error));
   }
 
   if (lastError) throw lastError;
@@ -1328,57 +1462,65 @@ const getAttemptedQuestionIdsFromSessions = async (
   curriculum: string,
 ): Promise<Set<string> | null> => {
   let lastError: Error | null = null;
-  const candidates = await resolveCurriculumCandidates(curriculum).catch(() => []);
-  const candidateList = candidates.length > 0 ? candidates : buildCurriculumCandidates(curriculum);
+  const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
+    buildCurriculumCandidates(curriculum),
+  );
+  const normalizedCandidates = buildNormalizedCurriculumCandidateSet(curriculumCandidates);
 
-  for (const source of SESSION_TABLE_SOURCES) {
+  const extractQuestionIdsFromRow = (row: Record<string, unknown>) => {
+    const directQuestionId = readText(
+      row.question_id ??
+        row.questionId ??
+        row.pregunta_id ??
+        row.preguntaId ??
+        row.item_id ??
+        row.itemId,
+    );
+    if (directQuestionId) return [directQuestionId];
+
+    const attempts = extractAttemptRows(row);
+    return attempts
+      .map((attempt) => readText(attempt.question_id ?? attempt.questionId ?? attempt.id))
+      .filter((questionId): questionId is string => Boolean(questionId));
+  };
+
+  for (const source of ATTEMPT_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
 
-    for (const selectFields of SESSION_ATTEMPTS_SELECT_CANDIDATES) {
-      let shouldTryNextSelect = false;
+    const { data, error } = await getSchemaClient(source.schema)
+      .from(source.table)
+      .select('*')
+      .limit(source.table === 'practice_sessions' ? 1000 : 4000);
 
-      for (const field of CURRICULUM_FIELD_ALIASES) {
-        const { data, error } = await getSchemaClient(source.schema)
-          .from(source.table)
-          .select(selectFields as any)
-          .in(field, candidateList)
-          .limit(250);
+    if (!error) {
+      const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+      if (rows.length === 0) continue;
 
-        if (!error) {
-          const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
-          const attempted = new Set<string>();
-          for (const row of rows) {
-            const attempts = extractAttemptRows(row);
-            for (const attempt of attempts) {
-              const questionId = readText(attempt.question_id ?? attempt.questionId ?? attempt.id);
-              if (!questionId) continue;
-              attempted.add(questionId);
-            }
-          }
-          return attempted;
-        }
-
-        if (isMissingColumnError(error)) {
-          if (isMissingColumnForField(error, field)) {
-            continue;
-          }
-          shouldTryNextSelect = true;
-          break;
-        }
-        if (isMissingRelationError(error)) {
-          markTableSourceMissing(source);
-          shouldTryNextSelect = false;
-          break;
-        }
-        lastError = new Error(mapPracticeCloudError(error));
-        shouldTryNextSelect = false;
-        break;
+      const rowsWithCurriculumMetadata = rows.filter(rowHasCurriculumMetadata);
+      if (rowsWithCurriculumMetadata.length === 0) {
+        continue;
       }
 
-      if (!shouldTryNextSelect) {
-        break;
+      const sourceRows = rowsWithCurriculumMetadata.filter((row) =>
+        rowMatchesCurriculumCandidates(row, normalizedCandidates),
+      );
+      if (sourceRows.length === 0) continue;
+
+      const attempted = new Set<string>();
+      for (const row of sourceRows) {
+        for (const questionId of extractQuestionIdsFromRow(row)) {
+          attempted.add(questionId);
+        }
       }
+
+      return attempted.size > 0 ? attempted : null;
     }
+
+    if (isMissingRelationError(error)) {
+      markTableSourceMissing(source);
+      continue;
+    }
+    lastError = new Error(mapPracticeCloudError(error));
   }
 
   if (lastError) return null;

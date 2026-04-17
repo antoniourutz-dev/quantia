@@ -1,26 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Hash, Loader2, Tag } from 'lucide-react';
+import { BookOpen, Hash, Loader2, Tag, ChevronRight } from 'lucide-react';
 import type { DashboardBundle } from '../lib/quantiaApi';
 import type { SyllabusType } from '../types';
 import { useAppLocale } from '../lib/locale';
 
 type StudyScope = 'all' | SyllabusType;
+export type StudyModeType = 'topic' | 'range';
+
+export interface StudyStartParams {
+  mode: StudyModeType;
+  scope: StudyScope;
+  topic: string;
+  count: number;
+  range?: [number, number];
+}
 
 interface StudyExplorerProps {
   bundle: DashboardBundle | null;
-  onStartStudy: (params: { scope: StudyScope; topic: string; count: number }) => Promise<void>;
+  onStartStudy: (params: StudyStartParams) => Promise<void>;
   onOpenQuestionBank: () => void;
 }
 
 export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
+  
+  const [studyMode, setStudyMode] = useState<StudyModeType>('topic');
+  
   const [scope, setScope] = useState<StudyScope>('all');
   const [topic, setTopic] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState<number>(20);
   const countOptions = [10, 20, 50];
+  
+  const [rangeStart, setRangeStart] = useState<number>(1);
+  const [rangeEnd, setRangeEnd] = useState<number>(20);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const availableTopics = useMemo(() => {
     const topics = (bundle?.practiceState.learningDashboardV2?.topicBreakdown ?? [])
@@ -44,7 +60,16 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
     setLoading(true);
     setError(null);
     try {
-      await onStartStudy({ scope, topic, count });
+      if (studyMode === 'range') {
+        if (rangeStart < 1 || rangeEnd < rangeStart) {
+           setError('Rango de preguntas inválido');
+           setLoading(false);
+           return;
+        }
+        await onStartStudy({ mode: 'range', scope: 'all', topic: '', count: (rangeEnd - rangeStart + 1), range: [rangeStart, rangeEnd] });
+      } else {
+        await onStartStudy({ mode: 'topic', scope, topic, count });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : isBasque ? 'Ezin izan da ikasketa hasi.' : 'No se ha podido iniciar el estudio.');
       setLoading(false);
@@ -57,15 +82,15 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
         <div className="hidden lg:block">
           <div className="flex items-center gap-3 text-slate-400">
             <BookOpen size={18} />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{isBasque ? 'Ikasketa' : 'Estudio'}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{isBasque ? 'Ikasketa' : 'Modo Estudio Profesional'}</span>
           </div>
           <h2 className="mt-3 text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
-            {isBasque ? 'Ikasi test baten moduan' : 'Estudia como un test'}
+            {isBasque ? 'Ikasi test baten moduan' : 'Territorios de Estudio'}
           </h2>
-          <p className="mt-2 text-slate-500 text-lg font-medium">
+          <p className="mt-2 text-slate-500 text-lg font-medium max-w-2xl">
             {isBasque
               ? 'Aukeratu temarioa eta gaia. Joan galderaz galdera, erantzun zuzena eta azalpena ikusiz.'
-              : 'Elige temario y tema. Avanza pregunta a pregunta, viendo la respuesta correcta y la explicacion.'}
+              : 'Asimila el temario de forma activa. Una pregunta a la vez, con subrayados y anotaciones persistentes.'}
           </p>
         </div>
 
@@ -81,85 +106,148 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 space-y-8">
+        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 space-y-8 relative overflow-hidden">
+          
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-700">
               <BookOpen size={18} className="text-indigo-600" />
-              <span className="font-black">{isBasque ? 'Konfigurazioa' : 'Configuracion'}</span>
+              <span className="font-black tracking-tight text-lg">{isBasque ? 'Konfigurazioa' : 'Configurar sesión de estudio'}</span>
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {isBasque ? 'Temarioa' : 'Temario'}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {(['all', 'common', 'specific'] as StudyScope[]).map((value) => (
-                <button
-                  key={value}
-                  onClick={() => setScope(value)}
-                  className={`py-3 rounded-2xl border-2 font-black text-xs transition-all ${
-                    scope === value
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-100 bg-white text-slate-500 hover:border-indigo-100'
-                  }`}
-                >
-                  {value === 'all'
-                    ? isBasque ? 'Denak' : 'Todos'
-                    : value === 'common'
-                      ? isBasque ? 'Orokorra' : 'Comun'
-                      : isBasque ? 'Espez.' : 'Espec.'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                {isBasque ? 'Gaia' : 'Tema'}
-              </div>
-              <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
-                {availableTopics.length}
-              </div>
-            </div>
-            <select
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+          <div className="flex border border-slate-200 p-1 rounded-2xl bg-slate-50 relative">
+            <button
+               onClick={() => setStudyMode('topic')}
+               className={`flex-1 ${studyMode === 'topic' ? 'bg-white shadow-sm border-slate-100 font-black text-indigo-700' : 'text-slate-500 font-semibold hover:text-slate-700'} py-3 px-4 rounded-xl text-sm transition-all`}
             >
-              <option value="">{isBasque ? 'Gai guztiak' : 'Todos los temas'}</option>
-              {availableTopics.map((label) => (
-                <option key={label} value={label}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              {isBasque ? 'Gaika' : 'Por Bloque / Tema'}
+            </button>
+            <button
+               onClick={() => setStudyMode('range')}
+               className={`flex-1 ${studyMode === 'range' ? 'bg-white shadow-sm border-slate-100 font-black text-indigo-700' : 'text-slate-500 font-semibold hover:text-slate-700'} py-3 px-4 rounded-xl text-sm transition-all`}
+            >
+              {isBasque ? 'Tartea' : 'Por Rango'}
+            </button>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-slate-700">
-              <Hash size={18} className="text-indigo-600" />
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                {isBasque ? 'Kopurua' : 'Cantidad'}
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {countOptions.map((value) => (
-                <button
-                  key={value}
-                  onClick={() => setCount(value)}
-                  className={`py-4 rounded-2xl border-2 font-black text-lg transition-all ${
-                    count === value
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-100 bg-white text-slate-400 hover:border-indigo-100'
-                  }`}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-          </div>
+          {studyMode === 'topic' ? (
+             <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                    {isBasque ? 'Temarioa' : 'Temario'}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['all', 'common', 'specific'] as StudyScope[]).map((value) => (
+                      <button
+                        key={value}
+                        onClick={() => setScope(value)}
+                        className={`py-3 rounded-2xl border-2 font-black text-xs transition-all ${
+                          scope === value
+                            ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-100 bg-white text-slate-500 hover:border-indigo-100'
+                        }`}
+                      >
+                        {value === 'all'
+                          ? isBasque ? 'Denak' : 'Todos'
+                          : value === 'common'
+                            ? isBasque ? 'Orokorra' : 'Común'
+                            : isBasque ? 'Espez.' : 'Espec.'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Gaia' : 'Tema (Opcional)'}
+                    </div>
+                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
+                      {availableTopics.length}
+                    </div>
+                  </div>
+                  <select
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                  >
+                    <option value="">{isBasque ? 'Gai guztiak' : 'Todos los temas del territorio'}</option>
+                    {availableTopics.map((label) => (
+                      <option key={label} value={label}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Hash size={18} className="text-indigo-600" />
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Kopurua' : 'Cantidad'}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {countOptions.map((value) => (
+                      <button
+                        key={value}
+                        onClick={() => setCount(value)}
+                        className={`py-4 rounded-2xl border-2 font-black text-lg transition-all ${
+                          count === value
+                            ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                            : 'border-slate-100 bg-white text-slate-400 hover:border-indigo-100'
+                        }`}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+             </div>
+          ) : (
+             <div className="space-y-8 animate-in slide-in-from-left-4 fade-in duration-300">
+                <div className="rounded-2xl bg-amber-50 border border-amber-100 p-5 mt-4">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-amber-100 rounded-lg p-1.5 mt-0.5">
+                       <BookOpen className="text-amber-600" size={16} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-amber-900 text-sm mb-1">{isBasque ? 'Galderen tartea' : 'Estudio por números'}</h4>
+                      <p className="text-xs text-amber-700/80 font-medium leading-relaxed">
+                        {isBasque ? 'Aukeratu hasiera eta amaiera.' : 'Introduce el rango exacto de preguntas. Especialmente útil para repaso incremental.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Hasiera' : 'Pregunta Inicio'}
+                    </div>
+                    <input 
+                      type="number"
+                      value={rangeStart}
+                      onChange={(e) => setRangeStart(parseInt(e.target.value) || 1)}
+                      min={1}
+                      className="w-full text-center rounded-2xl border-2 border-slate-200 bg-white px-4 py-4 text-xl font-black text-slate-700 outline-none focus:border-indigo-400" 
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Amaiera' : 'Pregunta Fin'}
+                    </div>
+                    <input 
+                      type="number"
+                      value={rangeEnd}
+                      onChange={(e) => setRangeEnd(parseInt(e.target.value) || 20)}
+                      min={rangeStart}
+                      className="w-full text-center rounded-2xl border-2 border-slate-200 bg-white px-4 py-4 text-xl font-black text-slate-700 outline-none focus:border-indigo-400" 
+                    />
+                  </div>
+                </div>
+             </div>
+          )}
 
           {error ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-rose-700 font-bold">
@@ -167,48 +255,62 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4">
-            <div className="flex items-center gap-2 text-slate-600">
-              <Tag size={16} className="text-indigo-600" />
-              <span className="text-xs font-black uppercase tracking-widest">{isBasque ? 'Oharra' : 'Nota'}</span>
-            </div>
-            <div className="mt-2 text-sm font-medium text-slate-600 leading-relaxed">
-              {isBasque
-                ? 'Ikasketa moduan saioa ez da estatistiketan sinkronizatzen. Irakurketa aktiboa da, ez ebaluazioa.'
-                : 'En modo Estudio no se sincroniza la sesion en estadisticas. Es lectura activa, no evaluacion.'}
-            </div>
-          </div>
-
           <button
             onClick={handleStart}
             disabled={loading}
-            className="w-full flex items-center justify-center gap-3 rounded-[2rem] bg-indigo-600 px-6 py-5 text-white font-black text-xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all hover:-translate-y-1 disabled:bg-slate-300 disabled:shadow-none"
+            className="w-full flex items-center justify-between gap-3 rounded-[2rem] bg-indigo-600 pl-8 pr-6 py-5 text-white shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:bg-indigo-700 transition-all hover:shadow-[0_10px_30px_rgba(79,70,229,0.4)] hover:-translate-y-1 disabled:bg-slate-300 disabled:shadow-none"
           >
-            {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <BookOpen size={20} />}
-            {isBasque ? 'Ikasketa hasi' : 'Iniciar estudio'}
+            <span className="font-black text-lg">{isBasque ? 'Ikasketa hasi' : 'Construir estudio'}</span>
+            <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm">
+               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ChevronRight size={20} className="" />}
+            </div>
           </button>
         </div>
 
         <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8">
-          <div className="flex items-center gap-3 text-slate-700">
+          <div className="flex items-center gap-3 text-slate-700 mb-8">
             <BookOpen size={18} className="text-indigo-600" />
-            <div className="font-black">{isBasque ? 'Nola funtzionatzen duen' : 'Como funciona'}</div>
+            <div className="font-black text-lg tracking-tight">{isBasque ? 'Nola funtzionatzen duen' : 'Filosofía del Modo Estudio'}</div>
           </div>
-          <div className="mt-6 space-y-4 text-slate-600 font-medium leading-relaxed">
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-6 py-5">
-              {isBasque
-                ? 'Galderaz galdera nabigatzen duzu, test batean bezala, baina ikasteko asmoz.'
-                : 'Navegas pregunta a pregunta como en un test, pero con intencion de aprendizaje.'}
+          
+          <div className="space-y-6">
+            <div className="flex gap-4">
+               <div className="w-10 h-10 shrink-0 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">1</div>
+               <div>
+                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">Sin presión de tiempo</h4>
+                 <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                   Diseñado no para acertar rápido, sino para asimilar el conocimiento profundo leyendo pregunta, opciones y explicación.
+                 </p>
+               </div>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-6 py-5">
-              {isBasque
-                ? 'Erantzutean zuzena markatzen da eta azalpena zabaldu dezakezu.'
-                : 'Al responder se marca la correcta y puedes desplegar la explicacion.'}
+            
+            <div className="flex gap-4">
+               <div className="w-10 h-10 shrink-0 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold">2</div>
+               <div>
+                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">Marcador semántico personal</h4>
+                 <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                   Subraya leyes en azul, plazos en naranja, excepciones en rojo y conceptos clave en verde. Todo se queda guardado para el futuro.
+                 </p>
+               </div>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-6 py-5">
-              {isBasque
-                ? 'Iragazi temarioz eta gaiz ezagutza bloke jakin batean kontzentratzeko.'
-                : 'Filtra por temario y tema para concentrarte en un bloque concreto de conocimiento.'}
+
+            <div className="flex gap-4">
+               <div className="w-10 h-10 shrink-0 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">3</div>
+               <div>
+                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">Anotaciones propias (Novedad)</h4>
+                 <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                   Añade reglas mnemotécnicas, dudas o reflexiones a cada pregunta en un espacio privado que viaja contigo.
+                 </p>
+               </div>
+            </div>
+            
+            <div className="mt-8 rounded-2xl border border-indigo-100 bg-indigo-50/50 px-6 py-5 flex items-center gap-4">
+               <div className="bg-indigo-100 text-indigo-700 p-2 rounded-xl">
+                 <Tag size={18} />
+               </div>
+               <p className="text-[13px] font-bold text-indigo-900/80 leading-relaxed">
+                 En modo Estudio no se penaliza ni se alteran tus métricas de Oposik. Es gimnasio puro.
+               </p>
             </div>
           </div>
         </div>

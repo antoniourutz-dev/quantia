@@ -26,6 +26,7 @@ import AuthScreen from './components/AuthScreen';
 import EntryScreen from './components/EntryScreen';
 import TestSelection from './components/TestSelection';
 import TestInterface from './components/TestInterface';
+import StudyInterface from './components/StudyInterface';
 import PostTestStats from './components/PostTestStats';
 import StudyExplorer from './components/StudyExplorer';
 import MobileTabBar from './components/MobileTabBar';
@@ -126,6 +127,15 @@ type View =
   | 'telemetry';
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const toLocalDayKey = (value: string | null | undefined) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 const curriculumHasActivity = (option: CurriculumOption) =>
   (option.sessionCount ?? 0) > 0 ||
   (option.answeredCount ?? 0) > 0 ||
@@ -651,7 +661,7 @@ export default function App() {
     if (!bundle) return [];
     return bundle.practiceState.recentSessions.map((sessionSummary) => ({
       id: sessionSummary.id,
-      date: (sessionSummary.finishedAt || sessionSummary.startedAt || '').slice(0, 10),
+      date: toLocalDayKey(sessionSummary.finishedAt || sessionSummary.startedAt || ''),
       score: sessionSummary.score,
       total: sessionSummary.total,
       mode: sessionSummary.mode,
@@ -1316,33 +1326,42 @@ export default function App() {
   );
 
   const handleStartStudy = useCallback(
-    async (params: { scope: 'all' | SyllabusType; topic: string; count: number }) => {
-      const { scope, topic, count } = params;
+    async (params: { mode?: string; scope: 'all' | SyllabusType; topic: string; count: number; range?: [number, number] }) => {
+      const { mode, scope, topic, count, range } = params;
 
-      const pool = await getStudyQuestionsSlice(500, 0, curriculum);
-      const normalizedTopic = topic.trim().toLowerCase();
-      const filtered = pool.filter((q) => {
-        if (scope !== 'all' && q.syllabus !== scope) return false;
-        if (normalizedTopic && !(q.category ?? '').toLowerCase().includes(normalizedTopic)) return false;
-        return true;
-      });
+      let selected: Question[] = [];
 
-      if (filtered.length === 0) {
-        throw new Error(
-          t(
-            'No hay preguntas disponibles para ese temario/tema en este momento.',
-            'Une honetan ez dago galderarik eskuragarri temario/gai horretarako.',
-          ),
-        );
+      if (mode === 'range' && range) {
+        const filtered = await getQuestionsByNumberRange({ curriculum, from: range[0], to: range[1], randomize: false });
+        if (filtered.length === 0) {
+          throw new Error('No hay preguntas disponibles en ese rango numérico.');
+        }
+        selected = filtered;
+      } else {
+        const pool = await getStudyQuestionsSlice(500, 0, curriculum);
+        const normalizedTopic = topic.trim().toLowerCase();
+        const filtered = pool.filter((q) => {
+          if (scope !== 'all' && q.syllabus !== scope) return false;
+          if (normalizedTopic && !(q.category ?? '').toLowerCase().includes(normalizedTopic)) return false;
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          throw new Error(
+            t(
+              'No hay preguntas disponibles para ese temario/tema en este momento.',
+              'Une honetan ez dago galderarik eskuragarri temario/gai horretarako.',
+            ),
+          );
+        }
+
+        const shuffled = [...filtered];
+        for (let i = shuffled.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        selected = shuffled.slice(0, Math.max(1, Math.min(count, shuffled.length)));
       }
-
-      const shuffled = [...filtered];
-      for (let i = shuffled.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-
-      const selected = shuffled.slice(0, Math.max(1, Math.min(count, shuffled.length)));
 
       const session: ActivePracticeSession = {
         id: createId(),
@@ -1403,17 +1422,18 @@ export default function App() {
     // Streak Logic: consecutive days with sessions
     const sessionDays = new Set<string>();
     for (const s of recentSessions) {
-      const dateStr = (s.finishedAt || s.startedAt || '').slice(0, 10);
+      const dateStr = toLocalDayKey(s.finishedAt || s.startedAt || '');
       if (dateStr) sessionDays.add(dateStr);
     }
 
     const sortedDays = Array.from(sessionDays).sort((a, b) => b.localeCompare(a));
     let streak = 0;
     if (sortedDays.length > 0) {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const yesterday = new Date();
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+      const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
       // Only count streak if active today or yesterday
       if (sortedDays[0] === todayStr || sortedDays[0] === yesterdayStr) {
@@ -2369,9 +2389,10 @@ export default function App() {
         ) : null}
 
         {currentView === 'study-active' && activeStudySession ? (
-          <TestInterface
+          <StudyInterface
             questions={activeStudyQuestions}
             mode={activeStudySession.mode}
+            curriculum={curriculum}
             onFinish={() => {
               setActiveStudySession(null);
               setCurrentView('study');
