@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Edit2, Eraser, AlertCircle, Book, Calendar } from 'lucide-react';
+import { Check, Edit2, Eraser, AlertCircle, Book, Calendar, X } from 'lucide-react';
 import { useAppLocale } from '../lib/locale';
 
 export type HighlightType = 'law_reference' | 'deadline' | 'exception' | 'core_concept';
@@ -21,10 +21,10 @@ interface HighlightableTextProps {
 }
 
 const HIGHLIGHT_STYLES: Record<HighlightType, string> = {
-  law_reference: 'bg-blue-100/80 text-blue-900 border-b-2 border-blue-300',
-  deadline: 'bg-orange-100/80 text-orange-900 border-b-2 border-orange-300',
-  exception: 'bg-rose-100/80 text-rose-900 border-b-2 border-rose-300',
-  core_concept: 'bg-emerald-100/80 text-emerald-900 border-b-2 border-emerald-300',
+  law_reference: 'bg-blue-400/30 text-blue-950 border-b-2 border-blue-500 shadow-[inset_0_-2px_0_0_#3b82f6]',
+  deadline: 'bg-orange-400/30 text-orange-950 border-b-2 border-orange-500 shadow-[inset_0_-2px_0_0_#f97316]',
+  exception: 'bg-rose-400/30 text-rose-950 border-b-2 border-rose-500 shadow-[inset_0_-2px_0_0_#f43f5e]',
+  core_concept: 'bg-emerald-400/30 text-emerald-950 border-b-2 border-emerald-500 shadow-[inset_0_-2px_0_0_#10b981]',
 };
 
 const HIGHLIGHT_ICONS: Record<HighlightType, React.ElementType> = {
@@ -44,7 +44,7 @@ export default function HighlightableText({
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const containerRef = useRef<HTMLDivElement>(null);
-  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const [selectionRange, setSelectionRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
   const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
 
   const getAbsoluteOffset = useCallback((container: Node, targetNode: Node, localOffset: number) => {
@@ -86,14 +86,12 @@ export default function HighlightableText({
       end = temp;
     }
 
-    // Only allow if no overlap with existing?
-    // For simplicity, allow overlapping logic or trim it. But let's just let it be.
     if (end > start) {
-      setSelectionRange({ start, end });
+      setSelectionRange({ startIndex: start, endIndex: end });
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       setPopupPos({
-        top: Math.max(10, rect.top - 60),
+        top: Math.max(10, rect.top - 70), // Slightly higher
         left: Math.max(10, rect.left + rect.width / 2),
       });
     }
@@ -134,14 +132,15 @@ export default function HighlightableText({
 
   return (
     <div className="relative">
-      <div ref={containerRef} className="highlightable-text whitespace-pre-wrap leading-relaxed">
+      <div ref={containerRef} className="highlightable-text whitespace-pre-wrap leading-relaxed select-text">
         {chunks.map((chunk, i) => (
           <span
             key={i}
-            className={chunk.highlight ? HIGHLIGHT_STYLES[chunk.highlight.type] : ''}
+            className={`transition-all duration-300 ${chunk.highlight ? HIGHLIGHT_STYLES[chunk.highlight.type] : ''} ${chunk.highlight ? 'cursor-pointer hover:brightness-95' : ''}`}
             onClick={(e) => {
               if (!readOnly && chunk.highlight) {
                 e.stopPropagation();
+                // Custom confirm would be better, but keeping it functional for now
                 if (window.confirm(isBasque ? 'Nabarmendua kendu nahi duzu?' : '¿Eliminar este resaltado?')) {
                   onRemoveHighlight(chunk.highlight.id);
                   setSelectionRange(null);
@@ -158,64 +157,75 @@ export default function HighlightableText({
 
       {popupPos && selectionRange && !readOnly && createPortal(
         <div
-          className="fixed z-[9999] -translate-x-1/2 flex items-center gap-1.5 p-1.5 bg-slate-900 shadow-[0_10px_40px_rgba(0,0,0,0.3)] rounded-2xl animate-in fade-in zoom-in-95 duration-200"
+          className="fixed z-[10000] -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900 shadow-[0_15px_50px_rgba(0,0,0,0.5)] border border-white/10 rounded-[1.25rem] animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
           style={{ top: popupPos.top, left: popupPos.left }}
+          onMouseDown={(e) => e.stopPropagation()} // Prevent closing on click
         >
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'core_concept' });
               window.getSelection()?.removeAllRanges();
+              setPopupPos(null);
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 text-emerald-400 transition-colors"
-            title={isBasque ? 'Kontzeptu nagusia' : 'Concepto central'}
+            className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-emerald-500/20 text-emerald-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <Check size={20} />
+            <Check size={18} />
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Key</span>
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'law_reference' });
               window.getSelection()?.removeAllRanges();
+              setPopupPos(null);
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 text-blue-400 transition-colors"
-            title={isBasque ? 'Lege-erreferentzia' : 'Referencia legal'}
+            className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-blue-500/20 text-blue-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <Book size={20} />
+            <Book size={18} />
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Law</span>
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'deadline' });
               window.getSelection()?.removeAllRanges();
+              setPopupPos(null);
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 text-orange-400 transition-colors"
-            title={isBasque ? 'Epea' : 'Plazo'}
+            className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-orange-500/20 text-orange-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <Calendar size={20} />
+            <Calendar size={18} />
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Date</span>
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'exception' });
               window.getSelection()?.removeAllRanges();
+              setPopupPos(null);
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 text-rose-400 transition-colors"
-            title={isBasque ? 'Salbuespena' : 'Excepción'}
+            className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-rose-500/20 text-rose-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <AlertCircle size={20} />
+            <AlertCircle size={18} />
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Exc</span>
           </button>
           
-          <div className="w-px h-6 bg-white/10 mx-1" />
+          <div className="w-px h-8 bg-white/10 mx-1" />
           
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.preventDefault();
               window.getSelection()?.removeAllRanges();
+              setPopupPos(null);
             }}
-            className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/10 text-slate-400 transition-colors"
+            className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 text-slate-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <Eraser size={20} />
+            <X size={20} />
           </button>
         </div>,
         document.body

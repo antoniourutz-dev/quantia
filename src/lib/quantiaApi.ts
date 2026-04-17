@@ -938,16 +938,69 @@ const writeStudyState = (state: StudyQuestionData) => {
 };
 
 export const getStudyData = async (questionIds: string[]): Promise<StudyQuestionData> => {
-  // In a real scenario we'd query user_highlights and user_notes from DB here.
-  // For now we use the local persistence as requested.
+  const session = await getSafeSupabaseSession();
+  const userId = session?.user?.id;
+  
   const state = readStudyState();
   const res: StudyQuestionData = { highlights: {}, notes: {} };
-  
-  for (const qid of questionIds) {
-    if (state.highlights[qid]) res.highlights[qid] = state.highlights[qid];
-    if (state.highlights[`${qid}_exp`]) res.highlights[`${qid}_exp`] = state.highlights[`${qid}_exp`];
-    if (state.notes[qid]) res.notes[qid] = state.notes[qid];
+
+  // If no user, stick to local
+  if (!userId) {
+    for (const qid of questionIds) {
+      if (state.highlights[qid]) res.highlights[qid] = state.highlights[qid];
+      if (state.notes[qid]) res.notes[qid] = state.notes[qid];
+    }
+    return res;
   }
+
+  try {
+    // 1. Fetch Highlights from Cloud
+    const { data: cloudHighlights, error: hError } = await supabase
+      .from('user_highlights')
+      .select('*')
+      .in('question_id', questionIds)
+      .eq('user_id', userId);
+
+    if (!hError && cloudHighlights) {
+      cloudHighlights.forEach((item: any) => {
+        if (!res.highlights[item.question_id]) res.highlights[item.question_id] = [];
+        res.highlights[item.question_id].push({
+          id: item.id,
+          startIndex: item.start_index,
+          endIndex: item.end_index,
+          type: item.type as any
+        });
+      });
+    }
+
+    // 2. Fetch Notes from Cloud
+    const { data: cloudNotes, error: nError } = await supabase
+      .from('user_notes')
+      .select('question_id, content')
+      .in('question_id', questionIds)
+      .eq('user_id', userId);
+
+    if (!nError && cloudNotes) {
+      cloudNotes.forEach((item: any) => {
+        res.notes[item.question_id] = item.content;
+      });
+    }
+
+    // Sync back to local storage for offline use
+    const newState = { ...state };
+    Object.keys(res.highlights).forEach(qid => { newState.highlights[qid] = res.highlights[qid]; });
+    Object.keys(res.notes).forEach(qid => { newState.notes[qid] = res.notes[qid]; });
+    writeStudyState(newState);
+
+  } catch (err) {
+    console.error('Error fetching study data from Supabase:', err);
+    // Fallback to local
+    for (const qid of questionIds) {
+      if (state.highlights[qid]) res.highlights[qid] = state.highlights[qid];
+      if (state.notes[qid]) res.notes[qid] = state.notes[qid];
+    }
+  }
+
   return res;
 };
 
@@ -955,14 +1008,44 @@ export const saveStudyData = async (
   questionId: string, 
   data: { highlights?: TextHighlight[], notes?: string }
 ) => {
+  // Always update local first for immediate UI response
   const state = readStudyState();
-  if (data.highlights) {
-    state.highlights[questionId] = data.highlights;
-  }
-  if (data.notes !== undefined) {
-    state.notes[questionId] = data.notes;
-  }
+  if (data.highlights) state.highlights[questionId] = data.highlights;
+  if (data.notes !== undefined) state.notes[questionId] = data.notes;
   writeStudyState(state);
+
+  // Attempt Cloud Sync
+  const session = await getSafeSupabaseSession();
+  const userId = session?.user?.id;
+  if (!userId) return;
+
+  try {
+    if (data.highlights) {
+      await supabase.from('user_highlights').delete().eq('question_id', questionId).eq('user_id', userId);
+      
+      const rows = data.highlights.map(h => ({
+        user_id: userId,
+        question_id: questionId,
+        start_index: h.startIndex,
+        end_index: h.endIndex,
+        type: h.type
+      }));
+      
+      if (rows.length > 0) {
+        await supabase.from('user_highlights').insert(rows);
+      }
+    }
+
+    if (data.notes !== undefined) {
+      await supabase.from('user_notes').upsert({
+        user_id: userId,
+        question_id: questionId,
+        content: data.notes
+      }, { onConflict: 'user_id,question_id' });
+    }
+  } catch (err) {
+    console.error('Error saving study data to Supabase:', err);
+  }
 };
 
 export const setLastVisitedStudyQuestion = (questionId: string) => {

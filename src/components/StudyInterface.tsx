@@ -157,29 +157,29 @@ export default function StudyInterface({
 
       <div className="mx-2 sm:mx-0 flex flex-col bg-white transition-all duration-500 rounded-3xl sm:rounded-[2.25rem] border border-slate-100 shadow-sm sm:p-6 pb-4 sm:pb-6 relative overflow-hidden">
         
-        <div className="absolute top-4 right-4 z-20">
-          <button
-            onClick={() => {
-              setCurrentNote(notesMap[currentQuestion.id] || '');
-              setIsNoteDrawerOpen(true);
-            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-              hasNote ? 'bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            <MessageSquare size={14} />
-            {hasNote ? (isBasque ? 'Oharra du' : 'Tiene nota') : (isBasque ? 'Oharra' : 'Nota')}
-          </button>
-        </div>
+        {/* Note button moved inside header for better visibility */}
+
 
         <div className="px-4 sm:px-0 pb-4 pt-4 sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 sm:border-transparent transition-all">
-          <div className="mb-2 flex items-center justify-between gap-2 pr-24">
-            <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-md">
               {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Práctica')}
             </span>
+            <button
+              onClick={() => {
+                setCurrentNote(notesMap[currentQuestion.id] || '');
+                setIsNoteDrawerOpen(true);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${
+                hasNote ? 'bg-amber-500 text-white shadow-amber-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}
+            >
+              <MessageSquare size={12} strokeWidth={3} />
+              {hasNote ? (isBasque ? 'Oharrarekin' : 'Con Nota') : (isBasque ? 'Oharra' : 'Nota')}
+            </button>
           </div>
 
-          <div className="text-[17px] sm:text-[19px] font-extrabold leading-tight text-slate-800 pr-1 select-text">
+          <div className="text-[17px] sm:text-[19px] font-extrabold leading-relaxed text-slate-800 pr-1 select-text">
             <HighlightableText
               text={currentQuestion.text}
               highlights={highlightsMap[currentQuestion.id] || []}
