@@ -119,6 +119,18 @@ export default function TestSelection({
       variant: 'section',
     });
   };
+  const formatCustomContentScopeLabel = (scope: CustomPracticeContentScope) => {
+    if (scope === 'all_opposition') {
+      return isBasque ? 'Oposizio osoa' : 'Toda la oposición';
+    }
+    if (scope === 'common_only') {
+      return formatSyllabusLabel('common', locale, { curriculum });
+    }
+    if (scope === 'specific_only') {
+      return formatSyllabusLabel('specific', locale, { curriculum });
+    }
+    return `${formatSyllabusLabel('common', locale, { curriculum })} + ${formatSyllabusLabel('specific', locale, { curriculum })}`;
+  };
 
   useEffect(() => {
     if (!usesLawSelection) return;
@@ -559,10 +571,10 @@ export default function TestSelection({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {([
-                      { id: 'all_opposition', label: isBasque ? 'Oposizio osoa' : 'Toda la oposición' },
-                      { id: 'common_only', label: isBasque ? 'Arrunta bakarrik' : 'Solo común' },
-                      { id: 'specific_only', label: isBasque ? 'Espezifikoa bakarrik' : 'Solo específico' },
-                      { id: 'common_and_specific', label: isBasque ? 'Arrunta + espezifikoa' : 'Común + específico' },
+                      { id: 'all_opposition', label: formatCustomContentScopeLabel('all_opposition') },
+                      { id: 'common_only', label: formatCustomContentScopeLabel('common_only') },
+                      { id: 'specific_only', label: formatCustomContentScopeLabel('specific_only') },
+                      { id: 'common_and_specific', label: formatCustomContentScopeLabel('common_and_specific') },
                     ] as const).map((opt) => (
                       <button
                         key={opt.id}
@@ -928,10 +940,10 @@ export default function TestSelection({
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {([
-                  { id: 'all_opposition', label: isBasque ? 'Oposizio osoa' : 'Toda la oposición' },
-                  { id: 'common_only', label: isBasque ? 'Arrunta bakarrik' : 'Solo común' },
-                  { id: 'specific_only', label: isBasque ? 'Espezifikoa bakarrik' : 'Solo específico' },
-                  { id: 'common_and_specific', label: isBasque ? 'Arrunta + espezifikoa' : 'Común + específico' },
+                  { id: 'all_opposition', label: formatCustomContentScopeLabel('all_opposition') },
+                  { id: 'common_only', label: formatCustomContentScopeLabel('common_only') },
+                  { id: 'specific_only', label: formatCustomContentScopeLabel('specific_only') },
+                  { id: 'common_and_specific', label: formatCustomContentScopeLabel('common_and_specific') },
                 ] as const).map((opt) => (
                   <button
                     key={opt.id}

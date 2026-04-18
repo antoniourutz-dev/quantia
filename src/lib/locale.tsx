@@ -4,7 +4,8 @@ export type AppLocale = 'es' | 'eu';
 
 const LocaleContext = createContext<AppLocale>('es');
 
-const BASQUE_CURRICULUM_PREFIXES = ['goi-teknikaria', 'goi_teknikaria'];
+const GOI_TEKNIKARIA_CURRICULUM_PREFIXES = ['goi-teknikaria', 'goi_teknikaria'];
+const BASQUE_CURRICULUM_PREFIXES = [...GOI_TEKNIKARIA_CURRICULUM_PREFIXES];
 
 const normalizeCurriculumId = (curriculum: string | null | undefined) =>
   String(curriculum ?? '').trim().toLowerCase().replace(/_/g, '-');
@@ -17,10 +18,13 @@ export const isBasqueCurriculum = (curriculum: string | null | undefined) => {
 };
 
 export const isGoiTeknikariaCurriculum = (curriculum: string | null | undefined) =>
-  isBasqueCurriculum(curriculum);
+  GOI_TEKNIKARIA_CURRICULUM_PREFIXES.some((prefix) => {
+    const normalized = normalizeCurriculumId(curriculum);
+    return normalized === prefix || normalized.startsWith(`${prefix}-`);
+  });
 
 export const isSingleScopeCurriculum = (curriculum: string | null | undefined) =>
-  isBasqueCurriculum(curriculum);
+  isBasqueCurriculum(curriculum) && !isGoiTeknikariaCurriculum(curriculum);
 
 export const isLawSelectionCurriculum = (curriculum: string | null | undefined) =>
   normalizeCurriculumId(curriculum) === 'leyes-generales';
