@@ -1,8 +1,8 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, CheckCircle2, Search } from 'lucide-react';
-import type { PracticeQuestionScopeFilter, Question, QuestionBankListItem } from '../types';
+import { formatSyllabusLabel, type PracticeQuestionScopeFilter, type Question, type QuestionBankListItem } from '../types';
 import { isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
-import { getQuestionBankPage, getQuestionBankQuestionDetail } from '../lib/quantiaApi';
+import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail } from '../lib/quantiaApi';
 
 type StudyScope = PracticeQuestionScopeFilter;
 
@@ -10,10 +10,9 @@ const PAGE_SIZE = 120;
 
 const toAnswerLabel = (value: QuestionBankListItem['correctAnswer']) => value.toUpperCase();
 
-const formatScopeLabel = (scope: StudyScope, locale: 'es' | 'eu') => {
+const formatScopeLabel = (scope: StudyScope, locale: 'es' | 'eu', curriculum: string) => {
   if (scope === 'all') return locale === 'eu' ? 'Denak' : 'Todos';
-  if (scope === 'common') return locale === 'eu' ? 'Orokorra' : 'Común';
-  return locale === 'eu' ? 'Espez.' : 'Espec.';
+  return formatSyllabusLabel(scope, locale, { curriculum, variant: 'compact' });
 };
 
 export default function StudyQuestionBank({
@@ -230,7 +229,7 @@ export default function StudyQuestionBank({
                       : 'border-slate-100 bg-white text-slate-500 hover:border-indigo-100'
                   }`}
                 >
-                  {formatScopeLabel(value, locale)}
+                  {formatScopeLabel(value, locale, curriculum)}
                 </button>
               ))}
             </div>
@@ -356,12 +355,12 @@ export default function StudyQuestionBank({
                     <div className="mt-2 text-sm font-black text-slate-900 leading-relaxed">{selectedQuestion.text}</div>
                     {selectedQuestion.category ? (
                       <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-                        {selectedQuestion.category}
+                        {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ?? selectedQuestion.category}
                       </div>
                     ) : null}
                   </div>
                   <div className="shrink-0 px-3 py-2 rounded-2xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
-                    {formatScopeLabel(selectedQuestion.syllabus, locale)}
+                    {formatScopeLabel(selectedQuestion.syllabus, locale, curriculum)}
                   </div>
                 </div>
 

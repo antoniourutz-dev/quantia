@@ -8,6 +8,7 @@ import {
   toOptionKey,
   toSyllabusType,
 } from './questionContracts';
+import { getLocaleForCurriculum, isGoiTeknikariaCurriculum } from './locale';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -28,6 +29,7 @@ import type {
   OptionKey,
   PracticeCategoryRiskSummary,
   PracticeExamTarget,
+  PracticeMode,
   PracticeQuestionScopeFilter,
   AdminQuestionDetail,
   AdminQuestionListItem,
@@ -40,6 +42,7 @@ import type {
   SyllabusType,
   TestAnswer,
 } from '../types';
+import { formatSyllabusLabel } from '../types';
 
 export const DEFAULT_CURRICULUM = 'osakidetza_admin';
 
@@ -94,6 +97,10 @@ const questionBankIndexCache = new Map<string, Promise<QuestionBankCacheRow[]>>(
 const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: DEFAULT_CURRICULUM, label: 'Administrativo' },
   { id: 'auxiliar_administrativo', label: 'Auxiliar administrativo' },
+  {
+    id: 'tecnico_superior_administracion_y_gestion',
+    label: 'Técnico/a Superior Administración y Gestión',
+  },
   { id: 'general', label: 'General' },
   { id: 'leyes_generales', label: 'Leyes Generales' },
   { id: 'goi-teknikaria', label: 'Goi-teknikaria' },
@@ -236,6 +243,18 @@ const CURRICULUM_ALIAS_GROUPS = [
     key: 'goi-teknikaria',
     label: 'Goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
+  },
+  {
+    key: 'tecnico-superior-administracion-y-gestion',
+    label: 'Técnico/a Superior Administración y Gestión',
+    aliases: [
+      'tecnico_superior_administracion_y_gestion',
+      'tecnico-superior-administracion-y-gestion',
+      'tecnico superior administracion y gestion',
+      'técnico superior administración y gestión',
+      'tecnico/a superior administracion y gestion',
+      'técnico/a superior administración y gestión',
+    ],
   },
 ] as const;
 
@@ -666,7 +685,10 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
         row.raw_scope ??
         row.scope ??
         row.scope_key ??
-        row.grupo,
+        row.grupo ??
+        row.temario_pregunta ??
+        row.tema_pregunta ??
+        row.subject_key,
     ) ?? 'common';
 
   return {
@@ -725,16 +747,10 @@ const resolveQuestionBankTargets = async (
 };
 
 const queryQuestionBankRowsForTarget = async (target: CurriculumQueryTarget) => {
-  let query = supabase
+  const query = supabase
     .from('preguntas')
     .select(QUESTION_BANK_LIST_SELECT)
     .in('curriculum', target.candidates);
-
-  if (target.scope === 'common') {
-    query = query.eq('grupo', 'comun');
-  } else if (target.scope === 'specific') {
-    query = query.eq('grupo', 'especifico');
-  }
 
   const { data, error } = await query
     .order('numero', { ascending: true })
@@ -746,7 +762,9 @@ const queryQuestionBankRowsForTarget = async (target: CurriculumQueryTarget) => 
 
   return ((data ?? []) as Array<Record<string, unknown>>)
     .map(mapQuestionBankCacheRow)
-    .filter((row): row is QuestionBankCacheRow => Boolean(row));
+    .filter((row): row is QuestionBankCacheRow => Boolean(row))
+    .filter((row) => target.scope === 'all' || row.syllabus === target.scope)
+    ;
 };
 
 const mergeQuestionBankRows = (rows: QuestionBankCacheRow[]) => {
@@ -837,8 +855,18 @@ export const getCurriculumCategoryGroupLabel = (
   curriculum: string,
   category: string | null | undefined,
 ) => {
+  const raw = String(category ?? '').trim();
+  if (!raw) return null;
+
+  if (isGoiTeknikariaCurriculum(curriculum)) {
+    const syllabus = parseSyllabusType(raw);
+    if (syllabus) {
+      return formatSyllabusLabel(syllabus, getLocaleForCurriculum(curriculum), { curriculum });
+    }
+  }
+
   if (!isLawSelectionCurriculum(curriculum)) {
-    return String(category ?? '').trim() || null;
+    return raw;
   }
 
   return getLawGroupLabel(category);
@@ -897,7 +925,13 @@ export const buildFallbackCurriculumOptions = (preferredCurriculum?: string) => 
 };
 
 const extractCurriculumId = (row: Record<string, unknown>) => {
-  const candidates = CURRICULUM_VALUE_PREFERENCE_ALIASES.map((key) => readText(row[key])).filter(
+  const nestedConfig =
+    row.config_json && typeof row.config_json === 'object' && !Array.isArray(row.config_json)
+      ? (row.config_json as Record<string, unknown>)
+      : null;
+  const sourceRow = nestedConfig ? { ...row, ...nestedConfig } : row;
+
+  const candidates = CURRICULUM_VALUE_PREFERENCE_ALIASES.map((key) => readText(sourceRow[key])).filter(
     (value): value is string => Boolean(value),
   );
 
@@ -982,6 +1016,14 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
   for (const qid of questionIds) {
     if (state.highlights[qid]) res.highlights[qid] = state.highlights[qid];
     if (state.notes[qid]) res.notes[qid] = state.notes[qid];
+
+    const expKey = `${qid}_exp`;
+    if (state.highlights[expKey]) res.highlights[expKey] = state.highlights[expKey];
+
+    for (let index = 0; index < 4; index += 1) {
+      const answerKey = `${qid}_ans_${index}`;
+      if (state.highlights[answerKey]) res.highlights[answerKey] = state.highlights[answerKey];
+    }
   }
 
   // If no user, stick to local
@@ -1303,21 +1345,26 @@ const getRecentActivitySessions = async () => {
 };
 
 const extractCurriculumOption = (row: Record<string, unknown>): CurriculumOption | null => {
-  const id = extractCurriculumId(row);
+  const nestedConfig =
+    row.config_json && typeof row.config_json === 'object' && !Array.isArray(row.config_json)
+      ? (row.config_json as Record<string, unknown>)
+      : null;
+  const sourceRow = nestedConfig ? { ...row, ...nestedConfig } : row;
+  const id = extractCurriculumId(sourceRow);
   if (!id) return null;
 
   return {
     id,
-    label: readFirstText(row, CURRICULUM_LABEL_ALIASES) ?? formatCurriculumLabel(id),
+    label: readFirstText(sourceRow, CURRICULUM_LABEL_ALIASES) ?? formatCurriculumLabel(id),
     questionCount: readOptionalNumber(
-      row.question_count ??
-        row.total_questions ??
-        row.questions_count ??
-        row.total,
+      sourceRow.question_count ??
+        sourceRow.total_questions ??
+        sourceRow.questions_count ??
+        sourceRow.total,
     ),
-    sessionCount: readOptionalNumber(row.total_sessions ?? row.session_count),
-    answeredCount: readOptionalNumber(row.total_answered ?? row.answered_count),
-    lastStudiedAt: readText(row.last_studied_at ?? row.last_answered_at ?? row.updated_at),
+    sessionCount: readOptionalNumber(sourceRow.total_sessions ?? sourceRow.session_count),
+    answeredCount: readOptionalNumber(sourceRow.total_answered ?? sourceRow.answered_count),
+    lastStudiedAt: readText(sourceRow.last_studied_at ?? sourceRow.last_answered_at ?? sourceRow.updated_at),
   };
 };
 
@@ -2396,6 +2443,70 @@ export const getPracticeQuestionsByIds = async (params: {
   return ordered.slice(0, limit);
 };
 
+const topicOptionsCache = new Map<string, Promise<string[]>>();
+
+export const getCurriculumTopicOptions = async (params: {
+  curriculum: string;
+  questionScope?: PracticeQuestionScopeFilter;
+}): Promise<string[]> => {
+  const curriculum = String(params.curriculum ?? '').trim() || DEFAULT_CURRICULUM;
+  const scope = params.questionScope ?? 'all';
+  const cacheKey = `${curriculum}::${scope}`;
+  const cached = topicOptionsCache.get(cacheKey);
+  if (cached) return cached;
+
+  const task = (async () => {
+    const snapshot = await getQuestionSnapshotFromTables({
+      curriculum,
+      maxQuestions: 5000,
+      questionScope: scope,
+    });
+    const topics = new Set<string>();
+    for (const q of snapshot) {
+      const label = getCurriculumCategoryGroupLabel(curriculum, q.category);
+      if (label) topics.add(label);
+    }
+    return Array.from(topics).sort((a, b) => a.localeCompare(b, 'es'));
+  })().catch((error) => {
+    topicOptionsCache.delete(cacheKey);
+    throw error;
+  });
+
+  topicOptionsCache.set(cacheKey, task);
+  return task;
+};
+
+export const getCustomPracticeBatch = async (params: {
+  curriculum: string;
+  limit: number;
+  syllabus: SyllabusType | null;
+  topicId: string | null;
+  randomize?: boolean;
+}): Promise<Question[]> => {
+  const curriculum = String(params.curriculum ?? '').trim() || DEFAULT_CURRICULUM;
+  const limit = Math.max(1, Math.min(200, Math.trunc(params.limit)));
+  const randomize = params.randomize !== false;
+  const scope: PracticeQuestionScopeFilter = params.syllabus ?? 'all';
+  const topicId = String(params.topicId ?? '').trim() || null;
+
+  const snapshot = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: 5000,
+    questionScope: scope,
+  });
+
+  const normalizedTarget = topicId
+    ? normalizeCategoryLabel(getCurriculumCategoryGroupLabel(curriculum, topicId) ?? topicId)
+    : null;
+
+  const filtered = normalizedTarget
+    ? snapshot.filter((q) => normalizeCategoryLabel(getCurriculumCategoryGroupLabel(curriculum, q.category)) === normalizedTarget)
+    : snapshot;
+
+  const shuffled = randomize ? shuffleQuestions(filtered) : filtered;
+  return shuffled.slice(0, limit);
+};
+
 export const getWeakPracticeBatch = async (
   batchSize: number,
   curriculum = DEFAULT_CURRICULUM,
@@ -2639,7 +2750,9 @@ const mapAdminQuestionListItem = (row: Record<string, unknown>): AdminQuestionLi
   if (!id) return null;
   const text = readText(row.pregunta ?? row.question_text ?? row.text);
   if (!text) return null;
-  const syllabus = toSyllabusType(row.grupo ?? row.scope ?? row.syllabus);
+  const syllabus = toSyllabusType(
+    row.grupo ?? row.scope ?? row.syllabus ?? row.temario_pregunta ?? row.tema_pregunta ?? row.subject_key,
+  );
   const correctAnswer = toOptionKey(row.respuesta_correcta ?? row.correct_answer ?? row.correctAnswer);
   const number = readNumber(row.numero ?? row.question_number ?? row.number);
   return {
@@ -3299,11 +3412,25 @@ export const buildRandomPracticeSession = (questions: Question[]): ActivePractic
   nextStandardBatchStartIndex: null,
 });
 
+const normalizePracticeModeForCloudSync = (mode: PracticeMode): PracticeMode => {
+  switch (mode) {
+    case 'custom':
+    case 'mixed':
+    case 'anti_trap':
+      return 'standard';
+    case 'weakest':
+      return 'review';
+    default:
+      return mode;
+  }
+};
+
 export const recordPracticeSessionInCloud = async (
   session: ActivePracticeSession,
   answers: TestAnswer[],
   curriculum = DEFAULT_CURRICULUM,
 ) => {
+  const syncedMode = normalizePracticeModeForCloudSync(session.mode);
   const attempts = answers
     .map((answer) => {
       const question = session.questions.find((item) => item.id === answer.questionId);
@@ -3333,7 +3460,7 @@ export const recordPracticeSessionInCloud = async (
     body: {
       session: {
         id: session.id,
-        mode: session.mode,
+        mode: syncedMode,
         title: session.title,
         startedAt: session.startedAt,
         batchNumber: session.batchNumber,

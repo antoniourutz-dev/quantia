@@ -901,16 +901,60 @@ export const buildCoachCopySeed = ({
   extra?: string;
 }) => [curriculum.trim().toLowerCase(), (username ?? '').trim().toLowerCase(), state, extra ?? 'base'].join(':');
 
+export const buildVisibleStatusLabel = (params: {
+  locale: CopyLocale;
+  readiness: number | null;
+  backlogOverdueCount: number;
+  weeklyQuestions: number;
+  observedOk: boolean;
+  observedAccuracy: number | null;
+  pressureGapPct: number | null;
+}) => {
+  const isBasque = params.locale === 'eu';
+  const t = (es: string, eu: string) => (isBasque ? eu : es);
+
+  if (params.backlogOverdueCount >= 8) return t('Mucho por repasar', 'Asko berrikusteko');
+  if (params.backlogOverdueCount >= 3) return t('Repaso pendiente', 'Errepasoa zain');
+
+  if (params.pressureGapPct != null && params.pressureGapPct >= 10) {
+    return t('Te cuesta en simulacro', 'Simulakroan kostatzen zaizu');
+  }
+
+  if (params.observedOk && params.observedAccuracy != null) {
+    if (params.observedAccuracy < 55) return t('Estás fallando más', 'Gehiago huts egiten ari zara');
+    if (params.observedAccuracy < 70) return t('Precisión irregular', 'Doitasun irregularra');
+  }
+
+  if (params.weeklyQuestions === 0) return t('Te conviene retomar', 'Komeni zaizu berriz hastea');
+  if (params.weeklyQuestions < 20) return t('Has bajado ritmo', 'Erritmoa jaitsi zaizu');
+  if (params.weeklyQuestions >= 60) return t('Buen ritmo', 'Erritmo ona');
+
+  if (params.readiness != null && params.readiness >= 70) return t('Vas con control', 'Kontrolpean zoaz');
+  if (params.readiness != null && params.readiness >= 55) return t('Bien encaminado', 'Bide onean');
+  if (params.readiness != null && params.readiness >= 40) return t('Base sin cerrar', 'Oinarria itxi gabe');
+  return t('Toca afinar', 'Fintzea tokatzen da');
+};
+
 export const buildHeaderStatusCopy = ({
   locale,
   readiness,
   hasReliableReading,
   confidence,
+  backlogOverdueCount,
+  weeklyQuestions,
+  observedOk,
+  observedAccuracy,
+  pressureGapPct,
 }: {
   locale: CopyLocale;
   readiness: number | null;
   hasReliableReading: boolean;
   confidence: 'high' | 'medium' | 'low';
+  backlogOverdueCount: number;
+  weeklyQuestions: number;
+  observedOk: boolean;
+  observedAccuracy: number | null;
+  pressureGapPct: number | null;
 }) => {
   const readingLabel = !hasReliableReading
     ? locale === 'eu'
@@ -931,11 +975,17 @@ export const buildHeaderStatusCopy = ({
   const readinessLabel =
     readiness == null
       ? locale === 'eu'
-        ? 'Uneko puntua: -'
-        : 'Punto actual: -'
-      : locale === 'eu'
-        ? `Uneko puntua: ${readiness}%`
-        : `Punto actual: ${readiness}%`;
+        ? '-'
+        : '-'
+      : buildVisibleStatusLabel({
+          locale,
+          readiness,
+          backlogOverdueCount,
+          weeklyQuestions,
+          observedOk,
+          observedAccuracy,
+          pressureGapPct,
+        });
 
   return {
     readingLabel,

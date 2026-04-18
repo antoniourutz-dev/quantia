@@ -16,6 +16,9 @@ export const isBasqueCurriculum = (curriculum: string | null | undefined) => {
   );
 };
 
+export const isGoiTeknikariaCurriculum = (curriculum: string | null | undefined) =>
+  isBasqueCurriculum(curriculum);
+
 export const isSingleScopeCurriculum = (curriculum: string | null | undefined) =>
   isBasqueCurriculum(curriculum);
 

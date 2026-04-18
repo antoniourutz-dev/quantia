@@ -127,6 +127,25 @@ export default function EntryScreen({
     }
   };
 
+  const handleOpenRequest = () => {
+    trackEffect({
+      surface: 'entry',
+      action: 'cta_clicked',
+      context: { cta: t('Solicitar ingreso', 'Sarrera eskatu') },
+    });
+    setMode('request');
+    setSent(false);
+  };
+
+  const handleEnter = () => {
+    trackEffect({
+      surface: 'entry',
+      action: 'cta_clicked',
+      context: { cta: t('Entrar', 'Sartu') },
+    });
+    onLogin();
+  };
+
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-white via-slate-50 to-indigo-50 px-6 py-12">
       <div className="absolute top-0 right-0 -mt-28 -mr-28 h-[760px] w-[760px] rounded-full bg-indigo-500 opacity-15 blur-[170px]" />
@@ -135,7 +154,7 @@ export default function EntryScreen({
 
       <div className="relative z-10 w-full max-w-6xl">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-8 items-start">
-          <div className="rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 text-slate-900 shadow-xl">
+          <div className="order-2 rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 text-slate-900 shadow-xl lg:order-1">
             <div className="inline-flex items-center gap-3 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-indigo-700">
               <GraduationCap size={14} />
               {t('Preparación de oposiciones', 'Oposizio prestaketa')}
@@ -166,10 +185,21 @@ export default function EntryScreen({
                   'Zure oposizioa ez badago, eskatu sarrera eta esan zein den.',
                 )}
               </div>
+              {mode !== 'request' ? (
+                <button
+                  type="button"
+                  onClick={handleOpenRequest}
+                  className="mt-5 inline-flex items-center justify-center gap-3 rounded-[2rem] bg-indigo-600 px-6 py-4 text-white font-black text-base shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all hover:-translate-y-0.5"
+                >
+                  <Mail size={18} />
+                  {t('Solicitar ingreso', 'Sarrera eskatu')}
+                  <ArrowRight size={18} />
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className="rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 shadow-xl">
+          <div className="order-1 rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 shadow-xl lg:order-2">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <div className="flex items-center gap-2 text-slate-400">
@@ -249,31 +279,7 @@ export default function EntryScreen({
               <div className="mt-10 space-y-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    trackEffect({
-                      surface: 'entry',
-                      action: 'cta_clicked',
-                      context: { cta: t('Solicitar ingreso', 'Sarrera eskatu') },
-                    });
-                    setMode('request');
-                    setSent(false);
-                  }}
-                  className="w-full flex items-center justify-center gap-3 rounded-[2rem] bg-indigo-600 px-6 py-5 text-white font-black text-lg shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all hover:-translate-y-0.5"
-                >
-                  <Mail size={20} />
-                  {t('Solicitar ingreso', 'Sarrera eskatu')}
-                  <ArrowRight size={20} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    trackEffect({
-                      surface: 'entry',
-                      action: 'cta_clicked',
-                      context: { cta: t('Entrar', 'Sartu') },
-                    });
-                    onLogin();
-                  }}
+                  onClick={handleEnter}
                   className="w-full rounded-[2rem] border border-slate-200 bg-white px-6 py-5 text-slate-700 font-black text-lg hover:bg-slate-50 transition-all"
                 >
                   {t('Entrar', 'Sartu')}

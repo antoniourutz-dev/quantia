@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
   CheckCircle2,
   XCircle,
   BarChart3,
@@ -20,6 +21,7 @@ import { useAppLocale } from '../lib/locale';
 import { storeSessionCloseSummary } from '../lib/continuity';
 import { trackDecision, trackEffect } from '../lib/telemetry';
 import { buildSessionEndExperience } from '../lib/sessionEndExperience';
+import { getCurriculumCategoryGroupLabel } from '../lib/quantiaApi';
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
@@ -34,6 +36,7 @@ interface PostTestStatsProps {
     syllabus: SyllabusType | null;
   }) => void;
   onRestart: () => void;
+  onGoBack: () => void;
   onGoHome: () => void;
 }
 
@@ -46,6 +49,7 @@ export default function PostTestStats({
   coachContext = null,
   onStartNextSession,
   onRestart,
+  onGoBack,
   onGoHome,
 }: PostTestStatsProps) {
   const locale = useAppLocale();
@@ -81,7 +85,10 @@ export default function PostTestStats({
   });
 
   const lawStats = questions.reduce((acc, q) => {
-    const law = (q.category ?? '').trim() || (isBasque ? 'Beste arauak' : 'Otras normas');
+    const law =
+      getCurriculumCategoryGroupLabel(curriculum, q.category)?.trim() ||
+      (q.category ?? '').trim() ||
+      (isBasque ? 'Beste arauak' : 'Otras normas');
     if (!acc[law]) acc[law] = { total: 0, correct: 0 };
     acc[law].total += 1;
     const answer = answers.find((a) => a.questionId === q.id);
@@ -114,7 +121,10 @@ export default function PostTestStats({
       return {
         index: index + 1,
         id: q.id,
-        topic: q.category ?? (isBasque ? 'Orokorra' : 'General'),
+        topic:
+          getCurriculumCategoryGroupLabel(curriculum, q.category) ??
+          q.category ??
+          (isBasque ? 'Orokorra' : 'General'),
         text: q.text,
         selected,
         selectedText: findOptionText(selected),
@@ -206,12 +216,7 @@ export default function PostTestStats({
                 </div>
              </div>
           </div>
-          {sessionEnd.continuityLine && (
-             <div className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-indigo-600">
-               <Zap size={12} />
-               {sessionEnd.continuityLine}
-             </div>
-          )}
+          {null}
         </div>
 
         {/* HEADLINE & MACRO LECTURE */}
@@ -433,15 +438,26 @@ export default function PostTestStats({
         </div>
       ) : null}
 
-      <div className="flex justify-center pt-2 pb-6">
+      <div className="grid grid-cols-1 gap-3 pt-2 pb-6 sm:grid-cols-2">
+        <button
+          onClick={() => {
+            trackEffect({ surface: 'session_end', curriculum, action: 'cta_clicked', context: { mode, cta: 'go_back' } });
+            onGoBack();
+          }}
+          className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[13px] font-black text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+        >
+          <ArrowLeft size={16} />
+          {isBasque ? 'Itzuli' : 'Volver'}
+        </button>
         <button
           onClick={() => {
             trackEffect({ surface: 'session_end', curriculum, action: 'go_home', context: { mode } });
             onGoHome();
           }}
-          className="text-[12px] font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest px-6 py-4"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-[13px] font-black text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-100"
         >
-          {isBasque ? 'Panelera itzuli' : 'Volver al panel principal'}
+          <LayoutDashboard size={16} />
+          {isBasque ? 'Panel nagusira itzuli' : 'Volver al panel principal'}
         </button>
       </div>
     </div>

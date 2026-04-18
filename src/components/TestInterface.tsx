@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { FinishedTestPayload, OptionKey, PracticeMode, Question, TestAnswer } from '../types';
 import { useAppLocale } from '../lib/locale';
+import HighlightableText from './HighlightableText';
 
 interface TestInterfaceProps {
   questions: Question[];
@@ -25,6 +26,8 @@ interface TestInterfaceProps {
       primaryTag: 'repeated_error' | 'recent_trouble' | 'pressure_trouble' | 'memory_fragile' | 'mixed';
     }
   > | null;
+  supportMode?: { showMarks: boolean; showNotes: boolean } | null;
+  studyData?: { highlights: Record<string, any[]>; notes: Record<string, string> } | null;
   onFinish: (payload: FinishedTestPayload) => void | Promise<void>;
   onCancel: () => void;
   isFinishing?: boolean;
@@ -35,6 +38,8 @@ export default function TestInterface({
   mode,
   reviewPriority = null,
   frictionByQuestionId = null,
+  supportMode = null,
+  studyData = null,
   onFinish,
   onCancel,
   isFinishing = false,
@@ -54,6 +59,7 @@ export default function TestInterface({
   const [timeLeft, setTimeLeft] = useState(() => (mode === 'simulacro' ? questions.length * 90 : questions.length * 60));
   const [questionStartAt, setQuestionStartAt] = useState(() => Date.now());
   const [finishRequested, setFinishRequested] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const finishStartedRef = useRef(false);
   const wasFinishingRef = useRef(false);
 
@@ -62,6 +68,8 @@ export default function TestInterface({
   const selectedAnswer = selectedAnswers[currentIndex];
   const isSimulacro = mode === 'simulacro';
   const closingSession = finishRequested || isFinishing;
+  const showMarks = Boolean(supportMode?.showMarks);
+  const showNotes = Boolean(supportMode?.showNotes);
 
   const score = useMemo(
     () => answerDetails.filter((answer) => answer?.isCorrect).length,
@@ -105,6 +113,10 @@ export default function TestInterface({
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [currentIndex]);
+
+  useEffect(() => {
+    setNoteOpen(false);
+  }, [currentQuestion?.id]);
 
   const requestFinish = useCallback(() => {
     if (finishStartedRef.current) return;
@@ -345,12 +357,53 @@ export default function TestInterface({
               </div>
 
               <h2 className="text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
-                {currentQuestion.text}
+                {showMarks ? (
+                  <HighlightableText
+                    text={currentQuestion.text}
+                    highlights={(studyData?.highlights?.[currentQuestion.id] ?? []) as any}
+                    onAddHighlight={() => {}}
+                    onRemoveHighlight={() => {}}
+                    readOnly
+                    maxSelectionChars={120}
+                  />
+                ) : (
+                  currentQuestion.text
+                )}
               </h2>
+              {showNotes ? (
+                <div className="mt-3">
+                  {(() => {
+                    const note = studyData?.notes?.[currentQuestion.id] ?? '';
+                    const trimmed = String(note).trim();
+                    if (!trimmed) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setNoteOpen((prev) => !prev)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50"
+                      >
+                        <Info size={14} className="text-indigo-600" />
+                        {noteOpen
+                          ? isBasque
+                            ? 'Oharra ezkutatu'
+                            : 'Ocultar nota'
+                          : isBasque
+                            ? 'Oharra ikusi'
+                            : 'Ver nota'}
+                      </button>
+                    );
+                  })()}
+                </div>
+              ) : null}
+              {showNotes && noteOpen ? (
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700">
+                  {studyData?.notes?.[currentQuestion.id]}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-col flex-1 divide-y divide-slate-100 bg-slate-50/30 sm:rounded-2xl sm:border sm:border-slate-100 overflow-hidden">
-              {currentQuestion.options.map((option) => {
+              {currentQuestion.options.map((option, optionIndex) => {
                 const isSelected = selectedAnswer === option.id;
                 const isAnswerCorrect = option.id === currentQuestion.correctAnswer;
 
@@ -410,7 +463,20 @@ export default function TestInterface({
                           isSelected || (!isSimulacro && isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                         }`}
                       >
-                        {option.text}
+                        {showMarks ? (
+                          <HighlightableText
+                            text={option.text}
+                            highlights={
+                              (studyData?.highlights?.[`${currentQuestion.id}_ans_${optionIndex}`] ?? []) as any
+                            }
+                            onAddHighlight={() => {}}
+                            onRemoveHighlight={() => {}}
+                            readOnly
+                            maxSelectionChars={90}
+                          />
+                        ) : (
+                          option.text
+                        )}
                       </span>
                     </div>
 
@@ -455,7 +521,20 @@ export default function TestInterface({
                         {isBasque ? 'Itxi' : 'Cerrar'}
                       </button>
                     </div>
-                    <p className="text-slate-600 leading-relaxed font-medium text-sm antialiased">{currentQuestion.explanation}</p>
+                    <p className="text-slate-600 leading-relaxed font-medium text-sm antialiased">
+                      {showMarks ? (
+                        <HighlightableText
+                          text={currentQuestion.explanation}
+                          highlights={(studyData?.highlights?.[`${currentQuestion.id}_exp`] ?? []) as any}
+                          onAddHighlight={() => {}}
+                          onRemoveHighlight={() => {}}
+                          readOnly
+                          maxSelectionChars={160}
+                        />
+                      ) : (
+                        currentQuestion.explanation
+                      )}
+                    </p>
                   </div>
                 )}
               </div>

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Hash, Loader2, Tag, ChevronRight, History, Sparkles } from 'lucide-react';
 import type { DashboardBundle } from '../lib/quantiaApi';
-import { getLastVisitedStudyQuestion } from '../lib/quantiaApi';
-import type { SyllabusType } from '../types';
+import { getCurriculumCategoryGroupLabel, getLastVisitedStudyQuestion } from '../lib/quantiaApi';
+import { formatSyllabusLabel, type SyllabusType } from '../types';
 import { useAppLocale } from '../lib/locale';
 
 type StudyScope = 'all' | SyllabusType;
@@ -18,12 +18,13 @@ export interface StudyStartParams {
 }
 
 interface StudyExplorerProps {
+  curriculum: string;
   bundle: DashboardBundle | null;
   onStartStudy: (params: StudyStartParams) => Promise<void>;
   onOpenQuestionBank: () => void;
 }
 
-export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
+export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   
@@ -53,12 +54,12 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
         if (scope === 'all') return true;
         return item.scope === scope;
       })
-      .map((item) => item.topicLabel.trim())
+      .map((item) => getCurriculumCategoryGroupLabel(curriculum, item.topicLabel)?.trim() ?? item.topicLabel.trim())
       .filter(Boolean);
     const deduped = [...new Set(topics)];
     deduped.sort((a, b) => a.localeCompare(b, locale === 'eu' ? 'eu' : 'es'));
     return deduped;
-  }, [bundle, locale, scope]);
+  }, [bundle, curriculum, locale, scope]);
 
   useEffect(() => {
     setTopic('');
@@ -196,9 +197,7 @@ export default function StudyExplorer({ bundle, onStartStudy, onOpenQuestionBank
                       >
                         {value === 'all'
                           ? isBasque ? 'Denak' : 'Todos'
-                          : value === 'common'
-                            ? isBasque ? 'Orokorra' : 'Común'
-                            : isBasque ? 'Espez.' : 'Espec.'}
+                          : formatSyllabusLabel(value, locale, { curriculum, variant: 'compact' })}
                       </button>
                     ))}
                   </div>

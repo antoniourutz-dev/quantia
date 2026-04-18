@@ -68,12 +68,19 @@ export const buildSessionEndExperience = (input: {
       syllabus: null,
       questionCount: input.questionsCount,
     };
-    primaryCta = decision.primaryCta;
+    primaryCta =
+      input.mode === 'review'
+        ? isBasque
+          ? 'Hurrengo errepasoa hasi'
+          : 'Seguir con el siguiente repaso'
+        : isBasque
+          ? 'Beste test bat egin'
+          : 'Hacer otro test';
   }
 
   const continuityMessage = isBasque
-    ? `Bihar: ${primaryCta}.`
-    : `Mañana: ${primaryCta}.`;
+    ? `Hurrengoa: ${primaryCta}.`
+    : `Siguiente: ${primaryCta}.`;
 
   return {
     dominantState: decision.dominantState,

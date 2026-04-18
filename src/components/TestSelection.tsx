@@ -1,7 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CheckCircle2, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal } from 'lucide-react';
 import { SyllabusType, formatSyllabusLabel, PracticeMode } from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
+import type { CustomPracticeConfig, CustomPracticeContentScope } from '../domain/customPractice/customPracticeTypes';
+import { getCurriculumTopicOptions } from '../lib/quantiaApi';
+
+type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
+
+export type TestSelectionStateSnapshot = {
+  selectionMode: SelectionMode;
+  selectedSyllabus: SyllabusType;
+  selectedLaw: string;
+  questionCount: number;
+  simulacroScope: 'mixed' | SyllabusType;
+  simulacroCount: number;
+  customFrom: string;
+  customTo: string;
+  customOrder: 'sequence' | 'random';
+  customContentScope: CustomPracticeContentScope;
+  customTopicMode: 'all' | 'single';
+  customTopic: string;
+  customSessionLength: number;
+  customShowMarks: boolean;
+  customShowNotes: boolean;
+};
 
 interface TestSelectionProps {
   curriculum: string;
@@ -11,11 +33,12 @@ interface TestSelectionProps {
   onStart: (mode: PracticeMode, syllabus?: SyllabusType, count?: number) => void;
   onStartLawTest: (law: string, count?: number) => void;
   onStartCustom: (params: { from: number; to: number; randomize: boolean }) => void;
+  onStartCustomPractice: (config: CustomPracticeConfig) => void;
   onLoadCustomBounds: () => Promise<{ min: number; max: number } | null>;
   initialSyllabus: SyllabusType | null;
+  initialState?: TestSelectionStateSnapshot | null;
+  onStateChange?: (state: TestSelectionStateSnapshot) => void;
 }
-
-type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
 
 export default function TestSelection({
   curriculum,
@@ -25,28 +48,42 @@ export default function TestSelection({
   onStart,
   onStartLawTest,
   onStartCustom,
+  onStartCustomPractice,
   onLoadCustomBounds,
   initialSyllabus,
+  initialState = null,
+  onStateChange,
 }: TestSelectionProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>('standard');
-  const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType>(initialSyllabus || 'common');
-  const [selectedLaw, setSelectedLaw] = useState<string>(initialLaw ?? '');
-  const [questionCount, setQuestionCount] = useState<number>(20);
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialState?.selectionMode ?? 'standard');
+  const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType>(
+    initialState?.selectedSyllabus ?? initialSyllabus ?? 'common',
+  );
+  const [selectedLaw, setSelectedLaw] = useState<string>(initialState?.selectedLaw ?? initialLaw ?? '');
+  const [questionCount, setQuestionCount] = useState<number>(initialState?.questionCount ?? 20);
   const options = [10, 20, 50];
   const simulacroOptions = [50, 100];
-  const [simulacroScope, setSimulacroScope] = useState<'mixed' | SyllabusType>('mixed');
-  const [simulacroCount, setSimulacroCount] = useState<number>(50);
-  const [customFrom, setCustomFrom] = useState<string>('');
-  const [customTo, setCustomTo] = useState<string>('');
-  const [customOrder, setCustomOrder] = useState<'sequence' | 'random'>('sequence');
+  const [simulacroScope, setSimulacroScope] = useState<'mixed' | SyllabusType>(initialState?.simulacroScope ?? 'mixed');
+  const [simulacroCount, setSimulacroCount] = useState<number>(initialState?.simulacroCount ?? 50);
+  const [customFrom, setCustomFrom] = useState<string>(initialState?.customFrom ?? '');
+  const [customTo, setCustomTo] = useState<string>(initialState?.customTo ?? '');
+  const [customOrder, setCustomOrder] = useState<'sequence' | 'random'>(initialState?.customOrder ?? 'sequence');
   const [customBounds, setCustomBounds] = useState<{ min: number; max: number } | null>(null);
   const [customLoading, setCustomLoading] = useState(false);
   const [customError, setCustomError] = useState<string | null>(null);
+  const [customContentScope, setCustomContentScope] = useState<CustomPracticeContentScope>(
+    initialState?.customContentScope ?? 'all_opposition',
+  );
+  const [customTopicMode, setCustomTopicMode] = useState<'all' | 'single'>(initialState?.customTopicMode ?? 'all');
+  const [customTopic, setCustomTopic] = useState(initialState?.customTopic ?? '');
+  const [customTopics, setCustomTopics] = useState<string[]>([]);
+  const [customTopicsLoading, setCustomTopicsLoading] = useState(false);
+  const [customSessionLength, setCustomSessionLength] = useState(initialState?.customSessionLength ?? 10);
+  const [customShowMarks, setCustomShowMarks] = useState(initialState?.customShowMarks ?? false);
+  const [customShowNotes, setCustomShowNotes] = useState(initialState?.customShowNotes ?? false);
   const usesLawSelection = useMemo(() => isLawSelectionCurriculum(curriculum), [curriculum]);
   const usesSingleScope = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
-  const configRef = useRef<HTMLDivElement | null>(null);
   const modeNeedsConfig = selectionMode === 'standard' || selectionMode === 'simulacro' || selectionMode === 'custom';
   const startLabel =
     selectionMode === 'standard'
@@ -71,16 +108,16 @@ export default function TestSelection({
             : 'Ir a mis fallos'
           : selectionMode === 'custom'
             ? isBasque
-              ? 'Tarte hau hasi'
-              : 'Empezar este tramo'
+          ? 'Test pertsonalizatua hasi'
+          : 'Empezar test'
             : isBasque
               ? 'Simulakroa hasi'
               : 'Iniciar simulacro';
   const formatSyllabusUiLabel = (syllabus: SyllabusType) => {
-    if (isBasque) {
-      return syllabus === 'common' ? 'Gai-zerrenda arrunta' : 'Gai-zerrenda espezifikoa';
-    }
-    return `Temario ${formatSyllabusLabel(syllabus, locale)}`;
+    return formatSyllabusLabel(syllabus, locale, {
+      curriculum,
+      variant: 'section',
+    });
   };
 
   useEffect(() => {
@@ -97,16 +134,41 @@ export default function TestSelection({
   }, [initialLaw, lawOptions, selectedLaw, usesLawSelection]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
-    if (isDesktop) {
-      if (selectionMode === 'quick' || selectionMode === 'errors') return;
-      const handle = window.setTimeout(() => {
-        configRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 80);
-      return () => window.clearTimeout(handle);
-    }
-  }, [selectionMode]);
+    onStateChange?.({
+      selectionMode,
+      selectedSyllabus,
+      selectedLaw,
+      questionCount,
+      simulacroScope,
+      simulacroCount,
+      customFrom,
+      customTo,
+      customOrder,
+      customContentScope,
+      customTopicMode,
+      customTopic,
+      customSessionLength,
+      customShowMarks,
+      customShowNotes,
+    });
+  }, [
+    customContentScope,
+    customFrom,
+    customOrder,
+    customSessionLength,
+    customShowMarks,
+    customShowNotes,
+    customTo,
+    customTopic,
+    customTopicMode,
+    onStateChange,
+    questionCount,
+    selectedLaw,
+    selectedSyllabus,
+    selectionMode,
+    simulacroCount,
+    simulacroScope,
+  ]);
 
   const ensureCustomBounds = async () => {
     if (customLoading || customBounds) return;
@@ -125,6 +187,31 @@ export default function TestSelection({
       setCustomLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (selectionMode !== 'custom') return;
+    if (customTopicMode !== 'single') return;
+    const scope =
+      customContentScope === 'common_only'
+        ? 'common'
+        : customContentScope === 'specific_only'
+          ? 'specific'
+          : 'all';
+    setCustomTopicsLoading(true);
+    setCustomError(null);
+    void getCurriculumTopicOptions({ curriculum, questionScope: scope })
+      .then((topics) => {
+        setCustomTopics(topics);
+        if (customTopic && !topics.includes(customTopic)) {
+          setCustomTopic('');
+        }
+      })
+      .catch((error) => {
+        setCustomTopics([]);
+        setCustomError(error instanceof Error ? error.message : isBasque ? 'Ezin izan da gai-zerrenda kargatu.' : 'No se han podido cargar los temas.');
+      })
+      .finally(() => setCustomTopicsLoading(false));
+  }, [curriculum, customContentScope, customTopic, customTopicMode, isBasque, selectionMode]);
 
   const handleStartCustom = () => {
     setCustomError(null);
@@ -167,7 +254,21 @@ export default function TestSelection({
         simulacroCount,
       );
     } else if (selectionMode === 'custom') {
-      handleStartCustom();
+      if (customTopicMode === 'single' && !customTopic.trim()) {
+        setCustomError(isBasque ? 'Aukeratu gai bat.' : 'Elige un tema.');
+        return;
+      }
+      const config: CustomPracticeConfig = {
+        curriculum,
+        contentScope: usesSingleScope ? 'all_opposition' : customContentScope,
+        topicMode:
+          customTopicMode === 'single'
+            ? { type: 'single_topic', topicId: customTopic.trim() }
+            : { type: 'all_topics' },
+        sessionLength: customSessionLength,
+        supportMode: { showMarks: customShowMarks, showNotes: customShowNotes },
+      };
+      onStartCustomPractice(config);
     }
   };
 
@@ -285,7 +386,7 @@ export default function TestSelection({
           <button
             onClick={() => {
               setSelectionMode('custom');
-              void ensureCustomBounds();
+              setCustomError(null);
             }}
             className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'custom'
@@ -301,14 +402,14 @@ export default function TestSelection({
                 {isBasque ? 'Zure neurrira' : 'A tu medida'}
               </p>
               <p className="hidden sm:block text-sm font-medium text-slate-500 mt-2">
-                {isBasque ? 'Landu nahi duzun tartea aukeratu' : 'Escoge el tramo que quieres trabajar'}
+                {isBasque
+                  ? 'Aukeratu zatia, gaia eta laguntzak'
+                  : 'Elige alcance, tema y ayudas'}
               </p>
             </div>
           </button>
         </div>
       </div>
-
-      <div ref={configRef} className="scroll-mt-[calc(5.75rem+env(safe-area-inset-top))]" />
 
       {modeNeedsConfig ? (
         <div className="lg:hidden rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
@@ -451,59 +552,144 @@ export default function TestSelection({
                 </div>
               ) : null}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
+              {!usesSingleScope ? (
+                <div className="space-y-3">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                    {isBasque ? 'Hasiera' : 'Desde'}
+                    {isBasque ? 'Zer ikasi' : 'Qué quieres estudiar'}
                   </div>
-                  <input
-                    value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    inputMode="numeric"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-violet-300 focus:bg-white"
-                    placeholder={customBounds ? String(customBounds.min) : '1'}
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { id: 'all_opposition', label: isBasque ? 'Oposizio osoa' : 'Toda la oposición' },
+                      { id: 'common_only', label: isBasque ? 'Arrunta bakarrik' : 'Solo común' },
+                      { id: 'specific_only', label: isBasque ? 'Espezifikoa bakarrik' : 'Solo específico' },
+                      { id: 'common_and_specific', label: isBasque ? 'Arrunta + espezifikoa' : 'Común + específico' },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCustomContentScope(opt.id)}
+                        className={`rounded-2xl border-2 px-4 py-4 font-black text-xs transition-all ${
+                          customContentScope === opt.id
+                            ? 'border-slate-800 bg-slate-50 text-slate-900'
+                            : 'border-slate-100 bg-white text-slate-600'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                    {isBasque ? 'Amaiera' : 'Hasta'}
+              ) : (
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-bold text-slate-600">
+                  {isBasque
+                    ? 'Curriculum honek ez du arrunta/espezifikoa bereizten. Test osoa erabiliko da.'
+                    : 'Este currículo no separa común/específico. Se usará todo el contenido.'}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Gaia' : 'Tema'}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCustomTopicMode('all')}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                      customTopicMode === 'all'
+                        ? 'border-slate-800 bg-slate-50 text-slate-900'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {isBasque ? 'Guztiak' : 'Todos'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomTopicMode('single')}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                      customTopicMode === 'single'
+                        ? 'border-slate-800 bg-slate-50 text-slate-900'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {isBasque ? 'Gai bakarra' : 'Un tema'}
+                  </button>
+                </div>
+                {customTopicMode === 'single' ? (
+                  <div className="space-y-2">
+                    <select
+                      value={customTopic}
+                      onChange={(e) => setCustomTopic(e.target.value)}
+                      disabled={customTopicsLoading}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white disabled:opacity-60"
+                    >
+                      <option value="">
+                        {customTopicsLoading
+                          ? isBasque
+                            ? 'Kargatzen...'
+                            : 'Cargando...'
+                          : isBasque
+                            ? 'Aukeratu gaia'
+                            : 'Elige el tema'}
+                      </option>
+                      {customTopics.map((topic) => (
+                        <option key={topic} value={topic}>
+                          {topic}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <input
-                    value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    inputMode="numeric"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-violet-300 focus:bg-white"
-                    placeholder={customBounds ? String(customBounds.max) : '100'}
-                  />
+                ) : null}
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Luzera' : 'Longitud'}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {[5, 10, 20].map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setCustomSessionLength(count)}
+                      className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
+                        customSessionLength === count
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                          : 'border-slate-100 bg-white text-slate-500'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                  {isBasque ? 'Ordena' : 'Orden'}
+                  {isBasque ? 'Laguntza testean' : 'Apoyo durante el test'}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setCustomOrder('sequence')}
+                    onClick={() => setCustomShowMarks((v) => !v)}
                     className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                      customOrder === 'sequence'
-                        ? 'border-violet-600 bg-violet-50 text-violet-800'
+                      customShowMarks
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                         : 'border-slate-100 bg-white text-slate-600'
                     }`}
                   >
-                    {isBasque ? 'Sekuentziala' : 'Secuencial'}
+                    {isBasque ? 'Markak' : 'Marcas'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCustomOrder('random')}
+                    onClick={() => setCustomShowNotes((v) => !v)}
                     className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                      customOrder === 'random'
-                        ? 'border-violet-600 bg-violet-50 text-violet-800'
+                      customShowNotes
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                         : 'border-slate-100 bg-white text-slate-600'
                     }`}
                   >
-                    {isBasque ? 'Ausazkoa' : 'Aleatorio'}
+                    {isBasque ? 'Oharrak' : 'Notas'}
                   </button>
                 </div>
               </div>
@@ -721,18 +907,12 @@ export default function TestSelection({
       ) : null}
 
       {selectionMode === 'custom' ? (
-        <div className="hidden lg:block">
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8">
+        <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <SlidersHorizontal className="text-violet-600 w-5 h-5" />
-              {isBasque ? 'Landu nahi duzun tartea' : 'Elige el tramo'}
+              {isBasque ? 'Zure neurrira' : 'A tu medida'}
             </h2>
-            {customBounds ? (
-              <div className="text-xs font-black text-slate-500">
-                {isBasque ? 'Tartea' : 'Rango'}: {customBounds.min}–{customBounds.max}
-              </div>
-            ) : null}
           </div>
 
           {customError ? (
@@ -741,70 +921,145 @@ export default function TestSelection({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
+          {!usesSingleScope ? (
+            <div className="space-y-3">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                {isBasque ? 'Hasiera' : 'Desde'}
+                {isBasque ? 'Zer ikasi' : 'Qué quieres estudiar'}
               </div>
-              <input
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                inputMode="numeric"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/40"
-                placeholder={customBounds ? String(customBounds.min) : '1'}
-              />
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { id: 'all_opposition', label: isBasque ? 'Oposizio osoa' : 'Toda la oposición' },
+                  { id: 'common_only', label: isBasque ? 'Arrunta bakarrik' : 'Solo común' },
+                  { id: 'specific_only', label: isBasque ? 'Espezifikoa bakarrik' : 'Solo específico' },
+                  { id: 'common_and_specific', label: isBasque ? 'Arrunta + espezifikoa' : 'Común + específico' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setCustomContentScope(opt.id)}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-xs transition-all ${
+                      customContentScope === opt.id
+                        ? 'border-slate-800 bg-slate-50 text-slate-900'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="space-y-2">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                {isBasque ? 'Amaiera' : 'Hasta'}
-              </div>
-              <input
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                inputMode="numeric"
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/40"
-                placeholder={customBounds ? String(customBounds.max) : '100'}
-              />
+          ) : (
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-bold text-slate-600">
+              {isBasque
+                ? 'Curriculum honek ez du arrunta/espezifikoa bereizten. Test osoa erabiliko da.'
+                : 'Este currículo no separa común/específico. Se usará todo el contenido.'}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+              {isBasque ? 'Gaia' : 'Tema'}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setCustomTopicMode('all')}
+                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                  customTopicMode === 'all'
+                    ? 'border-slate-800 bg-slate-50 text-slate-900'
+                    : 'border-slate-100 bg-white text-slate-600'
+                }`}
+              >
+                {isBasque ? 'Guztiak' : 'Todos los temas'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomTopicMode('single')}
+                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                  customTopicMode === 'single'
+                    ? 'border-slate-800 bg-slate-50 text-slate-900'
+                    : 'border-slate-100 bg-white text-slate-600'
+                }`}
+              >
+                {isBasque ? 'Gai bakarra' : 'Un tema'}
+              </button>
+            </div>
+            {customTopicMode === 'single' ? (
+              <select
+                value={customTopic}
+                onChange={(e) => setCustomTopic(e.target.value)}
+                disabled={customTopicsLoading}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white disabled:opacity-60"
+              >
+                <option value="">
+                  {customTopicsLoading
+                    ? isBasque
+                      ? 'Kargatzen...'
+                      : 'Cargando...'
+                    : isBasque
+                      ? 'Aukeratu gaia'
+                      : 'Elige el tema'}
+                </option>
+                {customTopics.map((topic) => (
+                  <option key={topic} value={topic}>
+                    {topic}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+              {isBasque ? 'Luzera' : 'Longitud'}
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[5, 10, 20].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => setCustomSessionLength(count)}
+                  className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
+                    customSessionLength === count
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-100 bg-white text-slate-500'
+                  }`}
+                >
+                  {count}
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {isBasque ? 'Nola atera nahi dituzu?' : 'Como quieres que salgan'}
+              {isBasque ? 'Laguntza testean' : 'Apoyo durante el test'}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setCustomOrder('sequence')}
-                className={`p-6 rounded-2xl border-2 transition-all duration-300 flex items-center justify-between ${
-                  customOrder === 'sequence'
-                    ? 'border-violet-600 bg-violet-50'
-                    : 'border-slate-50 bg-white hover:border-violet-100'
+                onClick={() => setCustomShowMarks((v) => !v)}
+                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                  customShowMarks
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-100 bg-white text-slate-600'
                 }`}
               >
-                <span className="font-black text-slate-800">{isBasque ? 'Sekuentziala' : 'Secuencial'}</span>
-                <div className={`w-3 h-3 rounded-full ${customOrder === 'sequence' ? 'bg-violet-600' : 'bg-slate-200'}`} />
+                {isBasque ? 'Markak' : 'Marcas'}
               </button>
               <button
                 type="button"
-                onClick={() => setCustomOrder('random')}
-                className={`p-6 rounded-2xl border-2 transition-all duration-300 flex items-center justify-between ${
-                  customOrder === 'random'
-                    ? 'border-violet-600 bg-violet-50'
-                    : 'border-slate-50 bg-white hover:border-violet-100'
+                onClick={() => setCustomShowNotes((v) => !v)}
+                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                  customShowNotes
+                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                    : 'border-slate-100 bg-white text-slate-600'
                 }`}
               >
-                <span className="font-black text-slate-800">{isBasque ? 'Ausazkoa' : 'Aleatorio'}</span>
-                <div className={`w-3 h-3 rounded-full ${customOrder === 'random' ? 'bg-violet-600' : 'bg-slate-200'}`} />
+                {isBasque ? 'Oharrak' : 'Notas'}
               </button>
             </div>
-            {customLoading ? (
-              <div className="text-xs font-bold text-slate-500">
-                {isBasque ? 'Kargatzen...' : 'Cargando...'}
-              </div>
-            ) : null}
           </div>
-        </div>
         </div>
       ) : null}
 

@@ -54,6 +54,17 @@ const CURRICULUM_ALIAS_GROUPS = [
     key: 'goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
   },
+  {
+    key: 'tecnico-superior-administracion-y-gestion',
+    aliases: [
+      'tecnico_superior_administracion_y_gestion',
+      'tecnico-superior-administracion-y-gestion',
+      'tecnico superior administracion y gestion',
+      'técnico superior administración y gestión',
+      'tecnico/a superior administracion y gestion',
+      'técnico/a superior administración y gestión',
+    ],
+  },
 ] as const;
 
 const SHARED_QUESTION_SOURCES: Record<
@@ -240,7 +251,10 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
         row.raw_scope ??
         row.scope ??
         row.scope_key ??
-        row.grupo,
+        row.grupo ??
+        row.temario_pregunta ??
+        row.tema_pregunta ??
+        row.subject_key,
       'common',
     );
 
@@ -266,16 +280,10 @@ const mapPracticeCloudError = (error: PostgrestLikeError) => {
 };
 
 const queryQuestionBankRowsForTarget = async (target: QuestionBankTarget) => {
-  let query = supabase
+  const query = supabase
     .from('preguntas')
     .select(QUESTION_BANK_LIST_SELECT)
     .in('curriculum', target.candidates);
-
-  if (target.scope === 'common') {
-    query = query.eq('grupo', toDbGrupo('common'));
-  } else if (target.scope === 'specific') {
-    query = query.eq('grupo', toDbGrupo('specific'));
-  }
 
   const { data, error } = await query
     .order('numero', { ascending: true })
@@ -287,7 +295,8 @@ const queryQuestionBankRowsForTarget = async (target: QuestionBankTarget) => {
 
   return ((data ?? []) as Array<Record<string, unknown>>)
     .map(mapQuestionBankCacheRow)
-    .filter((row): row is QuestionBankCacheRow => Boolean(row));
+    .filter((row): row is QuestionBankCacheRow => Boolean(row))
+    .filter((row) => target.scope === 'all' || row.syllabus === target.scope);
 };
 
 const mergeQuestionBankRows = (rows: QuestionBankCacheRow[]) => {

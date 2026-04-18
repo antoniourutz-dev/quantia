@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertCircle, ArrowRight, BookOpen, ChevronDown, Sparkles, TrendingUp } from 'lucide-react';
+import { AlertCircle, BookOpen, ChevronDown, PlayCircle, Sparkles, TrendingUp } from 'lucide-react';
 import CoachHero from './CoachHero';
 import ProgressOverview from './ProgressOverview';
 import PrimaryActionCard from './PrimaryActionCard';
@@ -9,6 +9,7 @@ import { SyllabusType } from '../../types';
 import { useAppLocale } from '../../lib/locale';
 
 interface DashboardProps {
+  curriculum: string;
   secondaryHydrated?: boolean;
   actionsDisabled?: boolean;
   coachLabel: string;
@@ -40,6 +41,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({
+  curriculum,
   secondaryHydrated = true,
   actionsDisabled = false,
   coachLabel,
@@ -100,102 +102,107 @@ export default function Dashboard({
 
       {secondaryHydrated ? (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-6">
-            <div className="md:col-span-4 lg:col-span-3">
-              <ProgressOverview
-                commonProgress={commonProgress}
-                specificProgress={specificProgress}
-                weeklyQuestions={weeklyQuestions}
-                accuracyRate={accuracyRate}
-              />
-            </div>
-
-            <div
-              onClick={onShowStats}
-              className="glass-premium group flex cursor-pointer flex-col justify-between rounded-[2rem] p-6 hover-lift md:col-span-2 md:rounded-[2.5rem] md:p-8 lg:col-span-1"
-            >
-              <div className="flex justify-between items-start">
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
-                  <TrendingUp size={24} />
+          <button
+            type="button"
+            onClick={() => onStartTest('specific')}
+            disabled={actionsDisabled}
+            className={`flex items-center justify-between gap-4 rounded-[2rem] border px-6 py-5 shadow-sm transition-all hover:shadow-md ${
+              actionsDisabled ? 'border-slate-100 bg-slate-100 text-slate-400' : 'border-slate-100 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="h-12 w-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                <PlayCircle className="text-slate-700" size={22} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                  {isBasque ? 'Alternatiba' : 'Alternativa'}
                 </div>
-                <Sparkles size={20} className="text-amber-400 animate-pulse" />
-              </div>
-              <div>
-                <p className="mb-1 text-3xl font-black text-slate-800 sm:text-4xl">{accuracyRate == null ? '-' : `${accuracyRate}%`}</p>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 sm:text-sm sm:tracking-widest">
-                  {isBasque ? 'Azken doitasuna' : 'Acierto reciente'}
-                </p>
-              </div>
-              <button className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.18em] text-indigo-600 transition-all group-hover:gap-4 sm:text-xs sm:tracking-[0.2em]">
-                {isBasque ? 'Nola zoazen ikusi' : 'Ver como vas'} <ArrowRight size={14} />
-              </button>
-            </div>
-
-            <div className="md:col-span-2 lg:col-span-2 hover-lift h-full">
-              <PrimaryActionCard
-                title={primaryCardTitle}
-                description={primaryCardDescription}
-                icon={<BookOpen size={32} />}
-              progressLabel={primaryCardProgressLabel}
-              progressValue={primaryCardProgressValue}
-              ctaText={primaryCardCtaLabel}
-              onAction={onPrimaryCardAction}
-              variant="indigo"
-              disabled={actionsDisabled}
-            />
-          </div>
-
-          <div className="md:col-span-2 lg:col-span-2 hover-lift h-full">
-              <PrimaryActionCard
-                title={weakTitle}
-              description={weakDescription}
-              icon={<AlertCircle size={32} />}
-              ctaText={weakCardCtaLabel}
-              onAction={onWeakCardAction}
-              variant="rose"
-              disabled={actionsDisabled}
-            />
-          </div>
-
-            <div className="space-y-4 md:col-span-4 lg:col-span-4 md:space-y-5">
-              <div className="flex items-center gap-3 px-1 text-slate-400 sm:px-2">
-                <TrendingUp size={16} className="text-slate-400" />
-                <span className="text-[10px] font-black uppercase tracking-[0.3em]">
-                  {isBasque ? 'Aste honetako mugimendua' : 'Lo que llevas esta semana'}
-                </span>
-              </div>
-
-              <div className={`${mobileExpanded ? 'block' : 'hidden'} lg:block glass-premium overflow-hidden rounded-[2.5rem] p-1.5 hover-lift sm:rounded-[3rem] sm:p-2`}>
-                <WeeklyInsight data={weeklyInsightData} summary={weeklyInsightSummary} deltaLabel={weeklyInsightDelta} />
+                <div className="mt-1 text-lg font-black truncate">
+                  {isBasque ? 'Errepaso librea' : 'Repaso libre'}
+                </div>
               </div>
             </div>
-          </div>
+            <ChevronDown className="h-5 w-5 text-slate-300 rotate-[-90deg]" />
+          </button>
 
-          <div className="lg:hidden">
+          <div>
             <button
               type="button"
               onClick={() => setMobileExpanded((prev) => !prev)}
               className="flex w-full items-center justify-between rounded-[1.75rem] border border-slate-200 bg-white px-5 py-4 text-base font-black text-slate-700 shadow-sm"
             >
-              <span>{mobileExpanded ? t('Ver menos', 'Gutxiago ikusi') : t('Ver mas', 'Gehiago ikusi')}</span>
+              <span>{mobileExpanded ? t('Ver menos', 'Gutxiago ikusi') : t('Ver detalle', 'Xehetasunak ikusi')}</span>
               <ChevronDown className={`h-5 w-5 transition-transform ${mobileExpanded ? 'rotate-180' : ''}`} />
             </button>
           </div>
 
-          <div className={`${mobileExpanded ? 'block' : 'hidden'} lg:block space-y-4 sm:space-y-6`}>
-            <div className="flex items-center gap-3 px-1 text-slate-400 sm:px-2">
-              <Sparkles size={16} />
-              <span className="text-[10px] font-black uppercase tracking-[0.3em]">
-                {isBasque ? 'Orain egitea komeni dena' : 'Lo que te conviene hacer ahora'}
-              </span>
-            </div>
+          <div className={`${mobileExpanded ? 'block' : 'hidden'} space-y-6`}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-6">
+              <div className="md:col-span-4">
+                <ProgressOverview
+                  curriculum={curriculum}
+                  commonProgress={commonProgress}
+                  specificProgress={specificProgress}
+                  weeklyQuestions={weeklyQuestions}
+                  accuracyRate={accuracyRate}
+                />
+              </div>
 
-            <SecondaryActions
-              onSimulation={() => onStartTest('specific')}
-              onStats={onShowStats}
-              onWeakAreas={onReviewErrors}
-              weakAreasBadge={weakAreasBadge}
-            />
+              <div className="md:col-span-2 lg:col-span-2 hover-lift h-full">
+                <PrimaryActionCard
+                  title={primaryCardTitle}
+                  description={primaryCardDescription}
+                  icon={<BookOpen size={32} />}
+                  progressLabel={primaryCardProgressLabel}
+                  progressValue={primaryCardProgressValue}
+                  ctaText={primaryCardCtaLabel}
+                  onAction={onPrimaryCardAction}
+                  variant="indigo"
+                  disabled={actionsDisabled}
+                />
+              </div>
+
+              <div className="md:col-span-2 lg:col-span-2 hover-lift h-full">
+                <PrimaryActionCard
+                  title={weakTitle}
+                  description={weakDescription}
+                  icon={<AlertCircle size={32} />}
+                  ctaText={weakCardCtaLabel}
+                  onAction={onWeakCardAction}
+                  variant="rose"
+                  disabled={actionsDisabled}
+                />
+              </div>
+
+              <div className="md:col-span-4 space-y-4">
+                <div className="flex items-center gap-3 px-1 text-slate-400 sm:px-2">
+                  <TrendingUp size={16} className="text-slate-400" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    {isBasque ? 'Aste honetako mugimendua' : 'Lo que llevas esta semana'}
+                  </span>
+                </div>
+
+                <div className="glass-premium overflow-hidden rounded-[2.5rem] p-1.5 hover-lift sm:rounded-[3rem] sm:p-2">
+                  <WeeklyInsight data={weeklyInsightData} summary={weeklyInsightSummary} deltaLabel={weeklyInsightDelta} />
+                </div>
+              </div>
+
+              <div className="md:col-span-4 space-y-4">
+                <div className="flex items-center gap-3 px-1 text-slate-400 sm:px-2">
+                  <Sparkles size={16} />
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    {isBasque ? 'Orain egitea komeni dena' : 'Lo que te conviene hacer ahora'}
+                  </span>
+                </div>
+                <SecondaryActions
+                  onSimulation={() => onStartTest('specific')}
+                  onStats={onShowStats}
+                  onWeakAreas={onReviewErrors}
+                  weakAreasBadge={weakAreasBadge}
+                />
+              </div>
+            </div>
           </div>
         </>
       ) : (

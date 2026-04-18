@@ -202,7 +202,10 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
     normalizeQuestionScope(row.raw_scope) ??
     normalizeQuestionScope(row.scope) ??
     normalizeQuestionScope(row.scope_key) ??
-    normalizeQuestionScope(row.grupo);
+    normalizeQuestionScope(row.grupo) ??
+    normalizeQuestionScope(row.temario_pregunta) ??
+    normalizeQuestionScope(row.tema_pregunta) ??
+    normalizeQuestionScope(row.subject_key);
 
   return {
     id: readText(row.id ?? row.question_id ?? row.uuid ?? row.slug) ?? createId(),

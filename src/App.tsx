@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import EntryScreen from './components/EntryScreen';
-import TestSelection from './components/TestSelection';
+import TestSelection, { type TestSelectionStateSnapshot } from './components/TestSelection';
 import TestInterface from './components/TestInterface';
 import StudyInterface from './components/StudyInterface';
 import PostTestStats from './components/PostTestStats';
@@ -46,9 +46,11 @@ import {
   getCurriculumCategoryOptions,
   getCurriculumQuestionNumberBounds,
   getPracticeBatchByCategory,
+  getCustomPracticeBatch,
   getPracticeQuestionsByIds,
   getRandomPracticeBatch,
   getQuestionsByNumberRange,
+  getStudyData,
   getStudyQuestionsSlice,
   getWeakPracticeBatch,
   hydrateDashboardBundle,
@@ -59,6 +61,8 @@ import {
   type CurriculumOption,
   type DashboardBundle,
 } from './lib/quantiaApi';
+import type { CustomPracticeConfig } from './domain/customPractice/customPracticeTypes';
+import { buildExecutableSessionPlanFromCustomPractice } from './lib/customPracticePlan';
 import { buildCoachPlanV2, buildExecutableSessionPlanFromCoach } from './lib/coach';
 import { getContinuityLine } from './lib/continuity';
 import {
@@ -127,6 +131,24 @@ type View =
   | 'admin-students'
   | 'admin-catalogs'
   | 'telemetry';
+
+type TestReturnTarget =
+  | {
+      view: 'dashboard';
+    }
+  | {
+      view: 'test-selection';
+      selectionState: TestSelectionStateSnapshot | null;
+      selectedSyllabus: SyllabusType | null;
+      selectedLawFilter: string | null;
+    }
+  | {
+      view: 'test-results';
+      session: ActivePracticeSession;
+      payload: FinishedTestPayload;
+      selectedSyllabus: SyllabusType | null;
+      selectedLawFilter: string | null;
+    };
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const toLocalDayKey = (value: string | null | undefined) => {
@@ -220,6 +242,8 @@ export default function App() {
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [testSelectionState, setTestSelectionState] = useState<TestSelectionStateSnapshot | null>(null);
+  const [testReturnTarget, setTestReturnTarget] = useState<TestReturnTarget | null>(null);
   const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType | null>(null);
   const [selectedLawFilter, setSelectedLawFilter] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
@@ -234,6 +258,10 @@ export default function App() {
   const [practiceEmptyState, setPracticeEmptyState] = useState<PracticeEmptyStateModel | null>(null);
   const [syncingSession, setSyncingSession] = useState(false);
   const [activeSession, setActiveSession] = useState<ActivePracticeSession | null>(null);
+  const [activeTestSupport, setActiveTestSupport] = useState<{
+    supportMode: { showMarks: boolean; showNotes: boolean };
+    studyData: { highlights: Record<string, any[]>; notes: Record<string, string> };
+  } | null>(null);
   const [lastTestPayload, setLastTestPayload] = useState<FinishedTestPayload | null>(null);
   const [activeStudySession, setActiveStudySession] = useState<ActivePracticeSession | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -761,15 +789,19 @@ export default function App() {
   }, [bundle, locale, statsSurfaceCopy.line1, statsSurfaceCopy.line2, t, weekdayLabels]);
 
   const weakCategory = bundle?.weakCategories[0] ?? null;
+  const weakCategoryLabel = useMemo(
+    () => getCurriculumCategoryGroupLabel(curriculum, weakCategory?.category) ?? weakCategory?.category ?? null,
+    [curriculum, weakCategory?.category],
+  );
   const weakAreaCopy = useMemo(
     () =>
       buildWeakAreaCopy({
         locale,
-        category: weakCategory?.category ?? null,
+        category: weakCategoryLabel,
         state: coachSurfaceState,
         seed: `${coachCopySeed}:weak`,
       }),
-    [coachCopySeed, coachSurfaceState, locale, weakCategory?.category],
+    [coachCopySeed, coachSurfaceState, locale, weakCategoryLabel],
   );
 
   const handleLogin = useCallback(async (username: string, password: string) => {
@@ -787,6 +819,31 @@ export default function App() {
     }
   }, [t]);
 
+  const captureTestReturnTarget = useCallback(() => {
+    if (currentView === 'test-selection') {
+      setTestReturnTarget({
+        view: 'test-selection',
+        selectionState: testSelectionState,
+        selectedSyllabus,
+        selectedLawFilter,
+      });
+      return;
+    }
+
+    if (currentView === 'test-results' && activeSession && lastTestPayload) {
+      setTestReturnTarget({
+        view: 'test-results',
+        session: activeSession,
+        payload: lastTestPayload,
+        selectedSyllabus,
+        selectedLawFilter,
+      });
+      return;
+    }
+
+    setTestReturnTarget({ view: 'dashboard' });
+  }, [activeSession, currentView, lastTestPayload, selectedLawFilter, selectedSyllabus, testSelectionState]);
+
   const handleStartTest = useCallback(
     async (
       mode: PracticeMode,
@@ -794,10 +851,12 @@ export default function App() {
       count?: number,
       coachContext?: ActivePracticeSession['coach'] | null,
     ) => {
+      captureTestReturnTarget();
       setSelectedSyllabus(syllabus ?? null);
       setSelectedLawFilter(null);
       setDataError(null);
       setPracticeEmptyState(null);
+      setActiveTestSupport(null);
 
       try {
         let questions: Question[] = [];
@@ -806,7 +865,7 @@ export default function App() {
         let frictionByQuestionId: ActivePracticeSession['frictionByQuestionId'] = null;
         const selectedScopeLabel =
           syllabus
-            ? formatSyllabusLabel(syllabus, locale)
+            ? formatSyllabusLabel(syllabus, locale, { curriculum })
             : isSingleScopePracticeCurriculum
               ? null
               : t('Mixto', 'Mistoa');
@@ -976,7 +1035,15 @@ export default function App() {
         setPracticeEmptyState(model);
       }
     },
-    [bundle?.questionsCount, curriculum, isSingleScopePracticeCurriculum, locale, session?.user?.id, t],
+    [
+      bundle?.questionsCount,
+      captureTestReturnTarget,
+      curriculum,
+      isSingleScopePracticeCurriculum,
+      locale,
+      session?.user?.id,
+      t,
+    ],
   );
 
   const handleStartLawTest = useCallback(
@@ -989,10 +1056,12 @@ export default function App() {
         return;
       }
 
+      captureTestReturnTarget();
       setSelectedSyllabus(null);
       setSelectedLawFilter(normalizedLaw);
       setDataError(null);
       setPracticeEmptyState(null);
+      setActiveTestSupport(null);
 
       try {
         const questions = await getPracticeBatchByCategory(count, curriculum, normalizedLaw);
@@ -1043,7 +1112,7 @@ export default function App() {
         setPracticeEmptyState(model);
       }
     },
-    [bundle?.questionsCount, curriculum, locale, t],
+    [bundle?.questionsCount, captureTestReturnTarget, curriculum, locale, t],
   );
 
   const handleStartCoachSession = useCallback(async () => {
@@ -1099,9 +1168,11 @@ export default function App() {
 
   const handleStartCustomTest = useCallback(
     async (params: { from: number; to: number; randomize: boolean }) => {
+      captureTestReturnTarget();
       setSelectedSyllabus(null);
       setDataError(null);
       setPracticeEmptyState(null);
+      setActiveTestSupport(null);
       try {
         const questions = await getQuestionsByNumberRange({
           curriculum,
@@ -1160,7 +1231,84 @@ export default function App() {
         setPracticeEmptyState(model);
       }
     },
-    [bundle?.questionsCount, curriculum, locale, t],
+    [bundle?.questionsCount, captureTestReturnTarget, curriculum, locale, t],
+  );
+
+  const handleStartCustomPractice = useCallback(
+    async (config: CustomPracticeConfig) => {
+      captureTestReturnTarget();
+      setDataError(null);
+      setPracticeEmptyState(null);
+      setSelectedLawFilter(null);
+      setActiveTestSupport(null);
+
+      const plan = buildExecutableSessionPlanFromCustomPractice(config);
+      setSelectedSyllabus(plan.syllabus ?? null);
+
+      try {
+        const questions = await getCustomPracticeBatch({
+          curriculum: plan.curriculum,
+          limit: plan.sessionLength,
+          syllabus: plan.syllabus,
+          topicId: plan.topicId,
+          randomize: true,
+        });
+
+        if (questions.length === 0) {
+          const request = {
+            kind: 'test' as const,
+            mode: 'custom' as const,
+            syllabus: plan.syllabus,
+            count: plan.sessionLength,
+          };
+          const kind = resolveEmptyStateReason({
+            request,
+            bundleQuestionsCount: typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
+          });
+          const model = buildPracticeEmptyStateModel({ locale, kind, request });
+          setPracticeEmptyState(model);
+          return;
+        }
+
+        if (plan.supportMode.showMarks || plan.supportMode.showNotes) {
+          const studyData = await getStudyData(questions.map((q) => q.id));
+          setActiveTestSupport({ supportMode: plan.supportMode, studyData: studyData as any });
+        }
+
+        const topicLabel = plan.topicId ? ` · ${plan.topicId}` : '';
+        const title = t(`A tu medida${topicLabel}`, `Zure neurrira${topicLabel}`);
+
+        const activePracticeSession: ActivePracticeSession = {
+          id: createId(),
+          mode: plan.mode,
+          title,
+          startedAt: new Date().toISOString(),
+          questions,
+          batchNumber: 1,
+          totalBatches: 1,
+          batchStartIndex: null,
+          nextStandardBatchStartIndex: null,
+        };
+
+        setActiveSession(activePracticeSession);
+        setCurrentView('test-active');
+      } catch (error) {
+        const request = {
+          kind: 'test' as const,
+          mode: 'custom' as const,
+          syllabus: buildExecutableSessionPlanFromCustomPractice(config).syllabus,
+          count: buildExecutableSessionPlanFromCustomPractice(config).sessionLength,
+        };
+        const model = buildPracticeEmptyStateModel({
+          locale,
+          kind: 'error',
+          request,
+          errorMessage: error instanceof Error ? error.message : null,
+        });
+        setPracticeEmptyState(model);
+      }
+    },
+    [bundle?.questionsCount, captureTestReturnTarget, locale, t],
   );
 
   const handlePracticeEmptyStateAction = useCallback(
@@ -1234,10 +1382,49 @@ export default function App() {
     [activeSession, curriculum, refreshDashboardSilently, t],
   );
 
+  const handleBackFromTestResults = useCallback(() => {
+    const resetScroll = () => {
+      const node = mainScrollRef.current;
+      if (node) {
+        if (typeof node.scrollTo === 'function') {
+          node.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        } else {
+          node.scrollTop = 0;
+        }
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    };
+
+    if (!testReturnTarget || testReturnTarget.view === 'dashboard') {
+      setActiveSession(null);
+      setLastTestPayload(null);
+      setCurrentView('dashboard');
+      return;
+    }
+
+    if (testReturnTarget.view === 'test-selection') {
+      setSelectedSyllabus(testReturnTarget.selectedSyllabus);
+      setSelectedLawFilter(testReturnTarget.selectedLawFilter);
+      setTestSelectionState(testReturnTarget.selectionState);
+      setActiveSession(null);
+      setLastTestPayload(null);
+      setCurrentView('test-selection');
+      return;
+    }
+
+    setSelectedSyllabus(testReturnTarget.selectedSyllabus);
+    setSelectedLawFilter(testReturnTarget.selectedLawFilter);
+    setActiveSession(testReturnTarget.session);
+    setLastTestPayload(testReturnTarget.payload);
+    resetScroll();
+  }, [testReturnTarget]);
+
   const handleLogout = useCallback(async () => {
     await signOut();
     setSession(null);
     setBundle(null);
+    setTestReturnTarget(null);
+    setTestSelectionState(null);
     setCurrentView('dashboard');
   }, []);
 
@@ -1245,6 +1432,29 @@ export default function App() {
     const learningV2 = bundle?.practiceState.learningDashboardV2;
     const pressureV2 = bundle?.practiceState.pressureInsightsV2;
     const readiness = learningV2?.examReadinessRate != null ? Math.round(learningV2.examReadinessRate * 100) : null;
+    const backlogOverdueCount = learningV2?.backlogOverdueCount ?? 0;
+    let weeklyQuestions = 0;
+    if (bundle) {
+      const now = new Date();
+      const startToday = startOfDay(now);
+      const startLast7 = new Date(startToday);
+      startLast7.setDate(startLast7.getDate() - 6);
+      for (const sessionSummary of bundle.practiceState.recentSessions) {
+        const rawDate = sessionSummary.finishedAt || sessionSummary.startedAt;
+        const sessionDate = rawDate ? new Date(rawDate) : null;
+        if (!sessionDate || Number.isNaN(sessionDate.getTime())) continue;
+        const dayStart = startOfDay(sessionDate);
+        if (dayStart >= startLast7 && dayStart <= startToday) {
+          weeklyQuestions += sessionSummary.total;
+        }
+      }
+    }
+
+    const observedOk =
+      Boolean(learningV2?.observedAccuracySampleOk) || Boolean(bundle?.practiceState.pressureInsightsV2?.sampleOk);
+    const observedAccuracy =
+      learningV2?.observedAccuracyRate != null ? Math.round(learningV2.observedAccuracyRate * 100) : null;
+    const pressureGapPct = pressureV2?.pressureGapRaw == null ? null : Math.round(pressureV2.pressureGapRaw * 100);
     const confidence =
       learningV2?.observedAccuracySampleOk && (learningV2?.observedAccuracyN ?? 0) >= 15
         ? learningV2.retentionSeenConfidenceFlag ?? 'medium'
@@ -1262,6 +1472,11 @@ export default function App() {
       hasReliableReading:
         Boolean(learningV2?.observedAccuracySampleOk) || Boolean(pressureV2?.sampleOk),
       confidence,
+      backlogOverdueCount,
+      weeklyQuestions,
+      observedOk,
+      observedAccuracy,
+      pressureGapPct,
     });
 
     return {
@@ -1442,6 +1657,8 @@ export default function App() {
       setActiveStudySession(null);
       setSelectedSyllabus(null);
       setSelectedLawFilter(null);
+      setTestSelectionState(null);
+      setTestReturnTarget(null);
       setSidebarOpen(false);
       setCurrentView('dashboard');
     },
@@ -2216,6 +2433,7 @@ export default function App() {
 
         {currentView === 'dashboard' ? (
           <Dashboard
+            curriculum={curriculum}
             secondaryHydrated={Boolean(bundle) && !dashboardSecondaryHydrating}
             actionsDisabled={!bundle}
             coachLabel={
@@ -2251,10 +2469,8 @@ export default function App() {
                   )
             }
             primaryCardCtaLabel={bundle ? homeCardCopy.cta ?? t('Seguir por aqui', 'Hemendik jarraitu') : t('Preparando sesion', 'Saioa prestatzen')}
-            primaryCardProgressLabel={t('Temario visto', 'Ikusitako temarioa')}
-            primaryCardProgressValue={Math.round(
-              (bundle?.practiceState.learningDashboardV2?.coverageRate ?? 0) * 100,
-            )}
+            primaryCardProgressLabel={undefined}
+            primaryCardProgressValue={undefined}
             weakTitle={weakAreaCopy.title}
             weakDescription={weakAreaCopy.description}
             weakCardCtaLabel={weakAreaCopy.cta ?? t('Corregir esto', 'Hori zuzendu')}
@@ -2311,16 +2527,20 @@ export default function App() {
             lawOptions={lawOptions}
             lawOptionsLoading={discoveredLawOptionsLoading}
             initialLaw={selectedLawFilter}
+            initialState={testSelectionState}
             onStart={handleStartTest}
             onStartLawTest={handleStartLawTest}
             onStartCustom={handleStartCustomTest}
+            onStartCustomPractice={handleStartCustomPractice}
             onLoadCustomBounds={handleLoadCustomBounds}
             initialSyllabus={selectedSyllabus}
+            onStateChange={setTestSelectionState}
           />
         ) : null}
 
         {currentView === 'study' ? (
           <StudyExplorer
+            curriculum={curriculum}
             bundle={bundle}
             onStartStudy={handleStartStudy}
             onOpenQuestionBank={() => setCurrentView('study-bank')}
@@ -2444,10 +2664,13 @@ export default function App() {
             mode={activeSession.mode}
             reviewPriority={activeSession.reviewPriority ?? null}
             frictionByQuestionId={activeSession.frictionByQuestionId ?? null}
+            supportMode={activeTestSupport?.supportMode ?? null}
+            studyData={activeTestSupport?.studyData ?? null}
             onFinish={handleFinishTest}
             isFinishing={syncingSession}
             onCancel={() => {
               setActiveSession(null);
+              setActiveTestSupport(null);
               setCurrentView('test-selection');
             }}
           />
@@ -2495,6 +2718,7 @@ export default function App() {
               }
               void handleStartTest(activeSession.mode, selectedSyllabus || undefined);
             }}
+            onGoBack={handleBackFromTestResults}
             onGoHome={() => {
               setActiveSession(null);
               setLastTestPayload(null);

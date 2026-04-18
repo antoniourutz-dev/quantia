@@ -22,9 +22,11 @@ import {
 import type { ExecutableSessionPlan, TestResult } from '../types';
 import { formatModeLabel } from '../types';
 import { DashboardBundle } from '../lib/quantiaApi';
+import { getCurriculumCategoryGroupLabel } from '../lib/quantiaApi';
 import type { CoachPlanV2 } from '../lib/coach';
 import {
   buildCoachCopySeed,
+  buildVisibleStatusLabel,
   getSurfaceCopy,
   resolveCoachSurfaceState,
 } from '../lib/coachCopyV2';
@@ -71,12 +73,43 @@ export default function StatsDashboard({
   const readinessCiLow = learningV2?.examReadinessCiLow == null ? null : Math.round(learningV2.examReadinessCiLow * 100);
   const readinessCiHigh = learningV2?.examReadinessCiHigh == null ? null : Math.round(learningV2.examReadinessCiHigh * 100);
   const readinessConfidence = learningV2?.examReadinessConfidenceFlag ?? 'low';
+  const observedAccuracy = Math.round((learningV2?.observedAccuracyRate ?? 0) * 100);
+  const weeklyQuestions = useMemo(() => {
+    const recentSessions = bundle?.practiceState.recentSessions ?? [];
+    const now = new Date();
+    const startToday = new Date(now);
+    startToday.setHours(0, 0, 0, 0);
+    const startLast7 = new Date(startToday);
+    startLast7.setDate(startLast7.getDate() - 6);
+
+    let total = 0;
+    for (const sessionSummary of recentSessions) {
+      const rawDate = sessionSummary.finishedAt || sessionSummary.startedAt;
+      const sessionDate = rawDate ? new Date(rawDate) : null;
+      if (!sessionDate || Number.isNaN(sessionDate.getTime())) continue;
+      const dayStart = new Date(sessionDate);
+      dayStart.setHours(0, 0, 0, 0);
+      if (dayStart >= startLast7 && dayStart <= startToday) {
+        total += sessionSummary.total;
+      }
+    }
+    return total;
+  }, [bundle?.practiceState.recentSessions]);
+
+  const readinessStateLabel = buildVisibleStatusLabel({
+    locale,
+    readiness,
+    backlogOverdueCount: learningV2?.backlogOverdueCount ?? 0,
+    weeklyQuestions,
+    observedOk: Boolean(learningV2?.observedAccuracySampleOk) || Boolean(pressureV2?.sampleOk),
+    observedAccuracy,
+    pressureGapPct: pressureV2?.pressureGapRaw == null ? null : Math.round(pressureV2.pressureGapRaw * 100),
+  });
 
   const coverage = Math.round((learningV2?.coverageRate ?? 0) * 100);
   const seenQuestions = learningV2?.seenQuestions ?? 0;
   const totalBankQuestions = learningV2?.totalQuestions ?? 0;
 
-  const observedAccuracy = Math.round((learningV2?.observedAccuracyRate ?? 0) * 100);
   const observedAccuracyN = learningV2?.observedAccuracyN ?? 0;
   const observedCiLow = learningV2?.observedAccuracyCiLow == null ? null : Math.round(learningV2.observedAccuracyCiLow * 100);
   const observedCiHigh = learningV2?.observedAccuracyCiHigh == null ? null : Math.round(learningV2.observedAccuracyCiHigh * 100);
@@ -596,90 +629,36 @@ export default function StatsDashboard({
                 {t('Lectura', 'Irakurketa')}: {formatConfidence(readinessConfidence)}
               </div>
               <div className="px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
-                {t('Visto', 'Ikusita')}: {coverage}%
-                <span className="[@media(max-height:800px)]:hidden"> ({seenQuestions}/{totalBankQuestions})</span>
+                {t('Estado', 'Egoera')}: {readinessStateLabel}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6 [@media(max-height:800px)]:gap-4">
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-5 sm:rounded-[2.5rem] sm:px-7 sm:py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200/80 mb-3">
-                {t('Punto actual', 'Uneko puntua')}
+          <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-6 sm:rounded-[2.5rem] sm:px-7 sm:py-7">
+            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200/80 mb-3">
+              {t('Lectura del momento', 'Uneko irakurketa')}
+            </div>
+            <div className="text-3xl sm:text-4xl font-black tracking-tight leading-tight">
+              {readinessStateLabel}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
+                {t('Punto', 'Puntua')}: {readiness}%
               </div>
-              <div className="flex items-end justify-between gap-6">
-                <div className="text-5xl md:text-6xl font-black tracking-tighter leading-none">{readiness}%</div>
-                <div className="text-right text-xs font-bold text-indigo-100/80">
-                  {readinessCiLow != null && readinessCiHigh != null ? (
-                    <div>
-                      <span className="[@media(max-height:800px)]:hidden">{t('Margen', 'Tartea')}: </span>
-                      {readinessCiLow}–{readinessCiHigh}
-                    </div>
-                  ) : (
-                    <div>{t('Leyendo tus ultimas sesiones...', 'Azken saioak irakurtzen...')}</div>
-                  )}
-                </div>
+              <div className={`px-3 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-[0.2em] ${
+                observedOk ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/20' : 'bg-amber-500/10 text-amber-200 border-amber-400/20'
+              }`}>
+                {sampleLabel(observedOk)}
               </div>
-              <div className="mt-3 text-sm font-medium text-indigo-50/80 leading-relaxed [@media(max-height:800px)]:hidden">
-                {actionSummary || t('Todavia hace falta un poco mas para leer bien este momento.', 'Oraindik pixka bat gehiago falta da une hau ondo irakurtzeko.')}
+              <div className="px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
+                {t('Por repasar', 'Errepasatzeko')}: {learningV2?.backlogOverdueCount ?? 0}
+              </div>
+              <div className="px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
+                {t('Visto', 'Ikusita')}: {coverage}%
               </div>
             </div>
-
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-5 sm:rounded-[2.5rem] sm:px-7 sm:py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200/80 mb-3">
-                {t('Como estas respondiendo', 'Nola ari zaren erantzuten')}
-              </div>
-              <div className="flex items-end justify-between gap-6">
-                <div className="text-4xl md:text-5xl font-black tracking-tighter leading-none">{observedAccuracy}%</div>
-                <div className="text-right text-xs font-bold text-indigo-100/80">
-                  <div>
-                    <span className="[@media(max-height:800px)]:hidden">{t('Respuestas', 'Erantzunak')}: </span>
-                    {observedAccuracyN}
-                  </div>
-                  {observedCiLow != null && observedCiHigh != null ? (
-                    <div className="[@media(max-height:800px)]:hidden">{t('Margen', 'Tartea')}: {observedCiLow}–{observedCiHigh}</div>
-                  ) : null}
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <div className={`px-3 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-[0.2em] ${
-                  observedOk ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/20' : 'bg-amber-500/10 text-amber-200 border-amber-400/20'
-                }`}>
-                  {sampleLabel(observedOk)}
-                </div>
-                <div className="px-3 py-2 rounded-2xl border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
-                  {t('Por repasar', 'Errepasatzeko')}: {learningV2?.backlogOverdueCount ?? 0}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 px-5 py-5 sm:rounded-[2.5rem] sm:px-7 sm:py-6 [@media(max-height:800px)]:px-6 [@media(max-height:800px)]:py-5">
-              <div className="text-[10px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.22em] text-indigo-200/80 mb-3 whitespace-nowrap overflow-hidden text-ellipsis">
-                {t('Tu actividad reciente', 'Azken jarduera')}
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.18em] text-slate-300/80 mb-2 text-center whitespace-nowrap overflow-hidden text-ellipsis leading-none">
-                    {t('Sesiones', 'Saioak')}
-                  </div>
-                  <div className="text-2xl font-black">{results.length}</div>
-                </div>
-                <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.18em] text-slate-300/80 mb-2 text-center whitespace-nowrap overflow-hidden text-ellipsis leading-none">
-                    {t('Preguntas', 'Galderak')}
-                  </div>
-                  <div className="text-2xl font-black">{totalQuestions}</div>
-                </div>
-                <div className="rounded-2xl bg-black/20 border border-white/10 px-4 py-4 [@media(max-height:800px)]:px-3 [@media(max-height:800px)]:py-3">
-                  <div className="text-[9px] [@media(max-height:800px)]:text-[8px] font-black uppercase tracking-[0.3em] [@media(max-height:800px)]:tracking-[0.18em] text-slate-300/80 mb-2 text-center whitespace-nowrap overflow-hidden text-ellipsis leading-none">
-                    {t('Aciertos', 'Asmatzeak')}
-                  </div>
-                  <div className="text-2xl font-black">{correctAnswers}</div>
-                </div>
-              </div>
-              <div className="mt-4 text-xs font-bold text-indigo-100/80 [@media(max-height:800px)]:hidden">
-                {t('Ritmo actual', 'Uneko erritmoa')}: {levelLabel}
-              </div>
+            <div className="mt-4 text-sm font-medium text-indigo-50/80 leading-relaxed">
+              {actionSummary || t('Todavía estamos afinando la lectura de este momento.', 'Oraindik une honen irakurketa fintzen ari gara.')}
             </div>
           </div>
         </div>
@@ -775,7 +754,9 @@ export default function StatsDashboard({
                 <div key={`${item.category}-${index}`} className="rounded-3xl border border-slate-100 bg-slate-50 px-5 py-4 [@media(max-height:800px)]:px-4 [@media(max-height:800px)]:py-3">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="text-sm font-black text-slate-900 truncate">{item.category}</div>
+                      <div className="text-sm font-black text-slate-900 truncate">
+                        {getCurriculumCategoryGroupLabel(curriculum, item.category) ?? item.category}
+                      </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <div className={`px-2.5 py-1 rounded-2xl border text-[10px] font-black uppercase tracking-[0.2em] ${confidenceClass(confidence)}`}>
                           {t('Lectura', 'Irakurketa')}: {formatConfidence(confidence)}

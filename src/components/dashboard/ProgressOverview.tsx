@@ -1,7 +1,9 @@
 import { TrendingUp, Target, BarChart3, Activity } from 'lucide-react';
 import { useAppLocale } from '../../lib/locale';
+import { formatSyllabusLabel } from '../../types';
 
 interface ProgressOverviewProps {
+  curriculum: string;
   commonProgress: number | null;
   specificProgress: number | null;
   weeklyQuestions: number;
@@ -9,6 +11,7 @@ interface ProgressOverviewProps {
 }
 
 export default function ProgressOverview({
+  curriculum,
   commonProgress,
   specificProgress,
   weeklyQuestions,
@@ -18,14 +21,14 @@ export default function ProgressOverview({
   const isBasque = locale === 'eu';
   const stats = [
     {
-      label: isBasque ? 'Zati arrunta' : 'Parte comun',
+      label: formatSyllabusLabel('common', locale, { curriculum, variant: 'summary' }),
       value: commonProgress == null ? '-' : `${commonProgress}%`,
       icon: BarChart3,
       bgColor: 'bg-indigo-50',
       textColor: 'text-indigo-600',
     },
     {
-      label: isBasque ? 'Zati espezifikoa' : 'Parte especifica',
+      label: formatSyllabusLabel('specific', locale, { curriculum, variant: 'summary' }),
       value: specificProgress == null ? '-' : `${specificProgress}%`,
       icon: Target,
       bgColor: 'bg-emerald-50',

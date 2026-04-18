@@ -33,7 +33,7 @@ export type ExecutableSessionPlan = {
   dominantState?: string | null;
 };
 
-import type { AppLocale } from './lib/locale';
+import { isGoiTeknikariaCurriculum, type AppLocale } from './lib/locale';
 
 export interface Option {
   id: OptionKey;
@@ -328,7 +328,41 @@ export interface ActivePracticeSession {
   > | null;
 }
 
-export const formatSyllabusLabel = (syllabus: SyllabusType, locale: AppLocale = 'es') => {
+export const formatSyllabusLabel = (
+  syllabus: SyllabusType,
+  locale: AppLocale = 'es',
+  options?: {
+    curriculum?: string | null;
+    variant?: 'default' | 'section' | 'compact' | 'summary';
+  },
+) => {
+  if (isGoiTeknikariaCurriculum(options?.curriculum)) {
+    return syllabus === 'common' ? 'Azterketa 2.018' : 'Azterketa 2.022';
+  }
+
+  const variant = options?.variant ?? 'default';
+
+  if (variant === 'section') {
+    if (locale === 'eu') {
+      return syllabus === 'common' ? 'Gai-zerrenda arrunta' : 'Gai-zerrenda espezifikoa';
+    }
+    return syllabus === 'common' ? 'Temario Comun' : 'Temario Especifico';
+  }
+
+  if (variant === 'compact') {
+    if (locale === 'eu') {
+      return syllabus === 'common' ? 'Orokorra' : 'Espez.';
+    }
+    return syllabus === 'common' ? 'Común' : 'Espec.';
+  }
+
+  if (variant === 'summary') {
+    if (locale === 'eu') {
+      return syllabus === 'common' ? 'Zati arrunta' : 'Zati espezifikoa';
+    }
+    return syllabus === 'common' ? 'Parte comun' : 'Parte especifica';
+  }
+
   if (locale === 'eu') {
     return syllabus === 'common' ? 'Orokorra' : 'Espezifikoa';
   }

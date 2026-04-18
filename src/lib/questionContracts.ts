@@ -69,6 +69,8 @@ export const parseSyllabusType = (value: unknown): SyllabusType | null => {
     normalized === 'common' ||
     normalized === 'comun' ||
     normalized === 'parte comun' ||
+    normalized === 'temario comun' ||
+    normalized === 'tema comun' ||
     normalized === 'comunes' ||
     normalized === 'general' ||
     normalized === 'generales'
@@ -80,6 +82,8 @@ export const parseSyllabusType = (value: unknown): SyllabusType | null => {
     normalized === 'specific' ||
     normalized === 'especifico' ||
     normalized === 'especificos' ||
+    normalized === 'temario especifico' ||
+    normalized === 'tema especifico' ||
     normalized === 'parte especifica'
   ) {
     return 'specific';
