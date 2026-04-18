@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,7 +11,7 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react';
-import { OptionKey, PracticeMode, Question } from '../types';
+import type { OptionKey, PracticeMode, Question } from '../types';
 import { useAppLocale } from '../lib/locale';
 import HighlightableText, { TextHighlight } from './HighlightableText';
 import { createId } from '../lib/id';
@@ -81,6 +81,34 @@ export default function StudyInterface({
     setHighlightsMap(prev => ({ ...prev, [currentQuestion.id]: nextList }));
     await saveStudyData(currentQuestion.id, { highlights: nextList });
   }, [currentQuestion, highlightsMap]);
+
+  const answerHighlightKeys = useMemo(() => {
+    if (!currentQuestion) return [];
+    return currentQuestion.options.map((_, idx) => `${currentQuestion.id}_ans_${idx}`);
+  }, [currentQuestion]);
+
+  const handleAddAnswerHighlight = useCallback(
+    async (answerIndex: number, highlight: Omit<TextHighlight, 'id'>) => {
+      if (!currentQuestion) return;
+      const key = `${currentQuestion.id}_ans_${answerIndex}`;
+      const newHl: TextHighlight = { ...highlight, id: createId() };
+      const nextList = [...(highlightsMap[key] || []), newHl];
+      setHighlightsMap((prev) => ({ ...prev, [key]: nextList }));
+      await saveStudyData(key, { highlights: nextList }, { contentType: 'answer', answerIndex, category: currentQuestion.category ?? null, baseQuestionId: currentQuestion.id });
+    },
+    [currentQuestion, highlightsMap],
+  );
+
+  const handleRemoveAnswerHighlight = useCallback(
+    async (answerIndex: number, id: string) => {
+      if (!currentQuestion) return;
+      const key = `${currentQuestion.id}_ans_${answerIndex}`;
+      const nextList = (highlightsMap[key] || []).filter((h) => h.id !== id);
+      setHighlightsMap((prev) => ({ ...prev, [key]: nextList }));
+      await saveStudyData(key, { highlights: nextList }, { contentType: 'answer', answerIndex, category: currentQuestion.category ?? null, baseQuestionId: currentQuestion.id });
+    },
+    [currentQuestion, highlightsMap],
+  );
   
   const handleSaveNote = useCallback(async () => {
     if (!currentQuestion) return;
@@ -190,7 +218,7 @@ export default function StudyInterface({
         </div>
 
         <div className="flex flex-col flex-1 divide-y divide-slate-100 bg-slate-50/30 sm:rounded-2xl sm:border sm:border-slate-100 overflow-hidden mt-2">
-          {currentQuestion.options.map((option) => {
+          {currentQuestion.options.map((option, optionIndex) => {
             const isSelected = selectedAnswer === option.id;
             const isAnswerCorrect = option.id === currentQuestion.correctAnswer;
             
@@ -212,7 +240,6 @@ export default function StudyInterface({
               <button
                 key={option.id}
                 onClick={() => handleAnswer(option.id)}
-                disabled={selectedAnswer !== null}
                 className={itemClass}
               >
                 <div className="relative z-10 flex items-center gap-4 sm:gap-5">
@@ -231,13 +258,21 @@ export default function StudyInterface({
                   >
                     {option.id.toUpperCase()}
                   </span>
-                  <span
+                  <div
                     className={`text-[15px] sm:text-[17px] font-bold leading-snug transition-colors duration-300 ${
                       isSelected || (isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                     }`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {option.text}
-                  </span>
+                    <HighlightableText
+                      text={option.text}
+                      highlights={highlightsMap[answerHighlightKeys[optionIndex]] || []}
+                      onAddHighlight={(hl) => void handleAddAnswerHighlight(optionIndex, hl)}
+                      onRemoveHighlight={(id) => void handleRemoveAnswerHighlight(optionIndex, id)}
+                      maxSelectionChars={90}
+                    />
+                  </div>
                 </div>
               </button>
             );

@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Quantia',
-        short_name: 'Quantia',
+        name: 'kuantia',
+        short_name: 'kuantia',
         description: 'Preparación de oposiciones',
         start_url: '/',
         scope: '/',

@@ -18,6 +18,7 @@ interface HighlightableTextProps {
   onAddHighlight: (highlight: Omit<TextHighlight, 'id'>) => void;
   onRemoveHighlight: (id: string) => void;
   readOnly?: boolean;
+  maxSelectionChars?: number;
 }
 
 const HIGHLIGHT_STYLES: Record<HighlightType, string> = {
@@ -40,6 +41,7 @@ export default function HighlightableText({
   onAddHighlight,
   onRemoveHighlight,
   readOnly = false,
+  maxSelectionChars,
 }: HighlightableTextProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -87,6 +89,14 @@ export default function HighlightableText({
     }
 
     if (end > start) {
+      if (typeof maxSelectionChars === 'number' && maxSelectionChars > 0) {
+        const selectionLength = end - start;
+        if (selectionLength > maxSelectionChars) {
+          setSelectionRange(null);
+          setPopupPos(null);
+          return;
+        }
+      }
       setSelectionRange({ startIndex: start, endIndex: end });
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
@@ -95,7 +105,7 @@ export default function HighlightableText({
         left: Math.max(10, rect.left + rect.width / 2),
       });
     }
-  }, [getAbsoluteOffset, readOnly]);
+  }, [getAbsoluteOffset, maxSelectionChars, readOnly]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelection);

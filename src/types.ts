@@ -318,6 +318,14 @@ export interface ActivePracticeSession {
     reasons: string[];
     dominantState?: string | null;
   } | null;
+  reviewPriority?: 'most_problematic' | null;
+  frictionByQuestionId?: Record<
+    string,
+    {
+      frictionScore: number;
+      primaryTag: 'repeated_error' | 'recent_trouble' | 'pressure_trouble' | 'memory_fragile' | 'mixed';
+    }
+  > | null;
 }
 
 export const formatSyllabusLabel = (syllabus: SyllabusType, locale: AppLocale = 'es') => {

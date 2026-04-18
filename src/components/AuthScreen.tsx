@@ -43,13 +43,13 @@ export default function AuthScreen({ error, loading, onSubmit, onBack }: AuthScr
       <div className="absolute bottom-0 left-0 -mb-28 -ml-28 h-[560px] w-[560px] rounded-full bg-emerald-500 opacity-10 blur-[150px]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(99,102,241,0.08),transparent_45%),radial-gradient(circle_at_85%_70%,rgba(16,185,129,0.06),transparent_45%)]" />
 
-      <div className="relative z-10 w-full max-w-6xl">
+      <div className="relative z-10 w-full max-w-md lg:max-w-6xl">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-8 items-start">
-          <div className="rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 [@media(max-height:800px)]:p-8 shadow-xl">
+          <div className="hidden rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 [@media(max-height:800px)]:p-8 shadow-xl lg:block">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="inline-flex items-center gap-3 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-indigo-700">
                 <GraduationCap size={14} />
-                Quantia
+                kuantia
               </div>
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
                 <ShieldCheck size={14} />
@@ -76,7 +76,13 @@ export default function AuthScreen({ error, loading, onSubmit, onBack }: AuthScr
             </div>
           </div>
 
-          <div className="rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 [@media(max-height:800px)]:p-8 shadow-xl">
+          <div className="rounded-[3.5rem] border border-slate-100 bg-white p-10 md:p-12 [@media(max-height:800px)]:p-8 shadow-xl lg:mx-0">
+            <div className="mb-6 flex lg:hidden">
+              <div className="inline-flex items-center gap-3 rounded-full border border-indigo-100 bg-indigo-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-indigo-700">
+                <GraduationCap size={14} />
+                kuantia
+              </div>
+            </div>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">

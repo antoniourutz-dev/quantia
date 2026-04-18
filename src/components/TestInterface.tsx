@@ -17,6 +17,14 @@ import { useAppLocale } from '../lib/locale';
 interface TestInterfaceProps {
   questions: Question[];
   mode: PracticeMode;
+  reviewPriority?: 'most_problematic' | null;
+  frictionByQuestionId?: Record<
+    string,
+    {
+      frictionScore: number;
+      primaryTag: 'repeated_error' | 'recent_trouble' | 'pressure_trouble' | 'memory_fragile' | 'mixed';
+    }
+  > | null;
   onFinish: (payload: FinishedTestPayload) => void | Promise<void>;
   onCancel: () => void;
   isFinishing?: boolean;
@@ -25,6 +33,8 @@ interface TestInterfaceProps {
 export default function TestInterface({
   questions,
   mode,
+  reviewPriority = null,
+  frictionByQuestionId = null,
   onFinish,
   onCancel,
   isFinishing = false,
@@ -48,6 +58,7 @@ export default function TestInterface({
   const wasFinishingRef = useRef(false);
 
   const currentQuestion = questions[currentIndex];
+  const currentFriction = currentQuestion ? frictionByQuestionId?.[currentQuestion.id] ?? null : null;
   const selectedAnswer = selectedAnswers[currentIndex];
   const isSimulacro = mode === 'simulacro';
   const closingSession = finishRequested || isFinishing;
@@ -172,6 +183,23 @@ export default function TestInterface({
   };
 
   const progress = ((currentIndex + 1) / questions.length) * 100;
+
+  const frictionBadgeLabel = useMemo(() => {
+    if (!currentFriction) return null;
+    if (currentFriction.primaryTag === 'repeated_error') {
+      return isBasque ? 'Berriro erortzen zara' : 'Te vuelve a caer';
+    }
+    if (currentFriction.primaryTag === 'recent_trouble') {
+      return isBasque ? 'Akats berria' : 'Fallo reciente';
+    }
+    if (currentFriction.primaryTag === 'pressure_trouble') {
+      return isBasque ? 'Simulakroan erortzen zara' : 'Te cae en simulacro';
+    }
+    if (currentFriction.primaryTag === 'memory_fragile') {
+      return isBasque ? 'Oraindik ez duzu finkatu' : 'Todavía no la fijas';
+    }
+    return isBasque ? 'Mistoa' : 'Mixta';
+  }, [currentFriction, isBasque]);
 
   if (!currentQuestion) {
     return (
@@ -302,6 +330,11 @@ export default function TestInterface({
                 <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
                   {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
                 </span>
+                {reviewPriority === 'most_problematic' && frictionBadgeLabel ? (
+                  <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                    {frictionBadgeLabel}
+                  </span>
+                ) : null}
                 {selectedAnswer !== null && !isSimulacro && (
                   <span className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${selectedAnswer === currentQuestion.correctAnswer ? 'text-emerald-500' : 'text-rose-500'}`}>
                     {selectedAnswer === currentQuestion.correctAnswer

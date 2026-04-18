@@ -46,6 +46,7 @@ import {
   getCurriculumCategoryOptions,
   getCurriculumQuestionNumberBounds,
   getPracticeBatchByCategory,
+  getPracticeQuestionsByIds,
   getRandomPracticeBatch,
   getQuestionsByNumberRange,
   getStudyQuestionsSlice,
@@ -75,6 +76,7 @@ import {
   type PracticeEmptyStateModel,
 } from './lib/practiceEmptyState';
 import { resolveFollowUpSession } from './lib/followUpSession';
+import { getUserQuestionFriction } from './services/questionFrictionApi';
 
 const StatsDashboard = lazy(() => import('./components/StatsDashboard'));
 const StudyQuestionBank = lazy(() => import('./components/StudyQuestionBank'));
@@ -800,6 +802,8 @@ export default function App() {
       try {
         let questions: Question[] = [];
         let resolvedMode = mode;
+        let reviewPriority: ActivePracticeSession['reviewPriority'] = null;
+        let frictionByQuestionId: ActivePracticeSession['frictionByQuestionId'] = null;
         const selectedScopeLabel =
           syllabus
             ? formatSyllabusLabel(syllabus, locale)
@@ -824,7 +828,37 @@ export default function App() {
 
         if (mode === 'review') {
           try {
-            questions = await getWeakPracticeBatch(batchSize, curriculum, scope);
+            const userId = session?.user?.id ?? null;
+            if (userId) {
+              const frictionItems = await getUserQuestionFriction(userId, curriculum, Math.max(40, batchSize * 4)).catch(
+                () => [],
+              );
+              if (frictionItems.length > 0) {
+                const prioritized = await getPracticeQuestionsByIds({
+                  curriculum,
+                  questionIds: frictionItems.map((item) => item.questionId),
+                  questionScope: scope,
+                  limit: batchSize,
+                });
+                if (prioritized.length > 0) {
+                  questions = prioritized;
+                  reviewPriority = 'most_problematic';
+                  const map: NonNullable<ActivePracticeSession['frictionByQuestionId']> = {};
+                  for (const item of frictionItems) {
+                    map[item.questionId] = {
+                      frictionScore: item.frictionScore,
+                      primaryTag: item.primaryTag,
+                    };
+                  }
+                  frictionByQuestionId = map;
+                  resolvedTitle = t('Review prioritizado', 'Lehentasunezko reviewa');
+                }
+              }
+            }
+
+            if (questions.length === 0) {
+              questions = await getWeakPracticeBatch(batchSize, curriculum, scope);
+            }
             if (questions.length === 0) {
               questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
               if (questions.length === 0) {
@@ -906,7 +940,7 @@ export default function App() {
           context: { mode: resolvedMode, syllabus: syllabus ?? null, count: batchSize },
         });
 
-        const session: ActivePracticeSession = {
+        const activePracticeSession: ActivePracticeSession = {
           id: createId(),
           mode: resolvedMode,
           title: resolvedTitle,
@@ -917,12 +951,14 @@ export default function App() {
           batchStartIndex: null,
           nextStandardBatchStartIndex: null,
         };
+        activePracticeSession.reviewPriority = reviewPriority;
+        activePracticeSession.frictionByQuestionId = frictionByQuestionId;
         if (coachContext) {
-          session.source = 'coach';
-          session.coach = coachContext;
+          activePracticeSession.source = 'coach';
+          activePracticeSession.coach = coachContext;
         }
 
-        setActiveSession(session);
+        setActiveSession(activePracticeSession);
         setCurrentView('test-active');
       } catch (error) {
         const request = {
@@ -940,7 +976,7 @@ export default function App() {
         setPracticeEmptyState(model);
       }
     },
-    [bundle?.questionsCount, curriculum, isSingleScopePracticeCurriculum, locale, t],
+    [bundle?.questionsCount, curriculum, isSingleScopePracticeCurriculum, locale, session?.user?.id, t],
   );
 
   const handleStartLawTest = useCallback(
@@ -1189,7 +1225,7 @@ export default function App() {
         setDataError(
           error instanceof Error
             ? error.message
-            : t('No se ha podido sincronizar la sesion con Quantia.', 'Ezin izan da saioa Quantiarekin sinkronizatu.'),
+            : t('No se ha podido sincronizar la sesion con kuantia.', 'Ezin izan da saioa kuantiarekin sinkronizatu.'),
         );
       } finally {
         setSyncingSession(false);
@@ -1498,7 +1534,7 @@ export default function App() {
                 ? t('Ajustes', 'Doikuntzak')
                 : isAdminView
                   ? t('Admin', 'Admin')
-                  : t('Quantia', 'Quantia');
+                  : t('kuantia', 'kuantia');
   const mobileSubtitle = useMemo(() => {
     if (currentView === 'dashboard') {
       return t('Direccion clara y siguiente paso', 'Norabide argia eta hurrengo pausoa');
@@ -1556,6 +1592,24 @@ export default function App() {
       if (frame) window.cancelAnimationFrame(frame);
     };
   }, [currentView, showMobileTopBar]);
+
+  useEffect(() => {
+    const node = mainScrollRef.current;
+    const resetScroll = () => {
+      if (node) {
+        if (typeof node.scrollTo === 'function') {
+          node.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        } else {
+          node.scrollTop = 0;
+        }
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    };
+
+    resetScroll();
+    const frame = window.requestAnimationFrame(resetScroll);
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentView]);
 
   if (supabaseConfigError) {
     return (
@@ -1646,7 +1700,7 @@ export default function App() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-black text-2xl tracking-tighter">Quantia</span>
+                    <span className="font-black text-2xl tracking-tighter">kuantia</span>
                     <span className="text-slate-500 font-black text-xs">•</span>
                     <span className="text-xs font-black text-slate-200 truncate max-w-[140px]">
                       {activeCurriculumLabel}
@@ -2388,6 +2442,8 @@ export default function App() {
           <TestInterface
             questions={activeQuestions}
             mode={activeSession.mode}
+            reviewPriority={activeSession.reviewPriority ?? null}
+            frictionByQuestionId={activeSession.frictionByQuestionId ?? null}
             onFinish={handleFinishTest}
             isFinishing={syncingSession}
             onCancel={() => {

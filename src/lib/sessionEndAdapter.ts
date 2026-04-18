@@ -120,7 +120,7 @@ export const buildSessionEndDecision = (input: {
     sessionState: state,
     didReturnAfterGap: input.didReturnAfterGap,
     trainedPressure: input.mode === 'simulacro',
-    reducedPending: state === 'consistency_risk',
+    reducedPending: state === 'stable_accuracy',
   }, seedString);
 
   return {
