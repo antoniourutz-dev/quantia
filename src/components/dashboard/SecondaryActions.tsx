@@ -1,5 +1,7 @@
 import { ReactNode } from 'react';
-import { AlertCircle, PlayCircle, TrendingUp } from 'lucide-react';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle';
+import PlayCircle from 'lucide-react/dist/esm/icons/play-circle';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up';
 import { useAppLocale } from '../../lib/locale';
 
 interface SecondaryActionItemProps {

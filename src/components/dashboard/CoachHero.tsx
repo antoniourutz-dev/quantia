@@ -1,4 +1,6 @@
-import { Sparkles, ArrowRight, Stars } from 'lucide-react';
+import Sparkles from 'lucide-react/dist/esm/icons/sparkles';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
+import Stars from 'lucide-react/dist/esm/icons/stars';
 
 interface CoachHeroProps {
   onAction: () => void;
@@ -40,7 +42,10 @@ export default function CoachHero({
           <span className="text-xs font-black tracking-[0.2em] uppercase text-indigo-200">{label}</span>
         </div>
 
-        <h1 className={`${compact ? 'text-[2rem] sm:text-4xl' : 'text-4xl md:text-6xl'} font-black ${compact ? 'mb-4' : 'mb-8'} leading-[1.05] tracking-tight`}>
+        <h1
+          data-home-lcp-title="true"
+          className={`${compact ? 'text-[2rem] sm:text-4xl' : 'text-4xl md:text-6xl'} font-black ${compact ? 'mb-4' : 'mb-8'} leading-[1.05] tracking-tight`}
+        >
           {titleParts.map((part, index) => (
             <span
               key={`${part}-${index}`}

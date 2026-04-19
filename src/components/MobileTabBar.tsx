@@ -1,4 +1,8 @@
-import { BookOpen, ClipboardList, LayoutDashboard, Settings, TrendingUp } from 'lucide-react';
+import BookOpen from 'lucide-react/dist/esm/icons/book-open';
+import ClipboardList from 'lucide-react/dist/esm/icons/clipboard-list';
+import LayoutDashboard from 'lucide-react/dist/esm/icons/layout-dashboard';
+import Settings from 'lucide-react/dist/esm/icons/settings';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up';
 import { useAppLocale } from '../lib/locale';
 
 type MobileTabKey = 'dashboard' | 'test-selection' | 'stats' | 'study' | 'settings';

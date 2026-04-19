@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, GraduationCap, Loader2, Mail, ShieldCheck } from 'lucide-react';
+import ArrowRight from 'lucide-react/dist/esm/icons/arrow-right';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
+import Mail from 'lucide-react/dist/esm/icons/mail';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
 import { useAppLocale } from '../lib/locale';
 import { trackDecisionOnce, trackEffect } from '../lib/telemetry';
 

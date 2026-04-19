@@ -9,6 +9,69 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>kuantia</title>
+    <script>
+      (function () {
+        var KEY = 'quantia.boot.recover.v1';
+        function shouldRecover(msg) {
+          msg = String(msg || '').toLowerCase();
+          return (
+            msg.indexOf('chunkloaderror') !== -1 ||
+            msg.indexOf('loading chunk') !== -1 ||
+            msg.indexOf('failed to fetch dynamically imported module') !== -1 ||
+            msg.indexOf('importing a module script failed') !== -1 ||
+            msg.indexOf('net::err_failed') !== -1 ||
+            msg.indexOf('net::err_aborted') !== -1 ||
+            msg.indexOf('boot-timeout') !== -1
+          );
+        }
+        function recover(reason) {
+          try {
+            if (sessionStorage.getItem(KEY) === '1') return;
+            if (!shouldRecover(reason)) return;
+            sessionStorage.setItem(KEY, '1');
+          } catch (e) {}
+          try {
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                regs.forEach(function (r) {
+                  try {
+                    r.unregister();
+                  } catch (e) {}
+                });
+              });
+            }
+            if ('caches' in window) {
+              caches.keys().then(function (keys) {
+                keys.forEach(function (k) {
+                  try {
+                    caches.delete(k);
+                  } catch (e) {}
+                });
+              });
+            }
+          } catch (e) {}
+          try {
+            location.reload();
+          } catch (e) {}
+        }
+        window.addEventListener(
+          'error',
+          function (e) {
+            recover((e && (e.error && e.error.message)) || (e && e.message) || 'error');
+          },
+          true
+        );
+        window.addEventListener('unhandledrejection', function (e) {
+          recover((e && e.reason && e.reason.message) || (e && e.reason) || 'unhandledrejection');
+        });
+        setTimeout(function () {
+          try {
+            if (window.__QUANTIA_BOOT_RENDERED__) return;
+            recover('boot-timeout');
+          } catch (e) {}
+        }, 8000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

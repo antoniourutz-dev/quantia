@@ -2148,10 +2148,12 @@ export const getMyAccountIdentity = async (): Promise<AccountIdentity> => {
 
 export const getMyPracticeState = async (
   curriculum = DEFAULT_CURRICULUM,
+  options?: { includeRecentSessions?: boolean },
 ): Promise<CloudPracticeState> => {
+  const includeRecentSessions = options?.includeRecentSessions ?? true;
   const [recentSessions, learningDashboardResponse, examTargetResponse, pressureDashboardResponse] =
     await Promise.all([
-      getPracticeSessions(curriculum),
+      includeRecentSessions ? getPracticeSessions(curriculum) : Promise.resolve([]),
       supabase.schema('app').rpc('get_readiness_dashboard', { p_curriculum: curriculum }).maybeSingle(),
       supabase.schema('app').rpc('get_my_exam_target', { p_curriculum: curriculum }).maybeSingle(),
       supabase.schema('app').rpc('get_pressure_dashboard', { p_curriculum: curriculum }).maybeSingle(),
@@ -3492,7 +3494,7 @@ export const loadDashboardPrimaryBundle = async (
 ): Promise<DashboardBundle> => {
   const [identity, practiceState, activitySessions] = await Promise.all([
     getMyAccountIdentity(),
-    getMyPracticeState(curriculum),
+    getMyPracticeState(curriculum, { includeRecentSessions: false }),
     getRecentActivitySessions().catch(() => []),
   ]);
 
@@ -3510,9 +3512,14 @@ export const loadDashboardPrimaryBundle = async (
   };
 };
 
+export const getRecentSessionsForHome = async (curriculum = DEFAULT_CURRICULUM) => {
+  return getPracticeSessions(curriculum);
+};
+
 export const hydrateDashboardBundle = async (
   primaryBundle: DashboardBundle,
   curriculum = DEFAULT_CURRICULUM,
+  options?: { skipSharedCommonOverride?: boolean },
 ): Promise<DashboardBundle> => {
   const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories] = await Promise.all([
     getMyLearningDashboardV2(curriculum).catch(() => null),
@@ -3523,65 +3530,8 @@ export const hydrateDashboardBundle = async (
     getWeakCategorySummary(curriculum, 5).catch(() => []),
   ]);
 
-  const sharedCommonOverride = hasSharedQuestionSources(curriculum, 'common')
-    ? await (async () => {
-        const commonSnapshot = await getQuestionSnapshotFromTables({
-          curriculum,
-          maxQuestions: 4000,
-          questionScope: 'common',
-        }).catch(() => []);
-        const commonQuestionKeysById = new Map<string, string>();
-        const commonQuestionKeys = new Set<string>();
-        for (const question of commonSnapshot) {
-          const fallbackId = String(question.id ?? '').trim();
-          const dedupeKey = buildQuestionDedupKey(question);
-          const canonicalKey = dedupeKey || `id:${fallbackId}`;
-          if (fallbackId) commonQuestionKeysById.set(fallbackId, canonicalKey);
-          commonQuestionKeys.add(canonicalKey);
-        }
-        const attemptedRefs = await getAttemptedQuestionRefsFromSessions(curriculum).catch(() => null);
-        if (
-          commonQuestionKeys.size === 0 ||
-          !attemptedRefs
-        ) {
-          return null;
-        }
-
-        const seenSharedCommon = new Set<string>();
-
-        for (const id of attemptedRefs.ids) {
-          const canonicalKey = commonQuestionKeysById.get(id);
-          if (canonicalKey) seenSharedCommon.add(canonicalKey);
-        }
-
-        for (const dedupeKey of attemptedRefs.dedupeKeys) {
-          if (commonQuestionKeys.has(dedupeKey)) seenSharedCommon.add(dedupeKey);
-        }
-
-        const seenCommon = seenSharedCommon.size;
-        const totalCommon = commonQuestionKeys.size;
-        const safeSeen = Math.max(0, Math.min(totalCommon, seenCommon));
-        const unseen = Math.max(0, totalCommon - safeSeen);
-
-        if (isCommonProgressDebugEnabled()) {
-          console.info('[commonProgress]', {
-            curriculum,
-            totalCommon,
-            seenCommon: safeSeen,
-            commonQuestionIds: commonQuestionKeysById.size,
-            commonQuestionKeys: commonQuestionKeys.size,
-            attemptedIds: attemptedRefs.ids.size,
-            attemptedDedupeKeys: attemptedRefs.dedupeKeys.size,
-          });
-        }
-
-        return {
-          total: totalCommon,
-          unseen,
-          attempts: safeSeen,
-        };
-      })()
-    : null;
+  const skipSharedCommonOverride = options?.skipSharedCommonOverride ?? false;
+  const sharedCommonOverride = skipSharedCommonOverride ? null : await computeSharedCommonOverride(curriculum);
 
   const patchedLearningDashboardV2 =
     learningDashboardV2 && sharedCommonOverride
@@ -3642,6 +3592,72 @@ export const hydrateDashboardBundle = async (
     questionsCount: normalizedQuestionsCount,
     weakCategories,
   };
+};
+
+type SharedCommonOverride = { total: number; unseen: number; attempts: number };
+const sharedCommonOverrideCache = new Map<string, Promise<SharedCommonOverride | null>>();
+
+export const computeSharedCommonOverride = async (curriculum: string): Promise<SharedCommonOverride | null> => {
+  const normalized = String(curriculum ?? '').trim() || DEFAULT_CURRICULUM;
+  if (!hasSharedQuestionSources(normalized, 'common')) return null;
+
+  const cached = sharedCommonOverrideCache.get(normalized);
+  if (cached) return cached;
+
+  const task = (async () => {
+    const commonSnapshot = await getQuestionSnapshotFromTables({
+      curriculum: normalized,
+      maxQuestions: 4000,
+      questionScope: 'common',
+    }).catch(() => []);
+    const commonQuestionKeysById = new Map<string, string>();
+    const commonQuestionKeys = new Set<string>();
+    for (const question of commonSnapshot) {
+      const fallbackId = String(question.id ?? '').trim();
+      const dedupeKey = buildQuestionDedupKey(question);
+      const canonicalKey = dedupeKey || `id:${fallbackId}`;
+      if (fallbackId) commonQuestionKeysById.set(fallbackId, canonicalKey);
+      commonQuestionKeys.add(canonicalKey);
+    }
+    const attemptedRefs = await getAttemptedQuestionRefsFromSessions(normalized).catch(() => null);
+    if (commonQuestionKeys.size === 0 || !attemptedRefs) return null;
+
+    const seenSharedCommon = new Set<string>();
+
+    for (const id of attemptedRefs.ids) {
+      const canonicalKey = commonQuestionKeysById.get(id);
+      if (canonicalKey) seenSharedCommon.add(canonicalKey);
+    }
+
+    for (const dedupeKey of attemptedRefs.dedupeKeys) {
+      if (commonQuestionKeys.has(dedupeKey)) seenSharedCommon.add(dedupeKey);
+    }
+
+    const seenCommon = seenSharedCommon.size;
+    const totalCommon = commonQuestionKeys.size;
+    const safeSeen = Math.max(0, Math.min(totalCommon, seenCommon));
+    const unseen = Math.max(0, totalCommon - safeSeen);
+
+    if (isCommonProgressDebugEnabled()) {
+      console.info('[commonProgress]', {
+        curriculum: normalized,
+        totalCommon,
+        seenCommon: safeSeen,
+        commonQuestionIds: commonQuestionKeysById.size,
+        commonQuestionKeys: commonQuestionKeys.size,
+        attemptedIds: attemptedRefs.ids.size,
+        attemptedDedupeKeys: attemptedRefs.dedupeKeys.size,
+      });
+    }
+
+    return { total: totalCommon, unseen, attempts: safeSeen };
+  })().catch((error) => {
+    sharedCommonOverrideCache.delete(normalized);
+    throw error;
+  });
+
+  sharedCommonOverrideCache.set(normalized, task);
+  return task;
 };
 
 export const signOut = async () => {

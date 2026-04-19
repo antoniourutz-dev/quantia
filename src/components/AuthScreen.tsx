@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, GraduationCap, Loader2, LogIn, ShieldCheck } from 'lucide-react';
+import ArrowLeft from 'lucide-react/dist/esm/icons/arrow-left';
+import GraduationCap from 'lucide-react/dist/esm/icons/graduation-cap';
+import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
+import LogIn from 'lucide-react/dist/esm/icons/log-in';
+import ShieldCheck from 'lucide-react/dist/esm/icons/shield-check';
 import { useAppLocale } from '../lib/locale';
 
 interface AuthScreenProps {

@@ -46,6 +46,27 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/')
+
+          if (normalizedId.includes('/node_modules/')) {
+            if (normalizedId.includes('/recharts/')) return 'vendor-charts'
+            if (normalizedId.includes('/@supabase/')) return 'vendor-supabase'
+            if (
+              normalizedId.includes('/react/') ||
+              normalizedId.includes('/react-dom/') ||
+              normalizedId.includes('/scheduler/')
+            ) {
+              return 'vendor-react'
+            }
+          }
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5174,

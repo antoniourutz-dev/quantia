@@ -22,6 +22,13 @@ import { storeSessionCloseSummary } from '../lib/continuity';
 import { trackDecision, trackEffect } from '../lib/telemetry';
 import { buildSessionEndExperience } from '../lib/sessionEndExperience';
 import { getCurriculumCategoryGroupLabel } from '../lib/quantiaApi';
+import {
+  createAnalysisLoadTrace,
+  markAnalysisCtaVisible,
+  markAnalysisHydrated,
+  markAnalysisLevel1Ready,
+  markAnalysisReviewVisible,
+} from '../lib/analysisLoadMetrics';
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
@@ -62,6 +69,9 @@ export default function PostTestStats({
     ? answers.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answers.length
     : 0;
   const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
+  const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
+  const [analysisHydrated, setAnalysisHydrated] = useState(false);
+  const [showReview, setShowReview] = useState(false);
 
   const sessionEnd = useMemo(
     () =>
@@ -84,32 +94,35 @@ export default function PostTestStats({
     username,
   });
 
-  const lawStats = questions.reduce((acc, q) => {
-    const law =
-      getCurriculumCategoryGroupLabel(curriculum, q.category)?.trim() ||
-      (q.category ?? '').trim() ||
-      (isBasque ? 'Beste arauak' : 'Otras normas');
-    if (!acc[law]) acc[law] = { total: 0, correct: 0 };
-    acc[law].total += 1;
-    const answer = answers.find((a) => a.questionId === q.id);
-    if (answer?.isCorrect) acc[law].correct += 1;
-    return acc;
-  }, {} as Record<string, { total: number; correct: number }>);
+  const answerMap = useMemo(() => new Map(answers.map((a) => [a.questionId, a])), [answers]);
+  const lawData = useMemo(() => {
+    if (!analysisHydrated) return [];
 
-  const lawData = Object.entries(lawStats)
-    .map(([fullName, stats]) => ({
-      fullName,
-      name: fullName.length > 36 ? `${fullName.substring(0, 33)}...` : fullName,
-      accuracy: Math.round((stats.correct / Math.max(1, stats.total)) * 100),
-      total: stats.total,
-    }))
-    .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
+    const lawStats = questions.reduce((acc, q) => {
+      const law =
+        getCurriculumCategoryGroupLabel(curriculum, q.category)?.trim() ||
+        (q.category ?? '').trim() ||
+        (isBasque ? 'Beste arauak' : 'Otras normas');
+      if (!acc[law]) acc[law] = { total: 0, correct: 0 };
+      acc[law].total += 1;
+      const answer = answerMap.get(q.id) ?? null;
+      if (answer?.isCorrect) acc[law].correct += 1;
+      return acc;
+    }, {} as Record<string, { total: number; correct: number }>);
 
-  const lawsSeen = lawData.map((item) => item.fullName).filter(Boolean);
+    return Object.entries(lawStats)
+      .map(([fullName, stats]) => ({
+        fullName,
+        name: fullName.length > 36 ? `${fullName.substring(0, 33)}...` : fullName,
+        accuracy: Math.round((stats.correct / Math.max(1, stats.total)) * 100),
+        total: stats.total,
+      }))
+      .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
+  }, [analysisHydrated, answerMap, curriculum, isBasque, questions]);
+  const lawsSeen = useMemo(() => lawData.map((item) => item.fullName).filter(Boolean), [lawData]);
   const [showOnlyIncorrect, setShowOnlyIncorrect] = useState(false);
 
   const reviewItems = useMemo(() => {
-    const answerMap = new Map(answers.map((a) => [a.questionId, a]));
     return questions.map((q, index) => {
       const answer = answerMap.get(q.id) ?? null;
       const selected = answer?.selectedOption ?? null;
@@ -133,7 +146,7 @@ export default function PostTestStats({
         isCorrect,
       };
     });
-  }, [answers, isBasque, questions]);
+  }, [answerMap, curriculum, isBasque, questions]);
 
   const reviewFiltered = useMemo(() => {
     if (!showOnlyIncorrect) return reviewItems;
@@ -154,6 +167,8 @@ export default function PostTestStats({
       : 'El ritmo es bueno, pero aun puedes ahorrar tiempo en las faciles.';
 
   useEffect(() => {
+    markAnalysisLevel1Ready(analysisTrace);
+    markAnalysisCtaVisible(analysisTrace);
     trackDecision({
       surface: 'session_end',
       curriculum,
@@ -183,6 +198,7 @@ export default function PostTestStats({
       total: questions.length,
     });
   }, [
+    analysisTrace,
     coachContext?.primaryAction,
     coachContext?.tone,
     curriculum,
@@ -196,6 +212,29 @@ export default function PostTestStats({
     sessionEnd.nextMove.kind,
     sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
   ]);
+
+  useEffect(() => {
+    const idle = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: { timeout?: number }) => number);
+    if (typeof idle === 'function') {
+      const handle = idle(() => setAnalysisHydrated(true), { timeout: 1200 });
+      return () => {
+        const cancel = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
+        if (typeof cancel === 'function') cancel(handle);
+      };
+    }
+    const handle = window.setTimeout(() => setAnalysisHydrated(true), 0);
+    return () => window.clearTimeout(handle);
+  }, []);
+
+  useEffect(() => {
+    if (!analysisHydrated) return;
+    markAnalysisHydrated(analysisTrace);
+  }, [analysisHydrated, analysisTrace]);
+
+  useEffect(() => {
+    if (!showReview) return;
+    markAnalysisReviewVisible(analysisTrace);
+  }, [analysisTrace, showReview]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
@@ -250,7 +289,11 @@ export default function PostTestStats({
                });
                if (sessionEnd.nextMove.kind === 'review_on_page') {
                  setShowOnlyIncorrect(true);
-                 document.getElementById('session-end-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                setAnalysisHydrated(true);
+                setShowReview(true);
+                requestAnimationFrame(() => {
+                  document.getElementById('session-end-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
                  return;
                }
                if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
@@ -289,7 +332,7 @@ export default function PostTestStats({
         </div>
       </div>
 
-      {!continuityFocus ? (
+      {!continuityFocus && analysisHydrated ? (
       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
         <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
           <div className="flex items-center gap-3 mb-6">
@@ -338,7 +381,7 @@ export default function PostTestStats({
       </div>
       ) : null}
 
-      {mode === 'simulacro' ? (
+      {mode === 'simulacro' && showReview ? (
         <div id="session-end-review" className="space-y-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2.5rem] sm:p-10">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div>

@@ -1,4 +1,7 @@
-import { TrendingUp, Target, BarChart3, Activity } from 'lucide-react';
+import TrendingUp from 'lucide-react/dist/esm/icons/trending-up';
+import Target from 'lucide-react/dist/esm/icons/target';
+import BarChart3 from 'lucide-react/dist/esm/icons/bar-chart-3';
+import Activity from 'lucide-react/dist/esm/icons/activity';
 import { useAppLocale } from '../../lib/locale';
 import { formatSyllabusLabel } from '../../types';
 
