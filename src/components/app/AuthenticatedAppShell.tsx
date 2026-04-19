@@ -2535,7 +2535,6 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           subtitle={mobileSubtitle}
           statusLabel={mobileStatusLabel}
           dotClass={headerStatus.dotClass}
-          curriculumLabel={activeCurriculumLabel}
           curriculumId={curriculum}
           curriculumOptions={visibleCurriculumOptions}
           curriculumOptionsLoading={curriculumOptionsLoading}

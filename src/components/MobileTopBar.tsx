@@ -12,7 +12,6 @@ export default function MobileTopBar({
   subtitle,
   statusLabel,
   dotClass,
-  curriculumLabel,
   curriculumId,
   curriculumOptions,
   curriculumOptionsLoading,
@@ -24,7 +23,6 @@ export default function MobileTopBar({
   subtitle: string;
   statusLabel?: string | null;
   dotClass: string;
-  curriculumLabel: string;
   curriculumId: string;
   curriculumOptions: CurriculumOption[];
   curriculumOptionsLoading: boolean;
@@ -45,19 +43,6 @@ export default function MobileTopBar({
     if (!q) return curriculumOptions;
     return curriculumOptions.filter((opt) => opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q));
   }, [curriculumOptions, query]);
-
-  const shortCurriculumLabel = useMemo(() => {
-    const base = (curriculumLabel || '').trim();
-    const lower = base.toLowerCase();
-    if (!base) return base;
-    if (lower.includes('auxiliar')) return 'Aux.';
-    if (lower.includes('administrativo')) return 'Adm.';
-    if (lower.includes('leyes')) return 'Leyes';
-    if (lower.includes('general')) return 'General';
-    if (base.length <= 14) return base;
-    const first = base.split(/\s+/)[0] ?? base;
-    return `${first.slice(0, 8)}.`;
-  }, [curriculumLabel]);
 
   return (
     <>
@@ -86,13 +71,12 @@ export default function MobileTopBar({
               <button
                 type="button"
                 onClick={() => setSheetOpen(true)}
-                title={curriculumLabel}
                 aria-label={t('Cambiar oposicion', 'Oposizioa aldatu')}
                 className={`inline-flex items-center gap-2 rounded-[1.15rem] border border-indigo-100 bg-indigo-50 px-3 font-black text-indigo-700 shadow-sm shadow-indigo-100/50 transition-all ${
                   compact ? 'h-10 max-w-[8.5rem] text-[11px]' : 'h-11 max-w-[9.75rem] text-[11px]'
                 }`}
               >
-                <span className="min-w-0 truncate">{shortCurriculumLabel}</span>
+                <span className="min-w-0 truncate">{t('Oposición', 'Oposizioa')}</span>
                 <ChevronDown size={14} className="shrink-0" />
               </button>
 

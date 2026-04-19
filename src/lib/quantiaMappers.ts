@@ -32,6 +32,8 @@ export const toNullableNumber = (value: unknown) => {
 
 export const normalizeQuestionScope = (value: unknown) => parseSyllabusType(value);
 
+const normalizeYearDots = (value: string) => value.replace(/\b2\.(018|022)\b/g, '2$1');
+
 export const mapPracticeMode = (value: unknown): PracticeSessionSummary['mode'] => {
   const normalized = String(value ?? '').trim().toLowerCase();
   switch (normalized) {
@@ -212,8 +214,8 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
     number: toNullableNumber(
       row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
     ),
-    text: statement,
-    options: OPTION_KEYS.map((key) => ({ id: key, text: options[key] })),
+    text: normalizeYearDots(statement),
+    options: OPTION_KEYS.map((key) => ({ id: key, text: normalizeYearDots(options[key]) })),
     correctAnswer: correctOption,
     explanation:
       pickFirstText(row, [
@@ -223,8 +225,18 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
         'feedback',
         'solution',
         'rationale',
-      ]) ??
-      'Sin explicacion disponible.',
+      ])
+        ? normalizeYearDots(
+            pickFirstText(row, [
+              'explicacion',
+              'explanation',
+              'justificacion',
+              'feedback',
+              'solution',
+              'rationale',
+            ])!,
+          )
+        : 'Sin explicacion disponible.',
     syllabus: questionScope ?? 'common',
     category: pickFirstText(row, [
       'category',
