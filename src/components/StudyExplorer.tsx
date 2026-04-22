@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Hash, Loader2, Tag, ChevronRight, History, Sparkles } from 'lucide-react';
 import type { DashboardBundle } from '../lib/quantiaApi';
-import { getCurriculumCategoryGroupLabel, getLastVisitedStudyQuestion } from '../lib/quantiaApi';
+import { getCurriculumCategoryGroupLabel, getCurriculumQuestionNumberBounds, getLastVisitedStudyQuestion } from '../lib/quantiaApi';
 import { formatSyllabusLabel, type SyllabusType } from '../types';
 import { useAppLocale } from '../lib/locale';
 
@@ -27,6 +27,7 @@ interface StudyExplorerProps {
 export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
+  const MAX_RANGE_QUESTIONS = 200;
   
   const [studyMode, setStudyMode] = useState<StudyModeType>('topic');
   
@@ -35,8 +36,11 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
   const [count, setCount] = useState<number>(20);
   const countOptions = [10, 20, 50];
   
-  const [rangeStart, setRangeStart] = useState<number>(1);
-  const [rangeEnd, setRangeEnd] = useState<number>(20);
+  const [rangeFrom, setRangeFrom] = useState<string>('');
+  const [rangeTo, setRangeTo] = useState<string>('');
+  const [rangeBounds, setRangeBounds] = useState<{ min: number; max: number } | null>(null);
+  const [rangeBoundsLoading, setRangeBoundsLoading] = useState(false);
+  const [rangeTouched, setRangeTouched] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +50,38 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
   useEffect(() => {
     setLastVisitedId(getLastVisitedStudyQuestion());
   }, []);
+
+  useEffect(() => {
+    setRangeBounds(null);
+    setRangeBoundsLoading(false);
+    setRangeTouched(false);
+    setRangeFrom('');
+    setRangeTo('');
+  }, [curriculum]);
+
+  const ensureRangeBounds = async () => {
+    if (rangeBoundsLoading || rangeBounds) return;
+    setRangeBoundsLoading(true);
+    try {
+      const bounds = await getCurriculumQuestionNumberBounds(curriculum);
+      setRangeBounds(bounds);
+      if (bounds && !rangeTouched) {
+        const defaultFrom = bounds.min;
+        const defaultTo = Math.min(bounds.max, bounds.min + 19);
+        setRangeFrom(String(defaultFrom));
+        setRangeTo(String(defaultTo));
+      }
+    } catch {
+      setRangeBounds(null);
+    } finally {
+      setRangeBoundsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (studyMode !== 'range') return;
+    void ensureRangeBounds();
+  }, [studyMode]);
 
   const availableTopics = useMemo(() => {
     const topics = (bundle?.practiceState.learningDashboardV2?.topicBreakdown ?? [])
@@ -70,12 +106,44 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
     setError(null);
     try {
       if (studyMode === 'range') {
-        if (rangeStart < 1 || rangeEnd < rangeStart) {
-           setError('Rango de preguntas inválido');
-           setLoading(false);
-           return;
+        const fromValue = Math.trunc(Number(rangeFrom));
+        const toValue = Math.trunc(Number(rangeTo));
+        if (!Number.isFinite(fromValue) || !Number.isFinite(toValue)) {
+          setError(isBasque ? 'Sartu balio egokiak.' : 'Introduce valores válidos.');
+          setLoading(false);
+          return;
         }
-        await onStartStudy({ mode: 'range', scope: 'all', topic: '', count: (rangeEnd - rangeStart + 1), range: [rangeStart, rangeEnd] });
+        if (fromValue <= 0 || toValue <= 0) {
+          setError(isBasque ? 'Tarteak 1etik aurrera izan behar du.' : 'El rango debe empezar en 1 o más.');
+          setLoading(false);
+          return;
+        }
+        const minBound = rangeBounds?.min ?? 1;
+        const maxBound = rangeBounds?.max ?? Math.max(fromValue, toValue);
+        const clippedFrom = Math.max(minBound, Math.min(fromValue, maxBound));
+        const clippedTo = Math.max(minBound, Math.min(toValue, maxBound));
+        if (clippedFrom > clippedTo) {
+          setError(isBasque ? 'Tartea ez da zuzena.' : 'El rango no es válido.');
+          setLoading(false);
+          return;
+        }
+        const computedCount = clippedTo - clippedFrom + 1;
+        if (computedCount > MAX_RANGE_QUESTIONS) {
+          setError(
+            isBasque
+              ? `Tarte handiegia da (gehienez ${MAX_RANGE_QUESTIONS} galdera).`
+              : `Rango demasiado grande (máx. ${MAX_RANGE_QUESTIONS} preguntas).`,
+          );
+          setLoading(false);
+          return;
+        }
+        await onStartStudy({
+          mode: 'range',
+          scope: 'all',
+          topic: '',
+          count: computedCount,
+          range: [clippedFrom, clippedTo],
+        });
       } else {
         await onStartStudy({ mode: 'topic', scope, topic, count });
       }
@@ -262,6 +330,11 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
                       <p className="text-xs text-amber-700/80 font-medium leading-relaxed">
                         {isBasque ? 'Aukeratu hasiera eta amaiera.' : 'Introduce el rango exacto de preguntas. Especialmente útil para repaso incremental.'}
                       </p>
+                      {rangeBounds ? (
+                        <div className="mt-2 text-[11px] font-black text-amber-900/70 tracking-wide">
+                          {isBasque ? 'Eskuragarri:' : 'Disponibles:'} {rangeBounds.min}–{rangeBounds.max}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -273,9 +346,13 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
                     </div>
                     <input 
                       type="number"
-                      value={rangeStart}
-                      onChange={(e) => setRangeStart(parseInt(e.target.value) || 1)}
-                      min={1}
+                      value={rangeFrom}
+                      onChange={(e) => {
+                        setRangeTouched(true);
+                        setRangeFrom(e.target.value);
+                      }}
+                      min={rangeBounds?.min ?? 1}
+                      max={rangeBounds?.max ?? undefined}
                       className="w-full text-center rounded-2xl border-2 border-slate-200 bg-white px-4 py-4 text-xl font-black text-slate-700 outline-none focus:border-indigo-400" 
                     />
                   </div>
@@ -285,13 +362,24 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
                     </div>
                     <input 
                       type="number"
-                      value={rangeEnd}
-                      onChange={(e) => setRangeEnd(parseInt(e.target.value) || 20)}
-                      min={rangeStart}
+                      value={rangeTo}
+                      onChange={(e) => {
+                        setRangeTouched(true);
+                        setRangeTo(e.target.value);
+                      }}
+                      min={rangeBounds?.min ?? 1}
+                      max={rangeBounds?.max ?? undefined}
                       className="w-full text-center rounded-2xl border-2 border-slate-200 bg-white px-4 py-4 text-xl font-black text-slate-700 outline-none focus:border-indigo-400" 
                     />
                   </div>
                 </div>
+
+                {rangeBoundsLoading ? (
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                    <Loader2 size={14} className="animate-spin" />
+                    {isBasque ? 'Tartea kargatzen…' : 'Cargando rango…'}
+                  </div>
+                ) : null}
              </div>
           )}
 

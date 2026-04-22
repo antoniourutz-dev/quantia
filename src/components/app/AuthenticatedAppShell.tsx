@@ -1903,9 +1903,24 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       let selected: Question[] = [];
 
       if (mode === 'range' && range) {
-        const filtered = await getQuestionsByNumberRange({ curriculum, from: range[0], to: range[1], randomize: false });
+        const MAX_RANGE_QUESTIONS = 200;
+        const fromValue = Math.trunc(Number(range[0]));
+        const toValue = Math.trunc(Number(range[1]));
+        if (!Number.isFinite(fromValue) || !Number.isFinite(toValue) || fromValue <= 0 || toValue <= 0) {
+          throw new Error(t('Introduce un rango válido.', 'Sartu tarte egoki bat.'));
+        }
+        const computedCount = Math.abs(toValue - fromValue) + 1;
+        if (computedCount > MAX_RANGE_QUESTIONS) {
+          throw new Error(
+            t(
+              `Rango demasiado grande (máx. ${MAX_RANGE_QUESTIONS} preguntas).`,
+              `Tarte handiegia da (gehienez ${MAX_RANGE_QUESTIONS} galdera).`,
+            ),
+          );
+        }
+        const filtered = await getQuestionsByNumberRange({ curriculum, from: fromValue, to: toValue, randomize: false });
         if (filtered.length === 0) {
-          throw new Error('No hay preguntas disponibles en ese rango numérico.');
+          throw new Error(t('No hay preguntas disponibles en ese rango numérico.', 'Ez dago galderarik tarte horretan.'));
         }
         selected = filtered;
       } else {

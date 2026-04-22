@@ -214,15 +214,7 @@ export default function PostTestStats({
   ]);
 
   useEffect(() => {
-    const idle = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: { timeout?: number }) => number);
-    if (typeof idle === 'function') {
-      const handle = idle(() => setAnalysisHydrated(true), { timeout: 1200 });
-      return () => {
-        const cancel = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
-        if (typeof cancel === 'function') cancel(handle);
-      };
-    }
-    const handle = window.setTimeout(() => setAnalysisHydrated(true), 0);
+    const handle = window.setTimeout(() => setAnalysisHydrated(true), 150);
     return () => window.clearTimeout(handle);
   }, []);
 

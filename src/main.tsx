@@ -40,50 +40,6 @@ if (import.meta.env.DEV || isLocalHost) {
   void cleanupLegacyBrowserState()
 }
 
-const shouldRecoverFromError = (value: unknown) => {
-  const message =
-    value instanceof Error
-      ? value.message
-      : typeof value === 'string'
-        ? value
-        : value && typeof value === 'object' && 'message' in value
-          ? String((value as any).message ?? '')
-          : ''
-  const lower = message.toLowerCase()
-  return (
-    lower.includes('chunkloaderror') ||
-    lower.includes('loading chunk') ||
-    lower.includes('failed to fetch dynamically imported module') ||
-    lower.includes('importing a module script failed') ||
-    lower.includes('net::err_failed') ||
-    lower.includes('net::err_aborted')
-  )
-}
-
-if (typeof window !== 'undefined') {
-  const RECOVERY_KEY = 'quantia.recovery.v1'
-  const recoverOnce = async (reason: unknown) => {
-    try {
-      if (window.sessionStorage.getItem(RECOVERY_KEY) === '1') return
-      if (!shouldRecoverFromError(reason)) return
-      window.sessionStorage.setItem(RECOVERY_KEY, '1')
-    } catch {
-      // ignore
-    }
-
-    await cleanupLegacyBrowserState()
-    window.location.reload()
-  }
-
-  window.addEventListener('error', (event) => {
-    void recoverOnce((event as any).error ?? (event as any).message ?? 'error')
-  })
-
-  window.addEventListener('unhandledrejection', (event) => {
-    void recoverOnce((event as any).reason ?? 'unhandledrejection')
-  })
-}
-
 if (!isLocalHost) {
   registerSW({ immediate: true })
 }

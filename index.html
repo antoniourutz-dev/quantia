@@ -11,7 +11,7 @@
     <title>kuantia</title>
     <script>
       (function () {
-        var KEY = 'quantia.boot.recover.v1';
+        var KEY = 'quantia.boot.recover.v2';
         function shouldRecover(msg) {
           msg = String(msg || '').toLowerCase();
           return (
@@ -19,16 +19,16 @@
             msg.indexOf('loading chunk') !== -1 ||
             msg.indexOf('failed to fetch dynamically imported module') !== -1 ||
             msg.indexOf('importing a module script failed') !== -1 ||
-            msg.indexOf('net::err_failed') !== -1 ||
-            msg.indexOf('net::err_aborted') !== -1 ||
             msg.indexOf('boot-timeout') !== -1
           );
         }
         function recover(reason) {
           try {
-            if (sessionStorage.getItem(KEY) === '1') return;
             if (!shouldRecover(reason)) return;
-            sessionStorage.setItem(KEY, '1');
+            var now = Date.now();
+            var last = Number(sessionStorage.getItem(KEY) || 0);
+            if (Number.isFinite(last) && now - last < 30000) return;
+            sessionStorage.setItem(KEY, String(now));
           } catch (e) {}
           try {
             if ('serviceWorker' in navigator) {
