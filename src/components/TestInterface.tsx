@@ -298,44 +298,7 @@ export default function TestInterface({
       )}
 
       <div className={`mx-2 sm:mx-0 flex flex-col bg-white transition-all duration-500 rounded-3xl sm:rounded-[2.25rem] border border-slate-100 shadow-sm sm:p-6 overflow-hidden sm:gap-4 ${isFocusMode ? 'p-8 shadow-2xl scale-[1.02]' : 'pb-4 sm:pb-6'}`}>
-        {closingSession ? (
-          <div className="flex min-h-[360px] flex-col justify-between gap-8 py-2 sm:min-h-[420px] sm:py-4">
-            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-              <Loader2 size={14} className="animate-spin text-indigo-500" />
-              {isBasque ? 'Saioa ixten' : 'Cierre de sesion'}
-            </div>
-
-            <div className="flex flex-1 flex-col items-center justify-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-[1.75rem] border border-indigo-100 bg-indigo-50 text-indigo-600 shadow-sm shadow-indigo-100/60">
-                <Loader2 size={28} className="animate-spin" />
-              </div>
-              <h2 className="mt-6 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-                {isBasque ? 'Zure analisia prestatzen' : 'Preparando tu analisis'}
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-slate-500 sm:text-base">
-                {isBasque
-                  ? 'Emaitzak gordetzen ari gara eta benetan axola duena kalkulatzen.'
-                  : 'Guardando resultados y calculando lo importante.'}
-              </p>
-
-              <div className="mt-8 grid w-full max-w-4xl grid-cols-1 gap-3 md:mt-10 md:grid-cols-3 md:gap-4">
-                {[0, 1, 2].map((item) => (
-                  <div
-                    key={item}
-                    className="rounded-[1.75rem] border border-slate-100 bg-slate-50/80 p-5 shadow-inner shadow-white/70"
-                  >
-                    <div className="h-2.5 w-20 animate-pulse rounded-full bg-slate-200" />
-                    <div className="mt-4 h-8 w-24 animate-pulse rounded-2xl bg-slate-200" />
-                    <div className="mt-6 space-y-2">
-                      <div className="h-2.5 w-full animate-pulse rounded-full bg-slate-200" />
-                      <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-slate-200" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
+        {closingSession ? null : (
           <>
             <div className={`px-4 sm:px-0 pb-4 pt-4 ${isFocusMode ? '' : 'sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 sm:border-transparent transition-all shadow-sm sm:shadow-none'}`}>
               <div className="mb-1.5 flex items-center justify-between gap-2">

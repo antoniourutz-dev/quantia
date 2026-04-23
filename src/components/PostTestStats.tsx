@@ -70,7 +70,7 @@ export default function PostTestStats({
     : 0;
   const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
   const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
-  const [analysisHydrated, setAnalysisHydrated] = useState(false);
+  const [analysisHydrated, setAnalysisHydrated] = useState(true);
   const [showReview, setShowReview] = useState(false);
 
   const sessionEnd = useMemo(
@@ -213,10 +213,7 @@ export default function PostTestStats({
     sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
   ]);
 
-  useEffect(() => {
-    const handle = window.setTimeout(() => setAnalysisHydrated(true), 150);
-    return () => window.clearTimeout(handle);
-  }, []);
+
 
   useEffect(() => {
     if (!analysisHydrated) return;
@@ -229,7 +226,7 @@ export default function PostTestStats({
   }, [analysisTrace, showReview]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
+    <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-150 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
       <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
         
         {/* TOP ROW: Continuity & Metrics Compact */}
@@ -250,26 +247,9 @@ export default function PostTestStats({
           {null}
         </div>
 
-        {/* HEADLINE & MACRO LECTURE */}
-        <div className="mb-6 mt-1">
-          <h2 className="text-[22px] sm:text-[28px] font-black text-slate-900 tracking-tight leading-[1.15] mb-2.5">{sessionEnd.headline}</h2>
-          <p className="text-[15px] font-medium text-slate-500 leading-snug">{sessionEnd.summary || summaryLine}</p>
-        </div>
 
-        {/* CTA INTEGRADO & NEXT STEP */}
-        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 mb-5">
-           {(sessionEnd.continuityMessage || sessionEnd.microReward) && (
-             <div className="mb-4 space-y-3">
-               {sessionEnd.continuityMessage && (
-                 <p className="text-[13px] font-bold text-slate-700 leading-snug">{sessionEnd.continuityMessage}</p>
-               )}
-               {sessionEnd.microReward && (
-                 <div className="inline-flex items-center gap-2 text-[10px] font-extrabold text-slate-500 uppercase tracking-[0.15em] bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
-                   {sessionEnd.microReward.title}
-                 </div>
-               )}
-             </div>
-           )}
+
+
            
            <button
              onClick={() => {

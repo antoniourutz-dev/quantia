@@ -1672,33 +1672,40 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       if (!activeSession) return;
 
       setLastTestPayload(payload);
-      setSyncingSession(true);
+      setCurrentView('test-results');
       setDataError(null);
-      try {
-        trackEffect({
-          surface: 'session_end',
-          curriculum,
-          action: 'session_completed',
-          context: {
-            mode: activeSession.mode,
-            score: payload.score,
-            total: activeSession.questions.length,
-            finishedAt: new Date().toISOString(),
-            coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
-          },
-        });
-        await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
-        setCurrentView('test-results');
-        void refreshDashboardSilently();
-      } catch (error) {
-        setDataError(
-          error instanceof Error
-            ? error.message
-            : t('No se ha podido sincronizar la sesion con kuantia.', 'Ezin izan da saioa kuantiarekin sinkronizatu.'),
-        );
-      } finally {
-        setSyncingSession(false);
-      }
+
+      // Defer side effects to prioritize UI transition
+      setTimeout(() => {
+        setSyncingSession(true);
+        void (async () => {
+          try {
+            trackEffect({
+              surface: 'session_end',
+              curriculum,
+              action: 'session_completed',
+              context: {
+                mode: activeSession.mode,
+                score: payload.score,
+                total: activeSession.questions.length,
+                finishedAt: new Date().toISOString(),
+                coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
+              },
+            });
+            await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
+            void refreshDashboardSilently();
+          } catch (error) {
+            console.error('Session sync failed:', error);
+            setDataError(
+              error instanceof Error
+                ? error.message
+                : t('No se ha podido sincronizar la sesion con kuantia.', 'Ezin izan da saioa kuantiarekin sinkronizatu.'),
+            );
+          } finally {
+            setSyncingSession(false);
+          }
+        })();
+      }, 0);
     },
     [activeSession, curriculum, refreshDashboardSilently, t],
   );
@@ -1814,6 +1821,14 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       formatCurriculumLabel(curriculum),
     [curriculum, visibleCurriculumOptions],
   );
+
+  useEffect(() => {
+    if (currentView === 'test-selection') {
+      void loadTestInterface();
+    } else if (currentView === 'test-active') {
+      void loadPostTestStats();
+    }
+  }, [currentView, loadPostTestStats, loadTestInterface]);
 
   useEffect(() => {
     if (!curriculumMenuOpen) return;
