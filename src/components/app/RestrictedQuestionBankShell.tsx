@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { LogOut } from 'lucide-react';
 import StudyQuestionBank from '../StudyQuestionBank';
@@ -75,11 +75,36 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
     return normalized;
   }, [session.user.app_metadata]);
 
+  const visibleCurriculums = useMemo(() => {
+    const unique = new Map<string, string>();
+
+    for (const value of allowedCurriculums) {
+      const canonicalValue = canonicalizeAllowedKey(value);
+      if (!canonicalValue) continue;
+
+      const labelKey = canonicalizeAllowedKey(formatCurriculumLabel(canonicalValue, 'es'));
+      if (unique.has(canonicalValue) || unique.has(labelKey)) continue;
+
+      unique.set(canonicalValue, canonicalValue);
+      unique.set(labelKey, canonicalValue);
+    }
+
+    const values = Array.from(new Set(unique.values()));
+    return values.length > 0 ? values : ['administrativo', 'auxiliar-administrativo'];
+  }, [allowedCurriculums]);
+
   const [curriculum, setCurriculum] = useState(() => {
     const stored = canonicalizeAllowedKey(readStoredCurriculum());
-    const match = allowedCurriculums.find((value) => canonicalizeAllowedKey(value) === stored);
-    return match || allowedCurriculums[0] || 'administrativo';
+    const match = visibleCurriculums.find((value) => canonicalizeAllowedKey(value) === stored);
+    return match || visibleCurriculums[0] || 'administrativo';
   });
+
+  useEffect(() => {
+    if (visibleCurriculums.includes(curriculum)) return;
+    const next = visibleCurriculums[0] || 'administrativo';
+    setCurriculum(next);
+    writeStoredCurriculum(next);
+  }, [curriculum, visibleCurriculums]);
 
   const curriculumLocale = useMemo(() => getLocaleForCurriculum(curriculum), [curriculum]);
 
@@ -97,13 +122,13 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
                 value={curriculum}
                 onChange={(e) => {
                   const next = canonicalizeAllowedKey(e.target.value);
-                  if (!allowedCurriculums.includes(next)) return;
+                  if (!visibleCurriculums.includes(next)) return;
                   setCurriculum(next);
                   writeStoredCurriculum(next);
                 }}
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 outline-none hover:bg-slate-50"
               >
-                {allowedCurriculums.map((value) => (
+                {visibleCurriculums.map((value) => (
                   <option key={value} value={value}>
                     {formatCurriculumLabel(value, curriculumLocale)}
                   </option>
