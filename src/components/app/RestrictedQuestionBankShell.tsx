@@ -27,7 +27,12 @@ const writeStoredCurriculum = (value: string) => {
   }
 };
 
-const canonicalizeAllowedKey = (value: string) => value.trim().toLowerCase().replace(/_/g, '-');
+const canonicalizeAllowedKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-');
 const readSessionAppMetadata = (session: Session): SessionAppMetadata | null => {
   const metadata = session.user.app_metadata;
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
