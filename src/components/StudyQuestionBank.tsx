@@ -1,12 +1,12 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, CheckCircle2, Search } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, CheckCircle2, Info, Search } from 'lucide-react';
 import { formatSyllabusLabel, type PracticeQuestionScopeFilter, type Question, type QuestionBankListItem } from '../types';
 import { isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
 import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail } from '../lib/quantiaApi';
 
 type StudyScope = PracticeQuestionScopeFilter;
 
-const PAGE_SIZE = 120;
+const PAGE_SIZE = 60;
 
 const toAnswerLabel = (value: QuestionBankListItem['correctAnswer']) => value.toUpperCase();
 
@@ -20,7 +20,7 @@ export default function StudyQuestionBank({
   onBack,
 }: {
   curriculum: string;
-  onBack: () => void;
+  onBack?: (() => void) | null;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -34,6 +34,7 @@ export default function StudyQuestionBank({
   const [pageItems, setPageItems] = useState<QuestionBankListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
+  const [explanationOpen, setExplanationOpen] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const [searchInput, setSearchInput] = useState('');
   const [hasNextPage, setHasNextPage] = useState(false);
@@ -66,6 +67,7 @@ export default function StudyQuestionBank({
     setPageIndex(0);
     setSelectedId(null);
     setSelectedQuestion(null);
+    setExplanationOpen(false);
     setPageItems([]);
     setHasNextPage(false);
     setError(null);
@@ -108,6 +110,7 @@ export default function StudyQuestionBank({
   useEffect(() => {
     if (pageItems.length === 0) {
       setSelectedId(null);
+      setExplanationOpen(false);
       return;
     }
 
@@ -116,12 +119,14 @@ export default function StudyQuestionBank({
     }
 
     setSelectedId(pageItems[0].id);
+    setExplanationOpen(false);
   }, [pageItems, selectedId]);
 
   useEffect(() => {
     if (!selectedId) {
       setSelectedQuestion(null);
       setDetailLoading(false);
+      setExplanationOpen(false);
       return;
     }
 
@@ -129,11 +134,13 @@ export default function StudyQuestionBank({
     if (cached) {
       setSelectedQuestion(cached);
       setDetailLoading(false);
+      setExplanationOpen(false);
       return;
     }
 
     let cancelled = false;
     setDetailLoading(true);
+    setExplanationOpen(false);
 
     getQuestionBankQuestionDetail({
       curriculum,
@@ -201,17 +208,19 @@ export default function StudyQuestionBank({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          {t('Volver a Estudio', 'Ikasketara itzuli')}
-        </button>
+        {onBack ? (
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {t('Volver a Estudio', 'Ikasketara itzuli')}
+          </button>
+        ) : null}
       </div>
 
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-8 space-y-8">
+      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-4 sm:p-8 space-y-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <div className="space-y-3">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
@@ -288,7 +297,7 @@ export default function StudyQuestionBank({
               {questionCountLabel}
             </div>
 
-            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-5">
+            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-4 sm:p-5">
               {listLoading ? (
                 <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
                   {t('Cargando preguntas...', 'Galderak kargatzen...')}
@@ -301,7 +310,7 @@ export default function StudyQuestionBank({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-[repeat(10,minmax(0,1fr))] sm:grid-cols-[repeat(12,minmax(0,1fr))] md:grid-cols-[repeat(14,minmax(0,1fr))] lg:grid-cols-[repeat(18,minmax(0,1fr))] xl:grid-cols-[repeat(20,minmax(0,1fr))] gap-1">
+                <div className="grid grid-cols-[repeat(5,minmax(0,1fr))] sm:grid-cols-[repeat(10,minmax(0,1fr))] md:grid-cols-[repeat(12,minmax(0,1fr))] lg:grid-cols-[repeat(18,minmax(0,1fr))] xl:grid-cols-[repeat(20,minmax(0,1fr))] gap-2.5 sm:gap-1.5">
                   {pageItems.map((question, index) => {
                     const isSelected = selectedId === question.id;
                     const displayNumber = getDisplayNumber(question, index);
@@ -310,16 +319,21 @@ export default function StudyQuestionBank({
                       <button
                         key={question.id}
                         type="button"
-                        onClick={() => setSelectedId(question.id)}
-                        className={`aspect-square rounded-md border px-1 py-1 transition-all ${
+                        onClick={() => {
+                          setSelectedId(question.id);
+                          setExplanationOpen(false);
+                        }}
+                        className={`relative aspect-square min-h-12 rounded-2xl border bg-white shadow-sm transition-all ${
                           isSelected
-                            ? 'border-indigo-500 bg-indigo-50'
-                            : 'border-slate-200 bg-white hover:border-indigo-200'
+                            ? 'border-indigo-400 bg-indigo-50 shadow-indigo-200/30'
+                            : 'border-slate-200 hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-200/20'
                         }`}
                       >
-                        <div className="flex h-full flex-col items-center justify-center">
-                          <div className="text-[8px] font-black leading-none text-slate-500">{displayNumber}</div>
-                          <div className="mt-0.5 text-[10px] font-black leading-none text-slate-900">
+                        <div className="absolute left-2 top-2 text-[10px] font-black leading-none text-slate-400">
+                          {displayNumber}
+                        </div>
+                        <div className="flex h-full items-center justify-center">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[13px] font-black leading-none text-slate-900">
                             {toAnswerLabel(question.correctAnswer)}
                           </div>
                         </div>
@@ -336,49 +350,50 @@ export default function StudyQuestionBank({
               {t('Detalle de la pregunta', 'Galderaren xehetasuna')}
             </div>
 
-            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
-            {!selectedId ? (
-              <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
-                {t('Selecciona una pregunta para verla.', 'Hautatu galdera bat ikusteko.')}
-              </div>
-            ) : detailLoading || !selectedQuestion ? (
-              <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
-                {t('Cargando detalle de la pregunta...', 'Galderaren xehetasuna kargatzen...')}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                      {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}
-                    </div>
-                    <div className="mt-2 text-sm font-black text-slate-900 leading-relaxed">{selectedQuestion.text}</div>
-                    {selectedQuestion.category ? (
-                      <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
-                        {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ?? selectedQuestion.category}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="shrink-0 px-3 py-2 rounded-2xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
-                    {formatScopeLabel(selectedQuestion.syllabus, locale, curriculum)}
-                  </div>
+            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-4 sm:p-6">
+              {!selectedId ? (
+                <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
+                  {t('Selecciona una pregunta para verla.', 'Hautatu galdera bat ikusteko.')}
                 </div>
+              ) : detailLoading || !selectedQuestion ? (
+                <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
+                  {t('Cargando detalle de la pregunta...', 'Galderaren xehetasuna kargatzen...')}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                        {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}
+                      </div>
+                      <h2 className="mt-2 text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
+                        {selectedQuestion.text}
+                      </h2>
+                      {selectedQuestion.category ? (
+                        <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+                          {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ??
+                            selectedQuestion.category}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="shrink-0 px-3 py-2 rounded-2xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                      {formatScopeLabel(selectedQuestion.syllabus, locale, curriculum)}
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
+                <div className="flex flex-col divide-y divide-slate-100 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white">
                   {selectedQuestion.options.map((option) => {
                     const isCorrect = option.id === selectedQuestion.correctAnswer;
 
                     return (
                       <div
                         key={option.id}
-                        className={`rounded-2xl border px-5 py-4 flex items-start gap-4 ${
-                          isCorrect
-                            ? 'border-emerald-200 bg-emerald-50'
-                            : 'border-slate-100 bg-white'
+                        className={`relative flex items-start gap-4 p-4 sm:p-5 ${
+                          isCorrect ? 'bg-emerald-50/60' : 'bg-white'
                         }`}
                       >
                         <div
-                          className={`h-10 w-10 rounded-2xl border flex items-center justify-center font-black ${
+                          className={`mt-0.5 h-10 w-10 shrink-0 rounded-2xl border flex items-center justify-center font-black ${
                             isCorrect
                               ? 'border-emerald-200 bg-white text-emerald-700'
                               : 'border-slate-200 bg-slate-50 text-slate-600'
@@ -386,25 +401,44 @@ export default function StudyQuestionBank({
                         >
                           {option.id.toUpperCase()}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-bold text-slate-800 leading-relaxed">{option.text}</div>
+                        <div className="min-w-0 flex-1 text-sm sm:text-base font-bold leading-snug text-slate-700">
+                          {option.text}
                         </div>
-                        {isCorrect ? (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-2" />
-                        ) : null}
+                        {isCorrect ? <CheckCircle2 className="mt-1 h-6 w-6 text-emerald-600 shrink-0" /> : null}
                       </div>
                     );
                   })}
                 </div>
 
-                <div className="rounded-[1.5rem] border border-slate-100 bg-white px-6 py-5">
-                  <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                    {t('Explicación', 'Azalpena')}
-                  </div>
-                  <div className="mt-3 text-sm font-medium text-slate-700 leading-relaxed whitespace-pre-line">
-                    {selectedQuestion.explanation || t('Sin explicación disponible.', 'Ez dago azalpenik.')}
-                  </div>
-                </div>
+                  {!explanationOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setExplanationOpen(true)}
+                      className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-white px-4 py-2 text-xs font-bold text-indigo-600 transition-all hover:bg-indigo-50"
+                    >
+                      <Info size={14} />
+                      {t('Ver explicación', 'Azalpena ikusi')}
+                    </button>
+                  ) : (
+                    <div className="rounded-[1.5rem] border border-slate-200 bg-indigo-50/30 p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase tracking-widest">
+                          <Info size={16} />
+                          {t('Explicación', 'Azalpena')}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setExplanationOpen(false)}
+                          className="text-[10px] font-black text-slate-400 hover:text-indigo-600 uppercase tracking-[0.2em] transition-colors"
+                        >
+                          {t('Cerrar', 'Itxi')}
+                        </button>
+                      </div>
+                      <div className="text-slate-600 leading-relaxed font-medium text-sm whitespace-pre-line">
+                        {selectedQuestion.explanation || t('Sin explicación disponible.', 'Ez dago azalpenik.')}
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
             </div>

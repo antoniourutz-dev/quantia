@@ -3197,6 +3197,30 @@ export const adminCreateUser = async (input: { email: string; password: string; 
   });
 };
 
+export const adminCreateRestrictedQuestionBankViewer = async (input: {
+  email: string;
+  password?: string | null;
+  username?: string | null;
+  allowedCurriculumKeys?: string[] | null;
+  redirectTo?: string | null;
+}): Promise<{ userId: string; magicLink: string | null }> => {
+  await assertAdminSession();
+  const email = readText(input.email);
+  if (!email) throw new Error('Email es obligatorio.');
+  const payload = await adminInvokeFunction<Record<string, unknown>>('admin-users', {
+    action: 'create_restricted_question_bank_viewer',
+    email,
+    password: readText(input.password) ?? null,
+    username: readText(input.username) ?? null,
+    allowedCurriculumKeys: Array.isArray(input.allowedCurriculumKeys) ? input.allowedCurriculumKeys : null,
+    redirectTo: readText(input.redirectTo) ?? null,
+  });
+  const userId = readText(payload?.userId ?? payload?.user_id) ?? '';
+  const magicLink = readText(payload?.magicLink ?? payload?.magic_link) ?? null;
+  if (!userId) throw new Error('No se ha podido crear el usuario restringido.');
+  return { userId, magicLink: magicLink || null };
+};
+
 export const adminUpdateUserName = async (input: { userId: string; username: string }) => {
   await assertAdminSession();
   const userId = readText(input.userId);

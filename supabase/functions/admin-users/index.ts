@@ -22,11 +22,28 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
   });
 
 const readText = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
+const canonicalizeAccessKey = (value: string) =>
+  value.trim().toLowerCase().replace(/[_\s]+/g, '-').replace(/-+/g, '-');
 const readMetaUsername = (value: unknown) => {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   const username = record.current_username;
   return typeof username === 'string' ? username : null;
+};
+
+const findUserIdByEmail = async (service: ReturnType<typeof createClient>, email: string) => {
+  const target = readText(email).toLowerCase();
+  if (!target) return null;
+  for (let page = 1; page <= 5; page += 1) {
+    const result = await service.auth.admin.listUsers({ page, perPage: 200 });
+    if (result.error) throw result.error;
+    const users = (result.data?.users ?? []) as Array<Record<string, unknown>>;
+    const match = users.find((u) => readText(u.email).toLowerCase() === target);
+    const id = match ? readText(match.id) : '';
+    if (id) return id;
+    if (users.length < 200) break;
+  }
+  return null;
 };
 
 let supabaseJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -472,6 +489,99 @@ Deno.serve(async (req) => {
         await upsertProfileName(service, { userId: createdId, username });
       }
       return jsonResponse({ userId: data.user?.id ?? null });
+    }
+
+    if (action === 'create_restricted_question_bank_viewer') {
+      const email = readText(body.email);
+      const password = readText(body.password);
+      const username = readText(body.username);
+      const rawAllowed =
+        (Array.isArray((body as Record<string, unknown>).allowedCurriculumKeys)
+          ? ((body as Record<string, unknown>).allowedCurriculumKeys as unknown[])
+          : Array.isArray((body as Record<string, unknown>).allowed_curriculum_keys)
+            ? ((body as Record<string, unknown>).allowed_curriculum_keys as unknown[])
+            : []) ?? [];
+
+      const allowed = rawAllowed
+        .map((value) => (typeof value === 'string' ? value : ''))
+        .map(canonicalizeAccessKey)
+        .filter(Boolean);
+
+      if (!email) throw new Error('email required.');
+
+      const normalizedEmail = email.toLowerCase();
+      const effectiveAllowed =
+        normalizedEmail === 'opeosi@oposik.app'
+          ? ['administrativo', 'auxiliar-administrativo']
+          : allowed.length > 0
+            ? allowed
+            : ['administrativo', 'auxiliar-administrativo'];
+
+      let createdId = '';
+      const { data, error } = await service.auth.admin.createUser({
+        email,
+        ...(password ? { password } : {}),
+        email_confirm: true,
+        user_metadata: username ? { current_username: username } : undefined,
+      });
+      if (error) {
+        const message = error.message ?? '';
+        const alreadyExists = /already|exists|registered|duplicate/i.test(message);
+        if (!alreadyExists) throw error;
+        const existingId = await findUserIdByEmail(service, email);
+        if (!existingId) throw error;
+        createdId = existingId;
+        if (password) {
+          await service.auth.admin.updateUserById(createdId, { password });
+        }
+      } else {
+        createdId = readText(data.user?.id);
+      }
+      if (!createdId) throw new Error('User not created.');
+
+      await service.auth.admin.updateUserById(createdId, {
+        app_metadata: {
+          role: 'restricted_question_bank_viewer',
+          allowed_curriculum_keys: effectiveAllowed,
+        },
+      });
+
+      if (username) {
+        await upsertProfileName(service, { userId: createdId, username });
+      }
+
+      await service
+        .schema('public')
+        .from('restricted_question_bank_access')
+        .upsert(
+          {
+            user_id: createdId,
+            role: 'restricted_question_bank_viewer',
+            allowed_curriculum_keys: effectiveAllowed,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+
+      const redirectTo = readText((body as Record<string, unknown>).redirectTo) || req.headers.get('origin') || '';
+      let magicLink: string | null = null;
+      try {
+        const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
+          type: 'magiclink',
+          email,
+          options: redirectTo ? { redirectTo } : undefined,
+        } as unknown as Record<string, unknown>);
+        if (linkError) throw linkError;
+        magicLink =
+          (linkData as Record<string, unknown> | null)?.properties &&
+          typeof (linkData as any).properties.action_link === 'string'
+            ? (linkData as any).properties.action_link
+            : null;
+      } catch {
+        magicLink = null;
+      }
+
+      return jsonResponse({ userId: createdId, allowedCurriculumKeys: effectiveAllowed, magicLink });
     }
 
     if (action === 'update_name') {

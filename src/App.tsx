@@ -10,6 +10,7 @@ import { supabaseConfigError } from './lib/supabaseConfig';
 import { getSafeSupabaseSession, supabase } from './lib/supabaseClient';
 
 const AuthenticatedAppShell = lazy(() => import('./components/app/AuthenticatedAppShell'));
+const RestrictedQuestionBankShell = lazy(() => import('./components/app/RestrictedQuestionBankShell'));
 
 const CURRICULUM_STORAGE_KEY = 'quantia_curriculum';
 const LEGACY_CURRICULUM_STORAGE_KEY = 'osakitest_curriculum';
@@ -127,6 +128,14 @@ export default function App() {
     );
   }
 
+  const appRole =
+    session.user.app_metadata && typeof session.user.app_metadata === 'object'
+      ? String((session.user.app_metadata as any).role ?? '')
+      : '';
+  const userEmail = String((session.user as any)?.email ?? '').trim().toLowerCase();
+  const isOpeosiRestricted = userEmail === 'opeosi@oposik.app';
+  const isRestrictedQuestionBankViewer = isOpeosiRestricted || appRole === 'restricted_question_bank_viewer';
+
   return (
     <AppErrorBoundary>
       <Suspense
@@ -136,7 +145,11 @@ export default function App() {
           </div>
         }
       >
-        <AuthenticatedAppShell session={session} />
+        {isRestrictedQuestionBankViewer ? (
+          <RestrictedQuestionBankShell session={session} />
+        ) : (
+          <AuthenticatedAppShell session={session} />
+        )}
       </Suspense>
     </AppErrorBoundary>
   );

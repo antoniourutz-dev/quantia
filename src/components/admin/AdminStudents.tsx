@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, Plus, Search, Trash2, User2, X } from 'lucide-r
 import { useAppLocale } from '../../lib/locale';
 import type { AdminUserDetail, AdminUserListItem } from '../../types';
 import {
+  adminCreateRestrictedQuestionBankViewer,
   adminCreateUser,
   adminDeleteUser,
   adminGetUserDetail,
@@ -40,6 +41,8 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
   const [createEmail, setCreateEmail] = useState('');
   const [createPassword, setCreatePassword] = useState('');
   const [createUsername, setCreateUsername] = useState('');
+  const [createRestrictedViewer, setCreateRestrictedViewer] = useState(false);
+  const [createMagicLink, setCreateMagicLink] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const [nameDraft, setNameDraft] = useState('');
@@ -104,12 +107,33 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
     setCreating(true);
     setNotice(null);
     try {
+      if (createRestrictedViewer) {
+        const { magicLink } = await adminCreateRestrictedQuestionBankViewer({
+          email: createEmail,
+          password: createPassword || null,
+          username: createUsername || null,
+          allowedCurriculumKeys: ['administrativo', 'auxiliar-administrativo'],
+          redirectTo: typeof window !== 'undefined' ? window.location.origin : null,
+        });
+        setCreateMagicLink(magicLink);
+        setNotice({
+          kind: 'success',
+          text: magicLink
+            ? t('Usuario revisor creado. Copia el enlace de acceso.', 'Ikuskatzaile kontua sortuta. Kopiatu sarrera-esteka.')
+            : t('Usuario revisor creado.', 'Ikuskatzaile kontua sortuta.'),
+        });
+        await refresh(1);
+        return;
+      }
+
       await adminCreateUser({ email: createEmail, password: createPassword, username: createUsername || null });
+      setNotice({ kind: 'success', text: t('Usuario creado.', 'Erabiltzailea sortuta.') });
       setCreateOpen(false);
       setCreateEmail('');
       setCreatePassword('');
       setCreateUsername('');
-      setNotice({ kind: 'success', text: t('Usuario creado.', 'Erabiltzailea sortuta.') });
+      setCreateRestrictedViewer(false);
+      setCreateMagicLink(null);
       await refresh(1);
     } catch (error) {
       setNotice({ kind: 'error', text: error instanceof Error ? error.message : t('No se ha podido crear el usuario.', 'Ezin izan da erabiltzailea sortu.') });
@@ -233,7 +257,14 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
           </button>
           <button
             type="button"
-            onClick={() => setCreateOpen(true)}
+            onClick={() => {
+              setCreateEmail('');
+              setCreatePassword('');
+              setCreateUsername('');
+              setCreateRestrictedViewer(false);
+              setCreateMagicLink(null);
+              setCreateOpen(true);
+            }}
             className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all"
           >
             <Plus size={16} />
@@ -550,11 +581,41 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 placeholder="email"
               />
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-slate-900">{t('Modo de cuenta', 'Kontu modua')}</div>
+                  <div className="mt-1 text-[11px] font-bold text-slate-500">
+                    {createRestrictedViewer
+                      ? t('Revisor (solo banco de preguntas)', 'Ikuskatzailea (galdera-bankua soilik)')
+                      : t('Alumno (normal)', 'Ikaslea (arrunta)')}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateRestrictedViewer((prev) => {
+                      const next = !prev;
+                      if (next && !createEmail.trim()) {
+                        setCreateEmail('opeosi@oposik.app');
+                      }
+                      return next;
+                    });
+                    setCreateMagicLink(null);
+                  }}
+                  className={`h-10 px-4 rounded-2xl border text-xs font-black transition-all ${
+                    createRestrictedViewer
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  {createRestrictedViewer ? t('Revisor', 'Ikus') : t('Alumno', 'Ikas')}
+                </button>
+              </div>
               <input
                 value={createPassword}
                 onChange={(e) => setCreatePassword(e.target.value)}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
-                placeholder={t('Contraseña inicial', 'Hasierako pasahitza')}
+                placeholder={t('Contraseña inicial (opcional)', 'Hasierako pasahitza (aukerakoa)')}
               />
               <input
                 value={createUsername}
@@ -562,6 +623,30 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 placeholder={t('Nombre (opcional)', 'Izena (aukerakoa)')}
               />
+              {createRestrictedViewer && createMagicLink ? (
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-700">
+                    {t('Enlace de acceso', 'Sarrera-esteka')}
+                  </div>
+                  <input
+                    value={createMagicLink}
+                    readOnly
+                    className="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-[11px] font-bold text-emerald-900 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!createMagicLink) return;
+                      if (navigator.clipboard && navigator.clipboard.writeText) {
+                        void navigator.clipboard.writeText(createMagicLink);
+                      }
+                    }}
+                    className="w-full rounded-2xl border border-emerald-200 bg-white px-6 py-4 text-emerald-900 font-black text-sm hover:bg-emerald-50 transition-all"
+                  >
+                    {t('Copiar enlace', 'Esteka kopiatu')}
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={handleCreate}
@@ -569,7 +654,11 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                 className="w-full rounded-[2rem] bg-slate-900 px-6 py-5 text-white font-black text-lg flex items-center justify-center gap-3 shadow-xl disabled:bg-slate-300"
               >
                 {creating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus size={18} />}
-                {creating ? t('Creando...', 'Sortzen...') : t('Crear usuario', 'Erabiltzailea sortu')}
+                {creating
+                  ? t('Creando...', 'Sortzen...')
+                  : createRestrictedViewer
+                    ? t('Crear revisor', 'Ikuskatzailea sortu')
+                    : t('Crear usuario', 'Erabiltzailea sortu')}
               </button>
             </div>
           </div>

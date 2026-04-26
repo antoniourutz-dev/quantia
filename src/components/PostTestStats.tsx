@@ -247,39 +247,41 @@ export default function PostTestStats({
           {null}
         </div>
 
-
-
-
-           
-           <button
-             onClick={() => {
-               trackEffect({
-                 surface: 'session_end',
-                 curriculum,
-                 action: 'cta_clicked',
-                 context: { cta: sessionEnd.primaryCta, mode, nextMoveKind: sessionEnd.nextMove.kind }
-               });
-               if (sessionEnd.nextMove.kind === 'review_on_page') {
-                 setShowOnlyIncorrect(true);
+        <div className="mt-4">
+          <button
+            onClick={() => {
+              trackEffect({
+                surface: 'session_end',
+                curriculum,
+                action: 'cta_clicked',
+                context: { cta: sessionEnd.primaryCta, mode, nextMoveKind: sessionEnd.nextMove.kind },
+              });
+              if (sessionEnd.nextMove.kind === 'review_on_page') {
+                setShowOnlyIncorrect(true);
                 setAnalysisHydrated(true);
                 setShowReview(true);
                 requestAnimationFrame(() => {
                   document.getElementById('session-end-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 });
-                 return;
-               }
-               if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
-                 onStartNextSession({ mode: sessionEnd.nextMove.mode, questionCount: sessionEnd.nextMove.questionCount, syllabus: sessionEnd.nextMove.syllabus });
-                 return;
-               }
-               onRestart();
-             }}
-             className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-[15px] font-black text-white shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] transition-all active:scale-[0.98] hover:bg-indigo-700"
-           >
-             {sessionEnd.nextMove.kind === 'review_on_page' && <RotateCcw size={18} />}
-             {sessionEnd.primaryCta}
-           </button>
+                return;
+              }
+              if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
+                onStartNextSession({
+                  mode: sessionEnd.nextMove.mode,
+                  questionCount: sessionEnd.nextMove.questionCount,
+                  syllabus: sessionEnd.nextMove.syllabus,
+                });
+                return;
+              }
+              onRestart();
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-[15px] font-black text-white shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] transition-all active:scale-[0.98] hover:bg-indigo-700"
+          >
+            {sessionEnd.nextMove.kind === 'review_on_page' ? <RotateCcw size={18} /> : null}
+            {sessionEnd.primaryCta}
+          </button>
         </div>
+
 
         {/* SECONDARY MINIMAL METRICS */}
         <div className="flex divide-x divide-slate-100 border-t border-slate-100 pt-4">
