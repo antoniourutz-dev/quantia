@@ -37,7 +37,7 @@ const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
 export default function RestrictedQuestionBankShell({ session }: { session: Session }) {
   const allowedCurriculums = useMemo(() => {
     if (isOpeosi(session)) {
-      return ['administrativo', 'auxiliar-administrativo', 'auxiliar_administrativo'];
+      return ['administrativo', 'auxiliar-administrativo'];
     }
 
     const raw =
@@ -54,20 +54,13 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
       .map(canonicalizeAllowedKey)
       .filter(Boolean);
 
-    const normalized = new Set<string>();
-    for (const value of list) {
-      normalized.add(value);
-      normalized.add(value.replace(/-/g, '_'));
-      normalized.add(value.replace(/_/g, '-'));
+    const normalized = Array.from(new Set(list));
+
+    if (normalized.length === 0) {
+      return ['administrativo', 'auxiliar-administrativo'];
     }
 
-    if (normalized.size === 0) {
-      normalized.add('administrativo');
-      normalized.add('auxiliar-administrativo');
-      normalized.add('auxiliar_administrativo');
-    }
-
-    return Array.from(normalized);
+    return normalized;
   }, [session.user.app_metadata]);
 
   const [curriculum, setCurriculum] = useState(() => {
@@ -91,7 +84,7 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
               <select
                 value={curriculum}
                 onChange={(e) => {
-                  const next = e.target.value;
+                  const next = canonicalizeAllowedKey(e.target.value);
                   if (!allowedCurriculums.includes(next)) return;
                   setCurriculum(next);
                   writeStoredCurriculum(next);
