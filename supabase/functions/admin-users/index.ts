@@ -572,11 +572,16 @@ Deno.serve(async (req) => {
           options: redirectTo ? { redirectTo } : undefined,
         } as unknown as Record<string, unknown>);
         if (linkError) throw linkError;
-        magicLink =
-          (linkData as Record<string, unknown> | null)?.properties &&
-          typeof (linkData as any).properties.action_link === 'string'
-            ? (linkData as any).properties.action_link
+        const properties =
+          linkData &&
+          typeof linkData === 'object' &&
+          'properties' in linkData &&
+          linkData.properties &&
+          typeof linkData.properties === 'object'
+            ? (linkData.properties as Record<string, unknown>)
             : null;
+        magicLink =
+          typeof properties?.action_link === 'string' ? properties.action_link : null;
       } catch {
         magicLink = null;
       }

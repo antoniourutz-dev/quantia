@@ -154,10 +154,6 @@ export default function PostTestStats({
   }, [reviewItems, showOnlyIncorrect]);
   const continuityFocus = sessionEnd.nextMove.kind === 'start_session' && mode !== 'simulacro';
 
-  const summaryLine = isBasque
-    ? `${questions.length} galderatik ${score} asmatu dituzu.`
-    : `Has acertado ${score} de ${questions.length} preguntas.`;
-
   const speedMessage = Number(avgTimeSec) < 30
     ? isBasque
       ? 'Erritmo ona izan duzu. Merezi du horri eustea.'

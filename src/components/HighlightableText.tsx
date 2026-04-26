@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Edit2, Eraser, AlertCircle, Book, Calendar, X } from 'lucide-react';
+import { Check, AlertCircle, Book, Calendar, X } from 'lucide-react';
 import { useAppLocale } from '../lib/locale';
 
 export type HighlightType = 'law_reference' | 'deadline' | 'exception' | 'core_concept';
@@ -26,13 +26,6 @@ const HIGHLIGHT_STYLES: Record<HighlightType, string> = {
   deadline: 'bg-orange-400/30 text-orange-950 border-b-2 border-orange-500 shadow-[inset_0_-2px_0_0_#f97316]',
   exception: 'bg-rose-400/30 text-rose-950 border-b-2 border-rose-500 shadow-[inset_0_-2px_0_0_#f43f5e]',
   core_concept: 'bg-emerald-400/30 text-emerald-950 border-b-2 border-emerald-500 shadow-[inset_0_-2px_0_0_#10b981]',
-};
-
-const HIGHLIGHT_ICONS: Record<HighlightType, React.ElementType> = {
-  law_reference: Book,
-  deadline: Calendar,
-  exception: AlertCircle,
-  core_concept: Check,
 };
 
 export default function HighlightableText({

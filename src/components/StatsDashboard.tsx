@@ -42,7 +42,6 @@ interface StatsDashboardProps {
   results: TestResult[];
   bundle: DashboardBundle | null;
   curriculum: string;
-  levelLabel?: string;
   coachPlan?: CoachPlanV2 | null;
   executablePlan?: ExecutableSessionPlan | null;
   onStartRecommended?: () => void;
@@ -52,7 +51,6 @@ export default function StatsDashboard({
   results,
   bundle,
   curriculum,
-  levelLabel = 'Ritmo actual',
   coachPlan = null,
   executablePlan = null,
   onStartRecommended,
@@ -66,12 +64,7 @@ export default function StatsDashboard({
   const pressureV2 = bundle?.practiceState.pressureInsightsV2 ?? null;
   const weakCategories = bundle?.weakCategories ?? [];
 
-  const totalQuestions = results.reduce((acc, curr) => acc + curr.total, 0);
-  const correctAnswers = results.reduce((acc, curr) => acc + curr.score, 0);
-
   const readiness = Math.round((learningV2?.examReadinessRate ?? 0) * 100);
-  const readinessCiLow = learningV2?.examReadinessCiLow == null ? null : Math.round(learningV2.examReadinessCiLow * 100);
-  const readinessCiHigh = learningV2?.examReadinessCiHigh == null ? null : Math.round(learningV2.examReadinessCiHigh * 100);
   const readinessConfidence = learningV2?.examReadinessConfidenceFlag ?? 'low';
   const observedAccuracy = Math.round((learningV2?.observedAccuracyRate ?? 0) * 100);
   const weeklyQuestions = useMemo(() => {
@@ -107,12 +100,6 @@ export default function StatsDashboard({
   });
 
   const coverage = Math.round((learningV2?.coverageRate ?? 0) * 100);
-  const seenQuestions = learningV2?.seenQuestions ?? 0;
-  const totalBankQuestions = learningV2?.totalQuestions ?? 0;
-
-  const observedAccuracyN = learningV2?.observedAccuracyN ?? 0;
-  const observedCiLow = learningV2?.observedAccuracyCiLow == null ? null : Math.round(learningV2.observedAccuracyCiLow * 100);
-  const observedCiHigh = learningV2?.observedAccuracyCiHigh == null ? null : Math.round(learningV2.observedAccuracyCiHigh * 100);
   const observedOk = Boolean(learningV2?.observedAccuracySampleOk);
 
   const recommendedCount = learningV2?.recommendedTodayCount ?? 0;

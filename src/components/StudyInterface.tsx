@@ -8,8 +8,6 @@ import {
   Save,
   X,
   MessageSquare,
-  Sparkles,
-  Zap,
 } from 'lucide-react';
 import type { OptionKey, PracticeMode, Question } from '../types';
 import { useAppLocale } from '../lib/locale';
@@ -28,7 +26,6 @@ interface StudyInterfaceProps {
 
 export default function StudyInterface({
   questions,
-  curriculum,
   onFinish,
   onCancel,
 }: StudyInterfaceProps) {

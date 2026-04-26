@@ -128,28 +128,6 @@ const ATTEMPT_TABLE_SOURCES: TableSource[] = [
   { schema: 'app', table: 'practice_sessions' },
 ];
 
-const SESSION_SELECT_CANDIDATES = [
-  'session_id, mode, title, started_at, finished_at, score, total',
-  'id, mode, title, started_at, finished_at, score, total',
-  'session_id, mode, title, startedAt, finishedAt, score, total',
-  'id, mode, title, startedAt, finishedAt, score, total',
-  'session_id, mode, title, started_at, score, total',
-  'id, mode, title, started_at, score, total',
-  'session_id, mode, title, startedAt, score, total',
-  'id, mode, title, startedAt, score, total',
-] as const;
-
-const SESSION_ATTEMPTS_SELECT_CANDIDATES = [
-  'session_id, attempts',
-  'id, attempts',
-  'session_id, attempts_json',
-  'id, attempts_json',
-  'session_id, attempt_rows',
-  'id, attempt_rows',
-  'session_id, answers',
-  'id, answers',
-] as const;
-
 const CURRICULUM_FIELD_ALIASES = [
   'curriculum',
   'curriculum_slug',
@@ -549,20 +527,6 @@ const mapPracticeCloudError = (error: PostgrestLikeError) => {
 const getErrorSignature = (error: PostgrestLikeError) =>
   `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`.toLowerCase();
 
-const isMissingColumnForField = (error: PostgrestLikeError, field: string) => {
-  const signature = getErrorSignature(error);
-  const target = String(field).trim().toLowerCase();
-  if (!target) return false;
-  return (
-    signature.includes(`"${target}"`) ||
-    signature.includes(`'${target}'`) ||
-    signature.includes(` ${target} `) ||
-    signature.includes(`.${target}`) ||
-    signature.includes(`=${target}`) ||
-    signature.includes(` ${target}.`)
-  );
-};
-
 const isSchemaCacheSignatureError = (error: PostgrestLikeError) => {
   const signature = getErrorSignature(error);
   return signature.includes('could not find the function') || signature.includes('schema cache');
@@ -954,6 +918,12 @@ type StudyHighlightSpan = {
   type: HighlightType;
 };
 
+const isHighlightType = (value: unknown): value is HighlightType =>
+  value === 'law_reference' ||
+  value === 'deadline' ||
+  value === 'exception' ||
+  value === 'core_concept';
+
 const buildSpanId = (span: { startIndex: number; endIndex: number; type: HighlightType }) =>
   `${span.startIndex}:${span.endIndex}:${span.type}`;
 
@@ -1039,22 +1009,24 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
       .eq('user_id', userId);
 
     if (!h2Error && cloudHighlightsV2) {
-      for (const row of cloudHighlightsV2 as any[]) {
+      for (const row of cloudHighlightsV2 as Array<Record<string, unknown>>) {
         const questionId = String(row.question_id ?? '');
         const contentType = String(row.content_type ?? '') as StudyHighlightContentType;
         const answerIndex =
           contentType === 'answer' && typeof row.answer_index === 'number'
             ? Math.max(0, Math.trunc(row.answer_index))
             : null;
-        const spans = Array.isArray(row.spans) ? (row.spans as StudyHighlightSpan[]) : [];
+        const spans = Array.isArray(row.spans) ? row.spans : [];
         const key = buildStudyKey({ questionId, contentType, answerIndex });
         if (!res.highlights[key]) res.highlights[key] = [];
         for (const span of spans) {
-          const startIndex = Number((span as any).start_index);
-          const endIndex = Number((span as any).end_index);
-          const type = (span as any).type as HighlightType;
+          if (!span || typeof span !== 'object' || Array.isArray(span)) continue;
+          const spanRecord = span as Record<string, unknown>;
+          const startIndex = Number(spanRecord.start_index);
+          const endIndex = Number(spanRecord.end_index);
+          if (!isHighlightType(spanRecord.type)) continue;
+          const type = spanRecord.type;
           if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) continue;
-          if (!type) continue;
           res.highlights[key].push({
             id: buildSpanId({ startIndex, endIndex, type }),
             startIndex,
@@ -1071,13 +1043,18 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
         .eq('user_id', userId);
 
       if (!hError && cloudHighlights) {
-        cloudHighlights.forEach((item: any) => {
-          if (!res.highlights[item.question_id]) res.highlights[item.question_id] = [];
-          res.highlights[item.question_id].push({
-            id: item.id,
-            startIndex: item.start_index,
-            endIndex: item.end_index,
-            type: item.type as any,
+        (cloudHighlights as Array<Record<string, unknown>>).forEach((item) => {
+          const questionId = String(item.question_id ?? '');
+          const startIndex = Number(item.start_index);
+          const endIndex = Number(item.end_index);
+          if (!questionId || !Number.isFinite(startIndex) || !Number.isFinite(endIndex)) return;
+          if (!isHighlightType(item.type)) return;
+          if (!res.highlights[questionId]) res.highlights[questionId] = [];
+          res.highlights[questionId].push({
+            id: String(item.id ?? buildSpanId({ startIndex, endIndex, type: item.type })),
+            startIndex,
+            endIndex,
+            type: item.type,
           });
         });
       }
@@ -1091,8 +1068,10 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
       .eq('user_id', userId);
 
     if (!nError && cloudNotes) {
-      cloudNotes.forEach((item: any) => {
-        res.notes[item.question_id] = item.content;
+      (cloudNotes as Array<Record<string, unknown>>).forEach((item) => {
+        const questionId = String(item.question_id ?? '');
+        if (!questionId) return;
+        res.notes[questionId] = String(item.content ?? '');
       });
     }
 
@@ -1158,10 +1137,11 @@ export const saveStudyData = async (
         .eq('content_type', contentType)
         .eq('answer_index', normalizedAnswerIndex);
 
+      const deleteError: PostgrestLikeError | null = delRes.error;
       const v2Missing =
-        Boolean(delRes.error) &&
-        (String((delRes.error as any)?.code ?? '') === '42P01' ||
-          String((delRes.error as any)?.message ?? '').toLowerCase().includes('relation'));
+        Boolean(deleteError) &&
+        (String(deleteError?.code ?? '') === '42P01' ||
+          String(deleteError?.message ?? '').toLowerCase().includes('relation'));
 
       if (!v2Missing) {
         if (spans.length > 0) {

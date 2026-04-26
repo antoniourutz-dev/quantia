@@ -22,7 +22,7 @@ export const getUserQuestionFriction = async (
     p_user_id: normalizedUserId,
     p_curriculum: normalizedCurriculum,
     p_limit: Math.max(1, Math.min(100, Math.trunc(limit))),
-  } as any);
+  } as Record<string, unknown>);
 
   if (error) throw new Error(error.message || 'No se ha podido cargar friccion por pregunta.');
 
@@ -45,4 +45,3 @@ export const getUserQuestionFriction = async (
     primaryTag: String(row.primary_tag ?? 'mixed') as QuestionFrictionTag,
   }));
 };
-

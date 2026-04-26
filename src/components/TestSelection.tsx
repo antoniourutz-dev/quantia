@@ -32,9 +32,7 @@ interface TestSelectionProps {
   initialLaw?: string | null;
   onStart: (mode: PracticeMode, syllabus?: SyllabusType, count?: number) => void;
   onStartLawTest: (law: string, count?: number) => void;
-  onStartCustom: (params: { from: number; to: number; randomize: boolean }) => void;
   onStartCustomPractice: (config: CustomPracticeConfig) => void;
-  onLoadCustomBounds: () => Promise<{ min: number; max: number } | null>;
   initialSyllabus: SyllabusType | null;
   initialState?: TestSelectionStateSnapshot | null;
   onStateChange?: (state: TestSelectionStateSnapshot) => void;
@@ -47,9 +45,7 @@ export default function TestSelection({
   initialLaw = null,
   onStart,
   onStartLawTest,
-  onStartCustom,
   onStartCustomPractice,
-  onLoadCustomBounds,
   initialSyllabus,
   initialState = null,
   onStateChange,
@@ -66,11 +62,9 @@ export default function TestSelection({
   const simulacroOptions = [50, 100];
   const [simulacroScope, setSimulacroScope] = useState<'mixed' | SyllabusType>(initialState?.simulacroScope ?? 'mixed');
   const [simulacroCount, setSimulacroCount] = useState<number>(initialState?.simulacroCount ?? 50);
-  const [customFrom, setCustomFrom] = useState<string>(initialState?.customFrom ?? '');
-  const [customTo, setCustomTo] = useState<string>(initialState?.customTo ?? '');
-  const [customOrder, setCustomOrder] = useState<'sequence' | 'random'>(initialState?.customOrder ?? 'sequence');
-  const [customBounds, setCustomBounds] = useState<{ min: number; max: number } | null>(null);
-  const [customLoading, setCustomLoading] = useState(false);
+  const [customFrom] = useState<string>(initialState?.customFrom ?? '');
+  const [customTo] = useState<string>(initialState?.customTo ?? '');
+  const [customOrder] = useState<'sequence' | 'random'>(initialState?.customOrder ?? 'sequence');
   const [customError, setCustomError] = useState<string | null>(null);
   const [customContentScope, setCustomContentScope] = useState<CustomPracticeContentScope>(
     initialState?.customContentScope ?? 'all_opposition',
@@ -182,24 +176,6 @@ export default function TestSelection({
     simulacroScope,
   ]);
 
-  const ensureCustomBounds = async () => {
-    if (customLoading || customBounds) return;
-    setCustomLoading(true);
-    setCustomError(null);
-    try {
-      const bounds = await onLoadCustomBounds();
-      setCustomBounds(bounds);
-      if (bounds) {
-        setCustomFrom(String(bounds.min));
-        setCustomTo(String(bounds.max));
-      }
-    } catch (error) {
-      setCustomError(error instanceof Error ? error.message : (isBasque ? 'Ezin izan da kargatu.' : 'No se ha podido cargar.'));
-    } finally {
-      setCustomLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (selectionMode !== 'custom') return;
     if (customTopicMode !== 'single') return;
@@ -224,29 +200,6 @@ export default function TestSelection({
       })
       .finally(() => setCustomTopicsLoading(false));
   }, [curriculum, customContentScope, customTopic, customTopicMode, isBasque, selectionMode]);
-
-  const handleStartCustom = () => {
-    setCustomError(null);
-    const fromValue = Number(customFrom);
-    const toValue = Number(customTo);
-    if (!Number.isFinite(fromValue) || !Number.isFinite(toValue)) {
-      setCustomError(isBasque ? 'Sartu balio egokiak.' : 'Introduce valores válidos.');
-      return;
-    }
-    if (fromValue <= 0 || toValue <= 0) {
-      setCustomError(isBasque ? 'Tarteak 1etik aurrera izan behar du.' : 'El rango debe empezar en 1 o más.');
-      return;
-    }
-    const minBound = customBounds?.min ?? 1;
-    const maxBound = customBounds?.max ?? Math.max(fromValue, toValue);
-    const clippedFrom = Math.max(minBound, Math.min(fromValue, maxBound));
-    const clippedTo = Math.max(minBound, Math.min(toValue, maxBound));
-    if (clippedFrom > clippedTo) {
-      setCustomError(isBasque ? 'Tartea ez da zuzena.' : 'El rango no es válido.');
-      return;
-    }
-    onStartCustom({ from: clippedFrom, to: clippedTo, randomize: customOrder === 'random' });
-  };
 
   const handleStart = () => {
     if (selectionMode === 'standard') {
