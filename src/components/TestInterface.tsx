@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -13,6 +12,7 @@ import {
 } from 'lucide-react';
 import { FinishedTestPayload, OptionKey, PracticeMode, Question, TestAnswer } from '../types';
 import { useAppLocale } from '../lib/locale';
+import type { StudyQuestionData } from '../lib/quantiaApi';
 import HighlightableText from './HighlightableText';
 
 interface TestInterfaceProps {
@@ -27,7 +27,7 @@ interface TestInterfaceProps {
     }
   > | null;
   supportMode?: { showMarks: boolean; showNotes: boolean } | null;
-  studyData?: { highlights: Record<string, any[]>; notes: Record<string, string> } | null;
+  studyData?: StudyQuestionData | null;
   onFinish: (payload: FinishedTestPayload) => void | Promise<void>;
   onCancel: () => void;
   isFinishing?: boolean;
@@ -323,7 +323,7 @@ export default function TestInterface({
                 {showMarks ? (
                   <HighlightableText
                     text={currentQuestion.text}
-                    highlights={(studyData?.highlights?.[currentQuestion.id] ?? []) as any}
+                    highlights={studyData?.highlights?.[currentQuestion.id] ?? []}
                     onAddHighlight={() => {}}
                     onRemoveHighlight={() => {}}
                     readOnly
@@ -429,9 +429,7 @@ export default function TestInterface({
                         {showMarks ? (
                           <HighlightableText
                             text={option.text}
-                            highlights={
-                              (studyData?.highlights?.[`${currentQuestion.id}_ans_${optionIndex}`] ?? []) as any
-                            }
+                            highlights={studyData?.highlights?.[`${currentQuestion.id}_ans_${optionIndex}`] ?? []}
                             onAddHighlight={() => {}}
                             onRemoveHighlight={() => {}}
                             readOnly
@@ -488,7 +486,7 @@ export default function TestInterface({
                       {showMarks ? (
                         <HighlightableText
                           text={currentQuestion.explanation}
-                          highlights={(studyData?.highlights?.[`${currentQuestion.id}_exp`] ?? []) as any}
+                          highlights={studyData?.highlights?.[`${currentQuestion.id}_exp`] ?? []}
                           onAddHighlight={() => {}}
                           onRemoveHighlight={() => {}}
                           readOnly

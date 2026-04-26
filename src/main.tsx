@@ -4,6 +4,12 @@ import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import './index.css'
 
+declare global {
+  interface Window {
+    __QUANTIA_BOOT_RENDERED__?: boolean
+  }
+}
+
 const rootEl = typeof document !== 'undefined' ? document.getElementById('root') : null
 if (rootEl) {
   rootEl.innerHTML =
@@ -51,5 +57,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 
 if (typeof window !== 'undefined') {
-  ;(window as any).__QUANTIA_BOOT_RENDERED__ = true
+  window.__QUANTIA_BOOT_RENDERED__ = true
 }

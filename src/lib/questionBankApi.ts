@@ -3,7 +3,7 @@ import {
   mapQuestion,
   readText,
 } from './quantiaMappers';
-import { QUESTION_BANK_LIST_SELECT, toDbGrupo, toOptionKey, toSyllabusType } from './questionContracts';
+import { QUESTION_BANK_LIST_SELECT, toOptionKey, toSyllabusType } from './questionContracts';
 import type {
   OptionKey,
   PracticeQuestionScopeFilter,

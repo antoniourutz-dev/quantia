@@ -6,6 +6,10 @@ import { LocaleProvider, getLocaleForCurriculum } from '../../lib/locale';
 import { signOut } from '../../lib/quantiaApi';
 
 const STORAGE_KEY = 'quantia.restricted.curriculum.v1';
+type SessionAppMetadata = Record<string, unknown> & {
+  allowedCurriculumKeys?: unknown;
+  allowed_curriculum_keys?: unknown;
+};
 
 const readStoredCurriculum = () => {
   try {
@@ -23,8 +27,18 @@ const writeStoredCurriculum = (value: string) => {
   }
 };
 
-const canonicalizeAllowedKey = (value: string) => value.trim().toLowerCase().replace(/_/g, '-');
-const isOpeosi = (session: Session) => String((session.user as any)?.email ?? '').trim().toLowerCase() === 'opeosi@oposik.app';
+const canonicalizeAllowedKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-');
+const readSessionAppMetadata = (session: Session): SessionAppMetadata | null => {
+  const metadata = session.user.app_metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  return metadata as SessionAppMetadata;
+};
+const isOpeosi = (session: Session) => String(session.user.email ?? '').trim().toLowerCase() === 'opeosi@oposik.app';
 const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
   const normalized = canonicalizeAllowedKey(value);
   if (normalized === 'administrativo') return locale === 'eu' ? 'Administrativo' : 'Administrativo';
@@ -37,37 +51,28 @@ const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
 export default function RestrictedQuestionBankShell({ session }: { session: Session }) {
   const allowedCurriculums = useMemo(() => {
     if (isOpeosi(session)) {
-      return ['administrativo', 'auxiliar-administrativo', 'auxiliar_administrativo'];
+      return ['administrativo', 'auxiliar-administrativo'];
     }
 
-    const raw =
-      (session.user.app_metadata &&
-      typeof session.user.app_metadata === 'object' &&
-      Array.isArray((session.user.app_metadata as any).allowedCurriculumKeys)
-        ? ((session.user.app_metadata as any).allowedCurriculumKeys as unknown[])
-        : Array.isArray((session.user.app_metadata as any)?.allowed_curriculum_keys)
-          ? ((session.user.app_metadata as any).allowed_curriculum_keys as unknown[])
-          : []) ?? [];
+    const appMetadata = readSessionAppMetadata(session);
+    const raw = Array.isArray(appMetadata?.allowedCurriculumKeys)
+      ? appMetadata.allowedCurriculumKeys
+      : Array.isArray(appMetadata?.allowed_curriculum_keys)
+        ? appMetadata.allowed_curriculum_keys
+        : [];
 
     const list = raw
       .map((value) => (typeof value === 'string' ? value : ''))
       .map(canonicalizeAllowedKey)
       .filter(Boolean);
 
-    const normalized = new Set<string>();
-    for (const value of list) {
-      normalized.add(value);
-      normalized.add(value.replace(/-/g, '_'));
-      normalized.add(value.replace(/_/g, '-'));
+    const normalized = Array.from(new Set(list));
+
+    if (normalized.length === 0) {
+      return ['administrativo', 'auxiliar-administrativo'];
     }
 
-    if (normalized.size === 0) {
-      normalized.add('administrativo');
-      normalized.add('auxiliar-administrativo');
-      normalized.add('auxiliar_administrativo');
-    }
-
-    return Array.from(normalized);
+    return normalized;
   }, [session.user.app_metadata]);
 
   const [curriculum, setCurriculum] = useState(() => {
@@ -91,7 +96,7 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
               <select
                 value={curriculum}
                 onChange={(e) => {
-                  const next = e.target.value;
+                  const next = canonicalizeAllowedKey(e.target.value);
                   if (!allowedCurriculums.includes(next)) return;
                   setCurriculum(next);
                   writeStoredCurriculum(next);

@@ -16,6 +16,10 @@ const CURRICULUM_STORAGE_KEY = 'quantia_curriculum';
 const LEGACY_CURRICULUM_STORAGE_KEY = 'osakitest_curriculum';
 const DEFAULT_PUBLIC_CURRICULUM = 'administrativo';
 
+type SessionAppMetadata = Record<string, unknown> & {
+  role?: unknown;
+};
+
 const readLastKnownCurriculum = () => {
   try {
     return (
@@ -26,6 +30,12 @@ const readLastKnownCurriculum = () => {
   } catch {
     return DEFAULT_PUBLIC_CURRICULUM;
   }
+};
+
+const readSessionAppMetadata = (session: Session): SessionAppMetadata | null => {
+  const metadata = session.user.app_metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  return metadata as SessionAppMetadata;
 };
 
 export default function App() {
@@ -128,11 +138,9 @@ export default function App() {
     );
   }
 
-  const appRole =
-    session.user.app_metadata && typeof session.user.app_metadata === 'object'
-      ? String((session.user.app_metadata as any).role ?? '')
-      : '';
-  const userEmail = String((session.user as any)?.email ?? '').trim().toLowerCase();
+  const appMetadata = readSessionAppMetadata(session);
+  const appRole = typeof appMetadata?.role === 'string' ? appMetadata.role : '';
+  const userEmail = String(session.user.email ?? '').trim().toLowerCase();
   const isOpeosiRestricted = userEmail === 'opeosi@oposik.app';
   const isRestrictedQuestionBankViewer = isOpeosiRestricted || appRole === 'restricted_question_bank_viewer';
 

@@ -32,7 +32,6 @@ import {
   getAvailableCurriculums,
   getCurriculumCategoryGroupLabel,
   getCurriculumCategoryOptions,
-  getCurriculumQuestionNumberBounds,
   getPracticeBatchByCategory,
   getCustomPracticeBatch,
   getPracticeQuestionsByIds,
@@ -50,6 +49,7 @@ import {
   updateMyExamTarget,
   type CurriculumOption,
   type DashboardBundle,
+  type StudyQuestionData,
 } from '../../lib/quantiaApi';
 import type { CustomPracticeConfig } from '../../domain/customPractice/customPracticeTypes';
 import { buildCoachPlanV2, buildExecutableSessionPlanFromCoach } from '../../lib/coach';
@@ -164,9 +164,18 @@ type TestReturnTarget =
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const HOME_FIRST_PAINT_STORAGE_KEY = 'quantia.home.firstpaint.v1';
 type IdleHandle = number | ReturnType<typeof setTimeout>;
+type WindowWithIdleCallbacks = Window & {
+  requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+  cancelIdleCallback?: (id: number) => void;
+};
+type NavigatorWithConnection = Navigator & {
+  connection?: {
+    saveData?: boolean;
+  };
+};
 const requestIdle = (callback: () => void, timeoutMs = 1200): IdleHandle => {
   if (typeof window === 'undefined') return setTimeout(callback, 0);
-  const idle = (window as any).requestIdleCallback as undefined | ((cb: () => void, opts?: { timeout?: number }) => number);
+  const idle = (window as WindowWithIdleCallbacks).requestIdleCallback;
   if (typeof idle === 'function') {
     return idle(callback, { timeout: timeoutMs });
   }
@@ -178,7 +187,7 @@ const cancelIdle = (handle: IdleHandle | null | undefined) => {
     clearTimeout(handle);
     return;
   }
-  const cancel = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
+  const cancel = (window as WindowWithIdleCallbacks).cancelIdleCallback;
   if (typeof cancel === 'function' && typeof handle === 'number') {
     cancel(handle);
     return;
@@ -323,7 +332,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const [activeSession, setActiveSession] = useState<ActivePracticeSession | null>(null);
   const [activeTestSupport, setActiveTestSupport] = useState<{
     supportMode: { showMarks: boolean; showNotes: boolean };
-    studyData: { highlights: Record<string, any[]>; notes: Record<string, string> };
+    studyData: StudyQuestionData;
   } | null>(null);
   const [lastTestPayload, setLastTestPayload] = useState<FinishedTestPayload | null>(null);
   const [activeStudySession, setActiveStudySession] = useState<ActivePracticeSession | null>(null);
@@ -403,7 +412,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (!session || currentView !== 'dashboard') return;
     if (import.meta.env.DEV) return;
 
-    const connection = typeof navigator !== 'undefined' ? ((navigator as any).connection as { saveData?: boolean } | undefined) : undefined;
+    const connection =
+      typeof navigator !== 'undefined' ? (navigator as NavigatorWithConnection).connection : undefined;
     if (connection?.saveData) return;
 
     let secondaryHandle: IdleHandle | null = null;
@@ -1481,11 +1491,6 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     [coachExecutablePlan, handleStartTest, weakCategory?.category],
   );
 
-  const handleLoadCustomBounds = useCallback(
-    async () => getCurriculumQuestionNumberBounds(curriculum),
-    [curriculum],
-  );
-
   const handleStartCustomTest = useCallback(
     async (params: { from: number; to: number; randomize: boolean }) => {
       captureTestReturnTarget();
@@ -1593,7 +1598,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
 
         if (plan.supportMode.showMarks || plan.supportMode.showNotes) {
           const studyData = await getStudyData(questions.map((q) => q.id));
-          setActiveTestSupport({ supportMode: plan.supportMode, studyData: studyData as any });
+          setActiveTestSupport({ supportMode: plan.supportMode, studyData });
         }
 
         const topicLabel = plan.topicId ? ` · ${plan.topicId}` : '';
@@ -2873,9 +2878,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               initialState={testSelectionState}
               onStart={handleStartTest}
               onStartLawTest={handleStartLawTest}
-              onStartCustom={handleStartCustomTest}
               onStartCustomPractice={handleStartCustomPractice}
-              onLoadCustomBounds={handleLoadCustomBounds}
               initialSyllabus={selectedSyllabus}
               onStateChange={setTestSelectionState}
             />
@@ -3065,11 +3068,6 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                 });
                 void handleStartCoachSession();
               }}
-              levelLabel={
-                coachExecutablePlan
-                  ? formatModeLabel(coachExecutablePlan.mode, locale)
-                  : t('Ritmo actual', 'Uneko erritmoa')
-              }
             />
           </Suspense>
         ) : null}
