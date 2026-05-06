@@ -21,6 +21,18 @@ import X from 'lucide-react/dist/esm/icons/x';
 import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2';
 import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
 import type { TestSelectionStateSnapshot } from '../TestSelection';
+import {
+  GOI_TEKNIKARIA_FALLBACK_OPTION,
+  ADMIN_EMAIL,
+  getCurriculumAccessPolicyForIdentity,
+  getRestrictedCurriculumForIdentity,
+  filterCurriculumOptionsByAllowedKeys,
+  readAllowedCurriculumKeys,
+} from '../../features/authenticatedShell/restrictedCurriculum';
+import { readHomeFirstPaintCache, HOME_FIRST_PAINT_STORAGE_KEY, type HomeFirstPaintModel } from '../../features/authenticatedShell/homeFirstPaintStorage';
+import { cancelIdle, requestIdle, type IdleHandle } from '../../features/authenticatedShell/shellIdle';
+import { startOfDay } from '../../features/authenticatedShell/shellDateUtils';
+import type { ShellView as View, TestReturnTarget } from '../../features/authenticatedShell/shellTypes';
 import MobileTabBar from '../MobileTabBar';
 import MobileTopBar from '../MobileTopBar';
 import Dashboard from '../dashboard/Dashboard';
@@ -117,7 +129,6 @@ import {
 } from '../../lib/locale';
 import {
   ActivePracticeSession,
-  AccountIdentity,
   FinishedTestPayload,
   PracticeMode,
   Question,
@@ -127,95 +138,10 @@ import {
   formatSyllabusLabel,
 } from '../../types';
 
-type View =
-  | 'dashboard'
-  | 'study'
-  | 'study-bank'
-  | 'study-active'
-  | 'test-selection'
-  | 'test-active'
-  | 'stats'
-  | 'test-results'
-  | 'settings'
-  | 'admin-questions'
-  | 'admin-dashboard'
-  | 'admin-students'
-  | 'admin-catalogs'
-  | 'telemetry';
-
-type TestReturnTarget =
-  | {
-      view: 'dashboard';
-    }
-  | {
-      view: 'test-selection';
-      selectionState: TestSelectionStateSnapshot | null;
-      selectedSyllabus: SyllabusType | null;
-      selectedLawFilter: string | null;
-    }
-  | {
-      view: 'test-results';
-      session: ActivePracticeSession;
-      payload: FinishedTestPayload;
-      selectedSyllabus: SyllabusType | null;
-      selectedLawFilter: string | null;
-    };
-
-const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-const HOME_FIRST_PAINT_STORAGE_KEY = 'quantia.home.firstpaint.v1';
-type IdleHandle = number | ReturnType<typeof setTimeout>;
-type WindowWithIdleCallbacks = Window & {
-  requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
-  cancelIdleCallback?: (id: number) => void;
-};
 type NavigatorWithConnection = Navigator & {
   connection?: {
     saveData?: boolean;
   };
-};
-const requestIdle = (callback: () => void, timeoutMs = 1200): IdleHandle => {
-  if (typeof window === 'undefined') return setTimeout(callback, 0);
-  const idle = (window as WindowWithIdleCallbacks).requestIdleCallback;
-  if (typeof idle === 'function') {
-    return idle(callback, { timeout: timeoutMs });
-  }
-  return window.setTimeout(callback, 0);
-};
-const cancelIdle = (handle: IdleHandle | null | undefined) => {
-  if (handle == null) return;
-  if (typeof window === 'undefined') {
-    clearTimeout(handle);
-    return;
-  }
-  const cancel = (window as WindowWithIdleCallbacks).cancelIdleCallback;
-  if (typeof cancel === 'function' && typeof handle === 'number') {
-    cancel(handle);
-    return;
-  }
-  window.clearTimeout(handle);
-};
-
-type HomeFirstPaintModel = {
-  coachLabel: string;
-  coachTitle: string;
-  coachDescription: string;
-  coachCtaLabel: string;
-  primaryCardTitle: string;
-  primaryCardDescription: string;
-  primaryCardCtaLabel: string;
-};
-
-const readHomeFirstPaintCache = (): Record<string, HomeFirstPaintModel> => {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(HOME_FIRST_PAINT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed as Record<string, HomeFirstPaintModel>;
-  } catch {
-    return {};
-  }
 };
 
 type HomeHeroFinalModel = {
@@ -243,47 +169,6 @@ const normalizeCurriculumId = (value: string | null | undefined) =>
 const isGoiTeknikariaCurriculum = (value: string | null | undefined) => {
   const normalized = normalizeCurriculumId(value);
   return normalized === 'goi-teknikaria' || normalized.startsWith('goi-teknikaria-');
-};
-
-const ADMIN_EMAIL = 'admin@oposik.app';
-const getRestrictedCurriculumForIdentity = (
-  session: Session | null,
-  identity: AccountIdentity | null | undefined,
-) => {
-  const identifiers = new Set<string>();
-  const email = normalizeUserIdentifier(session?.user?.email);
-  if (email) {
-    identifiers.add(email);
-    const [localPart] = email.split('@');
-    if (localPart) identifiers.add(localPart);
-  }
-
-  const metadataUsername = normalizeUserIdentifier(
-    typeof session?.user?.user_metadata?.username === 'string'
-      ? session.user.user_metadata.username
-      : typeof session?.user?.user_metadata?.preferred_username === 'string'
-        ? session.user.user_metadata.preferred_username
-        : null,
-  );
-  if (metadataUsername) identifiers.add(metadataUsername);
-
-  const currentUsername = normalizeUserIdentifier(identity?.current_username);
-  if (currentUsername) identifiers.add(currentUsername);
-
-  for (const previous of identity?.previous_usernames ?? []) {
-    const normalized = normalizeUserIdentifier(previous);
-    if (normalized) identifiers.add(normalized);
-  }
-
-  if (identifiers.has('eneko@oposik.app') || identifiers.has('eneko')) {
-    return 'goi-teknikaria';
-  }
-
-  return null;
-};
-const GOI_TEKNIKARIA_FALLBACK_OPTION: CurriculumOption = {
-  id: 'goi-teknikaria',
-  label: 'Goi-teknikaria',
 };
 
 const CURRICULUM_STORAGE_KEY = 'quantia_curriculum';
@@ -346,6 +231,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const curriculumMenuRef = useRef<HTMLDivElement | null>(null);
   const curriculumTriggerRef = useRef<HTMLButtonElement | null>(null);
   const curriculumMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const preferredCurriculumAppliedRef = useRef<string | null>(null);
   const dashboardLoadCycleRef = useRef(0);
   const homeLoadTraceRef = useRef<HomeLoadTrace | null>(null);
   const homeHeroMarkedRef = useRef(false);
@@ -368,25 +254,60 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     () => getRestrictedCurriculumForIdentity(session, bundle?.identity ?? null),
     [bundle?.identity, session],
   );
+  const curriculumAccessPolicy = useMemo(
+    () => getCurriculumAccessPolicyForIdentity(session, bundle?.identity ?? null),
+    [bundle?.identity, session],
+  );
+  const allowedCurriculumKeys = useMemo(() => readAllowedCurriculumKeys(session), [session]);
+  const effectiveAllowedCurriculumKeys = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...allowedCurriculumKeys,
+          ...(Array.isArray(curriculumAccessPolicy?.allowedCurriculumKeys)
+            ? curriculumAccessPolicy.allowedCurriculumKeys
+            : []),
+        ]),
+      ),
+    [allowedCurriculumKeys, curriculumAccessPolicy],
+  );
+  const preferredCurriculumId = curriculumAccessPolicy?.preferredCurriculumId ?? null;
   const isAdminEmail = normalizeUserIdentifier(session?.user?.email) === ADMIN_EMAIL;
   useEffect(() => {
-    if (
-      (currentView === 'admin-questions' ||
+    if (!isAdminEmail) {
+      if (
+        currentView === 'dashboard' ||
+        currentView === 'admin-questions' ||
         currentView === 'admin-dashboard' ||
         currentView === 'admin-students' ||
-        currentView === 'admin-catalogs') &&
-      !isAdminEmail
-    ) {
-      setCurrentView('dashboard');
+        currentView === 'admin-catalogs'
+      ) {
+        setCurrentView('test-selection');
+      }
+      return;
     }
-    if (currentView === 'dashboard' && isAdminEmail) {
+
+    if (currentView === 'dashboard') {
       setCurrentView('admin-dashboard');
     }
   }, [currentView, isAdminEmail]);
   const visibleCurriculumOptions = useMemo(() => {
-    if (!restrictedCurriculum) return curriculumOptions;
+    const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
+    const preferredMatches = preferredCurriculumId
+      ? limitedOptions.filter((option) => normalizeCurriculumId(option.id) === normalizeCurriculumId(preferredCurriculumId))
+      : [];
+    const orderedOptions =
+      preferredMatches.length > 0
+        ? [
+            ...preferredMatches,
+            ...limitedOptions.filter(
+              (option) => normalizeCurriculumId(option.id) !== normalizeCurriculumId(preferredCurriculumId),
+            ),
+          ]
+        : limitedOptions;
+    if (!restrictedCurriculum) return orderedOptions;
 
-    const matches = curriculumOptions.filter((option) => isGoiTeknikariaCurriculum(option.id));
+    const matches = orderedOptions.filter((option) => isGoiTeknikariaCurriculum(option.id));
     if (matches.length === 0) {
       return [GOI_TEKNIKARIA_FALLBACK_OPTION];
     }
@@ -400,7 +321,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     });
 
     return [scored[0]];
-  }, [curriculumOptions, restrictedCurriculum]);
+  }, [curriculumOptions, effectiveAllowedCurriculumKeys, preferredCurriculumId, restrictedCurriculum]);
 
   useEffect(() => {
     if (currentView === 'test-active' || currentView === 'study-active') {
@@ -409,7 +330,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   }, [currentView]);
 
   useEffect(() => {
-    if (!session || currentView !== 'dashboard') return;
+    if (!session) return;
+    const shouldWarmup = isAdminEmail ? currentView === 'dashboard' : currentView === 'test-selection';
+    if (!shouldWarmup) return;
     if (import.meta.env.DEV) return;
 
     const connection =
@@ -457,7 +380,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       cancelIdle(primaryHandle);
       cancelIdle(secondaryHandle);
     };
-  }, [currentView, session]);
+  }, [currentView, isAdminEmail, session]);
 
   const telemetryEnabled = useMemo(() => {
     if (bundle?.identity.is_admin) return true;
@@ -476,8 +399,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   useEffect(() => {
     if (currentView !== 'telemetry') return;
     if (telemetryEnabled) return;
-    setCurrentView('dashboard');
-  }, [currentView, telemetryEnabled]);
+    setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
+  }, [currentView, telemetryEnabled, isAdminEmail]);
 
   const refreshDashboard = useCallback(async () => {
     if (!session) return;
@@ -750,6 +673,30 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   }, [curriculum, isLawSelectionCurriculum, session]);
 
   useEffect(() => {
+    const userId = String(session?.user?.id ?? '').trim();
+    if (!userId) return;
+    if (!preferredCurriculumId) return;
+
+    const preferredOption = visibleCurriculumOptions.find(
+      (option) => normalizeCurriculumId(option.id) === normalizeCurriculumId(preferredCurriculumId),
+    );
+    const nextCurriculum = preferredOption?.id ?? preferredCurriculumId;
+    const applyKey = `${userId}:${normalizeCurriculumId(nextCurriculum)}`;
+    if (preferredCurriculumAppliedRef.current === applyKey) return;
+
+    preferredCurriculumAppliedRef.current = applyKey;
+    if (curriculum !== nextCurriculum) {
+      setCurriculum(nextCurriculum);
+    }
+    try {
+      window.localStorage.setItem(CURRICULUM_STORAGE_KEY, nextCurriculum);
+      window.localStorage.setItem(LEGACY_CURRICULUM_STORAGE_KEY, nextCurriculum);
+    } catch {
+      // ignore
+    }
+  }, [curriculum, preferredCurriculumId, session?.user?.id, visibleCurriculumOptions]);
+
+  useEffect(() => {
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) {
       const nextCurriculum = visibleCurriculumOptions[0]?.id ?? restrictedCurriculum;
       if (!nextCurriculum) return;
@@ -761,6 +708,26 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         // ignore
       }
       return;
+    }
+
+    if (effectiveAllowedCurriculumKeys.length > 0) {
+      const allowed = visibleCurriculumOptions.find((opt) => opt.id === curriculum);
+      if (!allowed) {
+        const nextCurriculum =
+          visibleCurriculumOptions.find(
+            (option) => preferredCurriculumId && normalizeCurriculumId(option.id) === normalizeCurriculumId(preferredCurriculumId),
+          )?.id ?? visibleCurriculumOptions[0]?.id;
+        if (nextCurriculum && nextCurriculum !== curriculum) {
+          setCurriculum(nextCurriculum);
+          try {
+            window.localStorage.setItem(CURRICULUM_STORAGE_KEY, nextCurriculum);
+            window.localStorage.setItem(LEGACY_CURRICULUM_STORAGE_KEY, nextCurriculum);
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
     }
 
     if (curriculumOptionsLoading) return;
@@ -795,12 +762,25 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     } catch {
       // ignore
     }
-  }, [curriculum, curriculumOptionsLoading, restrictedCurriculum, visibleCurriculumOptions]);
+  }, [
+    curriculum,
+    curriculumOptionsLoading,
+    effectiveAllowedCurriculumKeys.length,
+    preferredCurriculumId,
+    restrictedCurriculum,
+    visibleCurriculumOptions,
+  ]);
 
   useEffect(() => {
     if (!session) return;
-    void refreshDashboard();
-  }, [refreshDashboard, session]);
+    if (isAdminEmail && currentView === 'dashboard') {
+      void refreshDashboard();
+      return;
+    }
+    if (!isAdminEmail && currentView === 'stats' && !bundle) {
+      void refreshDashboard();
+    }
+  }, [currentView, isAdminEmail, refreshDashboard, session, bundle]);
 
   useEffect(() => {
     if (currentView !== 'dashboard') return;
@@ -1492,7 +1472,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   );
 
   const handleStartCustomTest = useCallback(
-    async (params: { from: number; to: number; randomize: boolean }) => {
+    async (params: { from: number; to: number; randomize: boolean; syllabus?: SyllabusType | null }) => {
       captureTestReturnTarget();
       setSelectedSyllabus(null);
       setDataError(null);
@@ -1504,6 +1484,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           from: params.from,
           to: params.to,
           randomize: params.randomize,
+          syllabus: params.syllabus ?? null,
         });
 
         if (questions.length === 0) {
@@ -1667,9 +1648,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         setCurrentView('test-selection');
         return;
       }
-      setCurrentView('dashboard');
+      setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
     },
-    [handleStartCoachSession, handleStartCustomTest, handleStartLawTest, handleStartTest],
+    [handleStartCoachSession, handleStartCustomTest, handleStartLawTest, handleStartTest, isAdminEmail],
   );
 
   const handleFinishTest = useCallback(
@@ -1731,7 +1712,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (!testReturnTarget || testReturnTarget.view === 'dashboard') {
       setActiveSession(null);
       setLastTestPayload(null);
-      setCurrentView('dashboard');
+      setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
       return;
     }
 
@@ -1750,14 +1731,14 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     setActiveSession(testReturnTarget.session);
     setLastTestPayload(testReturnTarget.payload);
     resetScroll();
-  }, [testReturnTarget]);
+  }, [testReturnTarget, isAdminEmail]);
 
   const handleLogout = useCallback(async () => {
     await signOut();
     setBundle(null);
     setTestReturnTarget(null);
     setTestSelectionState(null);
-    setCurrentView('dashboard');
+    setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
   }, []);
 
   const headerStatus = useMemo(() => {
@@ -2015,9 +1996,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setTestSelectionState(null);
       setTestReturnTarget(null);
       setSidebarOpen(false);
-      setCurrentView('dashboard');
+      setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
     },
-    [],
+    [isAdminEmail],
   );
 
   const gamification = useMemo(() => {
@@ -2070,7 +2051,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     }
 
     try {
-      const cacheKey = `quantia.streak.v1:${curriculum}`;
+      const userId = String(session?.user?.id ?? '').trim() || 'anonymous';
+      const cacheKey = `quantia.streak.v1:${userId}:${curriculum}`;
       if (recentSessions.length > 0) {
         window.localStorage.setItem(cacheKey, String(streak));
       } else {
@@ -2084,7 +2066,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     }
 
     return { xp, level, streak };
-  }, [bundle, curriculum]);
+  }, [bundle, curriculum, session?.user?.id]);
 
   useEffect(() => {
     if (currentView !== 'stats') return;
@@ -2127,7 +2109,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (currentView === 'stats') return 'stats';
     if (currentView === 'study') return 'study';
     if (currentView === 'settings') return 'settings';
-    return 'dashboard';
+    return isAdminEmail ? 'dashboard' : 'test-selection';
   })();
 
   const mobileTitle =
@@ -2458,20 +2440,6 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               </>
             ) : (
               <>
-                <button
-                  onClick={() => {
-                    setCurrentView('dashboard');
-                    setSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
-                    currentView === 'dashboard' 
-                      ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]' 
-                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <LayoutDashboard size={22} className={currentView === 'dashboard' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Dashboard', 'Panela')}</span>
-                </button>
                 <button
                   onClick={() => {
                     setCurrentView('test-selection');
@@ -2878,6 +2846,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               initialState={testSelectionState}
               onStart={handleStartTest}
               onStartLawTest={handleStartLawTest}
+              onStartCustomTest={(params) => void handleStartCustomTest(params)}
               onStartCustomPractice={handleStartCustomPractice}
               initialSyllabus={selectedSyllabus}
               onStateChange={setTestSelectionState}
@@ -3020,6 +2989,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               curriculum={curriculum}
               username={bundle?.identity.current_username ?? session?.user.email ?? null}
               coachContext={activeSession.coach ?? null}
+              homeVariant={isAdminEmail ? 'dashboard' : 'test-selection'}
               onStartNextSession={({ mode, questionCount, syllabus }) => {
                 if (selectedLawFilter) {
                   void handleStartLawTest(
@@ -3042,7 +3012,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               onGoHome={() => {
                 setActiveSession(null);
                 setLastTestPayload(null);
-                setCurrentView('dashboard');
+                setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
               }}
             />
           </Suspense>
@@ -3079,6 +3049,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             setCurrentView(next);
             setSidebarOpen(false);
           }}
+          showDashboard={isAdminEmail}
         />
       ) : null}
       </div>

@@ -27,7 +27,6 @@ import type {
   ActivePracticeSession,
   CloudPracticeState,
   OptionKey,
-  PracticeCategoryRiskSummary,
   PracticeExamTarget,
   PracticeMode,
   PracticeQuestionScopeFilter,
@@ -36,32 +35,17 @@ import type {
   AdminUserDetail,
   AdminUserListItem,
   Question,
-  PracticeSessionSummary,
   QuestionBankListItem,
   QuestionBankPage,
   SyllabusType,
   TestAnswer,
 } from '../types';
 import { formatSyllabusLabel } from '../types';
+import { DEFAULT_CURRICULUM } from './quantia/constants';
+import type { CurriculumOption, DashboardBundle } from './quantia/types';
 
-export const DEFAULT_CURRICULUM = 'osakidetza_admin';
-
-export type DashboardBundle = {
-  identity: AccountIdentity;
-  practiceState: CloudPracticeState;
-  activitySessions: PracticeSessionSummary[];
-  questionsCount: number;
-  weakCategories: PracticeCategoryRiskSummary[];
-};
-
-export type CurriculumOption = {
-  id: string;
-  label: string;
-  questionCount?: number | null;
-  sessionCount?: number | null;
-  answeredCount?: number | null;
-  lastStudiedAt?: string | null;
-};
+export { DEFAULT_CURRICULUM } from './quantia/constants';
+export type { CurriculumOption, DashboardBundle } from './quantia/types';
 
 type PostgrestLikeError = {
   code?: string | null;
@@ -2382,6 +2366,7 @@ export const getQuestionsByNumberRange = async (params: {
   from: number;
   to: number;
   randomize?: boolean;
+  syllabus?: SyllabusType | null;
 }): Promise<Question[]> => {
   const { curriculum, randomize = false } = params;
   const fromValue = Math.min(params.from, params.to);
@@ -2389,7 +2374,7 @@ export const getQuestionsByNumberRange = async (params: {
   const snapshot = await getQuestionSnapshotFromTables({
     curriculum,
     maxQuestions: 4000,
-    questionScope: 'all',
+    questionScope: params.syllabus ?? 'all',
   });
   const filtered = snapshot
     .filter((q) => typeof q.number === 'number' && q.number >= fromValue && q.number <= toValue)

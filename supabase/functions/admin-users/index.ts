@@ -1,25 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 import { createRemoteJWKSet, jwtVerify } from 'jsr:@panva/jose@6';
+import { buildCorsHeaders, corsPreflightResponse } from '../_shared/cors.ts';
 
 type Json = Record<string, unknown>;
 
 const ADMIN_EMAIL = 'admin@oposik.app';
-
-const corsHeaders = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
-  'access-control-allow-methods': 'POST, OPTIONS',
-} as const;
-
-const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(body), {
-    ...init,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      ...corsHeaders,
-      ...(init.headers ?? {}),
-    },
-  });
 
 const readText = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const canonicalizeAccessKey = (value: string) =>
@@ -215,9 +200,20 @@ const resolveCurriculumFromOppositionId = async (service: ReturnType<typeof crea
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = corsPreflightResponse(req);
+  if (preflight) return preflight;
+
+  const corsHeaders = buildCorsHeaders(req);
+  const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
+    new Response(JSON.stringify(body), {
+      ...init,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        ...corsHeaders,
+        ...(init.headers ?? {}),
+      },
+    });
+
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, { status: 405 });
   }
@@ -509,13 +505,8 @@ Deno.serve(async (req) => {
 
       if (!email) throw new Error('email required.');
 
-      const normalizedEmail = email.toLowerCase();
       const effectiveAllowed =
-        normalizedEmail === 'opeosi@oposik.app'
-          ? ['administrativo', 'auxiliar-administrativo']
-          : allowed.length > 0
-            ? allowed
-            : ['administrativo', 'auxiliar-administrativo'];
+        allowed.length > 0 ? allowed : ['administrativo', 'auxiliar-administrativo'];
 
       let createdId = '';
       const { data, error } = await service.auth.admin.createUser({

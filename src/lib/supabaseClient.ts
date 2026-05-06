@@ -21,6 +21,12 @@ const getErrorMessage = (error: unknown) => {
   return '';
 };
 
+const readAuthErrorMessage = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') return '';
+  const record = payload as Record<string, unknown>;
+  return getErrorMessage(record.error_description ?? record.msg ?? record.message ?? '');
+};
+
 export const isInvalidRefreshTokenError = (error: unknown) => {
   const message = getErrorMessage(error).toLowerCase();
   return message.includes('invalid refresh token') || message.includes('refresh token not found');
@@ -78,10 +84,18 @@ sanitizeSupabaseAuthStorage();
 
 const safeFetch: typeof fetch = async (input, init) => {
   const response = await fetch(input, init);
+  const url = typeof input === 'string' ? input : input instanceof Request ? input.url : '';
+
+  if (response.status === 400 && /\/auth\/v1\/token\b/i.test(url) && /grant_type=refresh_token/i.test(url)) {
+    const payload = (await response.clone().json().catch(() => null)) as unknown;
+    if (isInvalidRefreshTokenError(readAuthErrorMessage(payload))) {
+      clearSupabaseAuthStorage();
+    }
+  }
+
   const contentType = response.headers.get('content-type') ?? '';
   if (contentType.includes('text/html')) {
     const text = await response.text().catch(() => '');
-    const url = typeof input === 'string' ? input : input instanceof Request ? input.url : '';
     const snippet = text.trim().slice(0, 120);
     throw new Error(`Respuesta HTML inesperada (${response.status}) desde ${url || 'fetch'}. ${snippet}`);
   }

@@ -45,6 +45,7 @@ interface PostTestStatsProps {
   onRestart: () => void;
   onGoBack: () => void;
   onGoHome: () => void;
+  homeVariant?: 'dashboard' | 'test-selection';
 }
 
 export default function PostTestStats({
@@ -58,6 +59,7 @@ export default function PostTestStats({
   onRestart,
   onGoBack,
   onGoHome,
+  homeVariant = 'dashboard',
 }: PostTestStatsProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -470,7 +472,13 @@ export default function PostTestStats({
           className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-[13px] font-black text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-100"
         >
           <LayoutDashboard size={16} />
-          {isBasque ? 'Panel nagusira itzuli' : 'Volver al panel principal'}
+          {homeVariant === 'test-selection'
+            ? isBasque
+              ? 'Itzuli testeetara'
+              : 'Volver a test'
+            : isBasque
+              ? 'Panel nagusira itzuli'
+              : 'Volver al panel principal'}
         </button>
       </div>
     </div>

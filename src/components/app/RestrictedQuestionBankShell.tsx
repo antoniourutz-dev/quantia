@@ -38,7 +38,6 @@ const readSessionAppMetadata = (session: Session): SessionAppMetadata | null => 
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
   return metadata as SessionAppMetadata;
 };
-const isOpeosi = (session: Session) => String(session.user.email ?? '').trim().toLowerCase() === 'opeosi@oposik.app';
 const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
   const normalized = canonicalizeAllowedKey(value);
   if (normalized === 'administrativo') return locale === 'eu' ? 'Administrativo' : 'Administrativo';
@@ -50,10 +49,6 @@ const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
 
 export default function RestrictedQuestionBankShell({ session }: { session: Session }) {
   const allowedCurriculums = useMemo(() => {
-    if (isOpeosi(session)) {
-      return ['administrativo', 'auxiliar-administrativo'];
-    }
-
     const appMetadata = readSessionAppMetadata(session);
     const raw = Array.isArray(appMetadata?.allowedCurriculumKeys)
       ? appMetadata.allowedCurriculumKeys
