@@ -1,22 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
+import { buildCorsHeaders, corsPreflightResponse } from '../_shared/cors.ts';
 
 const DEFAULT_ALLOWED_CURRICULUM_KEYS = ['administrativo', 'auxiliar-administrativo'] as const;
-
-const corsHeaders = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
-  'access-control-allow-methods': 'POST, OPTIONS',
-} as const;
-
-const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(body), {
-    ...init,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      ...corsHeaders,
-      ...(init.headers ?? {}),
-    },
-  });
 
 const readText = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const canonicalizeAccessKey = (value: string) =>
@@ -69,9 +54,19 @@ const readAllowedCurriculumKeys = async (req: Request) => {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  const preflight = corsPreflightResponse(req);
+  if (preflight) return preflight;
+
+  const corsHeaders = buildCorsHeaders(req);
+  const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
+    new Response(JSON.stringify(body), {
+      ...init,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        ...corsHeaders,
+        ...(init.headers ?? {}),
+      },
+    });
 
   try {
     if (req.method !== 'POST') {

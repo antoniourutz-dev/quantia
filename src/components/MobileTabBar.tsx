@@ -10,9 +10,11 @@ type MobileTabKey = 'dashboard' | 'test-selection' | 'stats' | 'study' | 'settin
 export default function MobileTabBar({
   active,
   onChange,
+  showDashboard,
 }: {
   active: MobileTabKey;
   onChange: (next: MobileTabKey) => void;
+  showDashboard: boolean;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -30,10 +32,12 @@ export default function MobileTabBar({
     { key: 'settings', label: t('Perfil', 'Profila'), Icon: Settings },
   ];
 
+  const visibleTabs = showDashboard ? tabs : tabs.filter((tab) => tab.key !== 'dashboard');
+
   return (
     <div className="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex h-[52px] max-w-md items-center justify-between px-2">
-        {tabs.map(({ key, label, Icon }) => {
+        {visibleTabs.map(({ key, label, Icon }) => {
           const selected = key === active;
           return (
             <button

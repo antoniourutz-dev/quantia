@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { supabaseAnonKey, supabaseUrl } from './supabaseConfig';
+import { buildLegacyInternalEmails } from './authUsername';
 
 type LoginFunctionResponse = {
   access_token: string;
@@ -8,18 +9,9 @@ type LoginFunctionResponse = {
   token_type: string;
 };
 
-const FALLBACK_EMAIL_DOMAINS = ['oposik.app', 'quantia.app'] as const;
-
 const getLoginFunctionUrl = () =>
   import.meta.env.VITE_LOGIN_WITH_USERNAME_FUNCTION_URL ||
   `${supabaseUrl}/functions/v1/login-with-username`;
-
-const buildLegacyInternalEmails = (usernameInput: string) => {
-  const normalized = usernameInput.trim().toLowerCase();
-  if (!normalized) return [];
-  if (normalized.includes('@')) return [normalized];
-  return Array.from(new Set(FALLBACK_EMAIL_DOMAINS.map((domain) => `${normalized}@${domain}`)));
-};
 
 const signInWithLegacyEmail = async (username: string, password: string) => {
   let lastMessage = 'No se ha podido iniciar sesion. Intentalo de nuevo.';

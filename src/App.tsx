@@ -2,7 +2,6 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react
 import type { Session } from '@supabase/supabase-js';
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
 import AuthScreen from './components/AuthScreen';
-import EntryScreen from './components/EntryScreen';
 import AppErrorBoundary from './components/app/AppErrorBoundary';
 import { loginWithUsername } from './lib/auth';
 import { LocaleProvider, getLocaleForCurriculum } from './lib/locale';
@@ -43,9 +42,8 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [unauthView, setUnauthView] = useState<'entry' | 'login'>('entry');
 
-  const publicLocale = useMemo(() => getLocaleForCurriculum(readLastKnownCurriculum()), [session, unauthView]);
+  const publicLocale = useMemo(() => getLocaleForCurriculum(readLastKnownCurriculum()), [session]);
   const isBasque = publicLocale === 'eu';
   const t = useCallback((es: string, eu: string) => (isBasque ? eu : es), [isBasque]);
 
@@ -71,9 +69,6 @@ export default function App() {
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setAuthError(null);
-      if (!nextSession) {
-        setUnauthView('entry');
-      }
     });
 
     return () => {
@@ -124,25 +119,18 @@ export default function App() {
   if (!session) {
     return (
       <LocaleProvider locale={publicLocale}>
-        {unauthView === 'entry' ? (
-          <EntryScreen onLogin={() => setUnauthView('login')} />
-        ) : (
-          <AuthScreen
-            error={authError}
-            loading={authLoading}
-            onSubmit={handleLogin}
-            onBack={() => setUnauthView('entry')}
-          />
-        )}
+        <AuthScreen
+          error={authError}
+          loading={authLoading}
+          onSubmit={handleLogin}
+        />
       </LocaleProvider>
     );
   }
 
   const appMetadata = readSessionAppMetadata(session);
   const appRole = typeof appMetadata?.role === 'string' ? appMetadata.role : '';
-  const userEmail = String(session.user.email ?? '').trim().toLowerCase();
-  const isOpeosiRestricted = userEmail === 'opeosi@oposik.app';
-  const isRestrictedQuestionBankViewer = isOpeosiRestricted || appRole === 'restricted_question_bank_viewer';
+  const isRestrictedQuestionBankViewer = appRole === 'restricted_question_bank_viewer';
 
   return (
     <AppErrorBoundary>

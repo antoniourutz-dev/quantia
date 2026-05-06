@@ -596,7 +596,7 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                     setCreateRestrictedViewer((prev) => {
                       const next = !prev;
                       if (next && !createEmail.trim()) {
-                        setCreateEmail('opeosi@oposik.app');
+                        setCreateEmail('');
                       }
                       return next;
                     });

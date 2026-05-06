@@ -32,6 +32,7 @@ interface TestSelectionProps {
   initialLaw?: string | null;
   onStart: (mode: PracticeMode, syllabus?: SyllabusType, count?: number) => void;
   onStartLawTest: (law: string, count?: number) => void;
+  onStartCustomTest: (params: { from: number; to: number; randomize: boolean; syllabus?: SyllabusType | null }) => void;
   onStartCustomPractice: (config: CustomPracticeConfig) => void;
   initialSyllabus: SyllabusType | null;
   initialState?: TestSelectionStateSnapshot | null;
@@ -45,6 +46,7 @@ export default function TestSelection({
   initialLaw = null,
   onStart,
   onStartLawTest,
+  onStartCustomTest,
   onStartCustomPractice,
   initialSyllabus,
   initialState = null,
@@ -62,10 +64,12 @@ export default function TestSelection({
   const simulacroOptions = [50, 100];
   const [simulacroScope, setSimulacroScope] = useState<'mixed' | SyllabusType>(initialState?.simulacroScope ?? 'mixed');
   const [simulacroCount, setSimulacroCount] = useState<number>(initialState?.simulacroCount ?? 50);
-  const [customFrom] = useState<string>(initialState?.customFrom ?? '');
-  const [customTo] = useState<string>(initialState?.customTo ?? '');
-  const [customOrder] = useState<'sequence' | 'random'>(initialState?.customOrder ?? 'sequence');
+  const [customFrom, setCustomFrom] = useState<string>(initialState?.customFrom ?? '');
+  const [customTo, setCustomTo] = useState<string>(initialState?.customTo ?? '');
+  const [customOrder, setCustomOrder] = useState<'sequence' | 'random'>(initialState?.customOrder ?? 'sequence');
   const [customError, setCustomError] = useState<string | null>(null);
+  const [standardRangeEnabled, setStandardRangeEnabled] = useState(false);
+  const [standardRangeError, setStandardRangeError] = useState<string | null>(null);
   const [customContentScope, setCustomContentScope] = useState<CustomPracticeContentScope>(
     initialState?.customContentScope ?? 'all_opposition',
   );
@@ -176,6 +180,40 @@ export default function TestSelection({
     simulacroScope,
   ]);
 
+  const MAX_RANGE_QUESTIONS = 200;
+  const parsePositiveInt = (value: string) => {
+    const raw = value.trim();
+    if (!raw) return null;
+    const parsed = Math.trunc(Number(raw));
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+  };
+
+  const tryBuildRange = (opts: { countFallback: number; allowEmptyTo: boolean }) => {
+    const from = parsePositiveInt(customFrom);
+    if (!from) return { ok: false as const, error: isBasque ? 'Sartu hasiera zenbaki bat.' : 'Introduce un número de inicio.' };
+
+    const toParsed = parsePositiveInt(customTo);
+    const to = toParsed ?? (opts.allowEmptyTo ? from + Math.max(1, opts.countFallback) - 1 : null);
+    if (!to) return { ok: false as const, error: isBasque ? 'Sartu amaiera zenbaki bat.' : 'Introduce un número de fin.' };
+
+    if (to < from) {
+      return { ok: false as const, error: isBasque ? 'Amaiera hasiera baino txikiagoa da.' : 'El fin no puede ser menor que el inicio.' };
+    }
+
+    const total = Math.abs(to - from) + 1;
+    if (total > MAX_RANGE_QUESTIONS) {
+      return {
+        ok: false as const,
+        error: isBasque
+          ? `Tarte handiegia da (gehienez ${MAX_RANGE_QUESTIONS} galdera).`
+          : `Rango demasiado grande (máx. ${MAX_RANGE_QUESTIONS} preguntas).`,
+      };
+    }
+
+    return { ok: true as const, from, to, randomize: customOrder === 'random' };
+  };
+
   useEffect(() => {
     if (selectionMode !== 'custom') return;
     if (customTopicMode !== 'single') return;
@@ -207,6 +245,21 @@ export default function TestSelection({
         onStartLawTest(selectedLaw, questionCount);
         return;
       }
+      if (standardRangeEnabled) {
+        const built = tryBuildRange({ countFallback: questionCount, allowEmptyTo: true });
+        if (!built.ok) {
+          setStandardRangeError(built.error);
+          return;
+        }
+        setStandardRangeError(null);
+        onStartCustomTest({
+          from: built.from,
+          to: built.to,
+          randomize: built.randomize,
+          syllabus: usesSingleScope ? null : selectedSyllabus,
+        });
+        return;
+      }
       onStart('standard', usesSingleScope ? undefined : selectedSyllabus, questionCount);
     } else if (selectionMode === 'quick') {
       onStart('quick_five', undefined, 5);
@@ -219,6 +272,25 @@ export default function TestSelection({
         simulacroCount,
       );
     } else if (selectionMode === 'custom') {
+      const hasAnyRange = Boolean(customFrom.trim()) || Boolean(customTo.trim());
+      if (hasAnyRange) {
+        const built = tryBuildRange({ countFallback: customSessionLength, allowEmptyTo: true });
+        if (!built.ok) {
+          setCustomError(built.error);
+          return;
+        }
+        setCustomError(null);
+        const syllabus =
+          usesSingleScope
+            ? null
+            : customContentScope === 'common_only'
+              ? 'common'
+              : customContentScope === 'specific_only'
+                ? 'specific'
+                : null;
+        onStartCustomTest({ from: built.from, to: built.to, randomize: built.randomize, syllabus });
+        return;
+      }
       if (customTopicMode === 'single' && !customTopic.trim()) {
         setCustomError(isBasque ? 'Aukeratu gai bat.' : 'Elige un tema.');
         return;
@@ -452,6 +524,110 @@ export default function TestSelection({
                   ))}
                 </div>
               </div>
+
+              {!usesLawSelection ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Aukerak' : 'Opciones'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStandardRangeEnabled((prev) => !prev);
+                        setStandardRangeError(null);
+                      }}
+                      className={`rounded-2xl border px-4 py-2 text-[11px] font-black transition-all ${
+                        standardRangeEnabled
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                          : 'border-slate-200 bg-slate-50 text-slate-600'
+                      }`}
+                    >
+                      {standardRangeEnabled
+                        ? isBasque
+                          ? 'Tartea aktibo'
+                          : 'Rango activo'
+                        : isBasque
+                          ? 'Tartea aukeratu'
+                          : 'Elegir rango'}
+                    </button>
+                  </div>
+
+                  {standardRangeEnabled ? (
+                    <div className="space-y-3">
+                      {standardRangeError ? (
+                        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
+                          {standardRangeError}
+                        </div>
+                      ) : null}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                            {isBasque ? 'Hasieratik' : 'Desde'}
+                          </div>
+                          <div className="relative">
+                            <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                              inputMode="numeric"
+                              value={customFrom}
+                              onChange={(e) => {
+                                setCustomFrom(e.target.value);
+                                setStandardRangeError(null);
+                              }}
+                              className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                              placeholder={isBasque ? 'Adib. 120' : 'Ej. 120'}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                            {isBasque ? 'Amaiera (auk.)' : 'Hasta (opc.)'}
+                          </div>
+                          <div className="relative">
+                            <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                              inputMode="numeric"
+                              value={customTo}
+                              onChange={(e) => {
+                                setCustomTo(e.target.value);
+                                setStandardRangeError(null);
+                              }}
+                              className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                              placeholder={isBasque ? `Hutsik = ${questionCount} galdera` : `Vacío = ${questionCount} preguntas`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setCustomOrder('sequence')}
+                          className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                            customOrder === 'sequence'
+                              ? 'border-slate-800 bg-slate-50 text-slate-900'
+                              : 'border-slate-100 bg-white text-slate-600'
+                          }`}
+                        >
+                          {isBasque ? 'Ordenean' : 'En orden'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCustomOrder('random')}
+                          className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                            customOrder === 'random'
+                              ? 'border-slate-800 bg-slate-50 text-slate-900'
+                              : 'border-slate-100 bg-white text-slate-600'
+                          }`}
+                        >
+                          {isBasque ? 'Ausaz' : 'Aleatorio'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -516,6 +692,87 @@ export default function TestSelection({
                   {customError}
                 </div>
               ) : null}
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                    {isBasque ? 'Rango (aukerakoa)' : 'Rango (opcional)'}
+                  </div>
+                  {(customFrom.trim() || customTo.trim()) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomFrom('');
+                        setCustomTo('');
+                        setCustomError(null);
+                      }}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-black text-slate-600 hover:bg-slate-100"
+                    >
+                      {isBasque ? 'Garbitu' : 'Limpiar'}
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="relative">
+                    <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      inputMode="numeric"
+                      value={customFrom}
+                      onChange={(e) => {
+                        setCustomFrom(e.target.value);
+                        setCustomError(null);
+                      }}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                      placeholder={isBasque ? 'Desde' : 'Desde'}
+                    />
+                  </div>
+                  <div className="relative">
+                    <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      inputMode="numeric"
+                      value={customTo}
+                      onChange={(e) => {
+                        setCustomTo(e.target.value);
+                        setCustomError(null);
+                      }}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                      placeholder={isBasque ? `Hasta (vacío=${customSessionLength})` : `Hasta (vacío=${customSessionLength})`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCustomOrder('sequence')}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                      customOrder === 'sequence'
+                        ? 'border-slate-800 bg-slate-50 text-slate-900'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {isBasque ? 'Ordenean' : 'En orden'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomOrder('random')}
+                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                      customOrder === 'random'
+                        ? 'border-slate-800 bg-slate-50 text-slate-900'
+                        : 'border-slate-100 bg-white text-slate-600'
+                    }`}
+                  >
+                    {isBasque ? 'Ausaz' : 'Aleatorio'}
+                  </button>
+                </div>
+
+                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[12px] font-bold text-slate-600">
+                  {isBasque
+                    ? 'Tartea betetzen baduzu, test hau zenbaki-tarte horretatik sortuko da. Bestela, beheko konfigurazioa erabiliko da.'
+                    : 'Si rellenas el rango, este test se construirá desde ese rango numérico. Si no, se usará la configuración de abajo.'}
+                </div>
+              </div>
 
               {!usesSingleScope ? (
                 <div className="space-y-3">
@@ -775,6 +1032,110 @@ export default function TestSelection({
               </button>
             ))}
           </div>
+
+          {!usesLawSelection ? (
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Aukerak' : 'Opciones'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStandardRangeEnabled((prev) => !prev);
+                    setStandardRangeError(null);
+                  }}
+                  className={`rounded-2xl border px-4 py-2 text-[11px] font-black transition-all ${
+                    standardRangeEnabled
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {standardRangeEnabled
+                    ? isBasque
+                      ? 'Tartea aktibo'
+                      : 'Rango activo'
+                    : isBasque
+                      ? 'Tartea aukeratu'
+                      : 'Elegir rango'}
+                </button>
+              </div>
+
+              {standardRangeEnabled ? (
+                <div className="space-y-4">
+                  {standardRangeError ? (
+                    <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
+                      {standardRangeError}
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                        {isBasque ? 'Hasieratik' : 'Desde'}
+                      </div>
+                      <div className="relative">
+                        <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          inputMode="numeric"
+                          value={customFrom}
+                          onChange={(e) => {
+                            setCustomFrom(e.target.value);
+                            setStandardRangeError(null);
+                          }}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                          placeholder={isBasque ? 'Adib. 120' : 'Ej. 120'}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                        {isBasque ? 'Amaiera (auk.)' : 'Hasta (opc.)'}
+                      </div>
+                      <div className="relative">
+                        <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          inputMode="numeric"
+                          value={customTo}
+                          onChange={(e) => {
+                            setCustomTo(e.target.value);
+                            setStandardRangeError(null);
+                          }}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                          placeholder={isBasque ? `Hutsik = ${questionCount} galdera` : `Vacío = ${questionCount} preguntas`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    <button
+                      type="button"
+                      onClick={() => setCustomOrder('sequence')}
+                      className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                        customOrder === 'sequence'
+                          ? 'border-slate-800 bg-slate-50 text-slate-900'
+                          : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {isBasque ? 'Ordenean' : 'En orden'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomOrder('random')}
+                      className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                        customOrder === 'random'
+                          ? 'border-slate-800 bg-slate-50 text-slate-900'
+                          : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {isBasque ? 'Ausaz' : 'Aleatorio'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         </div>
       ) : null}
@@ -885,6 +1246,87 @@ export default function TestSelection({
               {customError}
             </div>
           ) : null}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                {isBasque ? 'Rango (aukerakoa)' : 'Rango (opcional)'}
+              </div>
+              {(customFrom.trim() || customTo.trim()) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomFrom('');
+                    setCustomTo('');
+                    setCustomError(null);
+                  }}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-black text-slate-600 hover:bg-slate-100"
+                >
+                  {isBasque ? 'Garbitu' : 'Limpiar'}
+                </button>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div className="relative">
+                <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  inputMode="numeric"
+                  value={customFrom}
+                  onChange={(e) => {
+                    setCustomFrom(e.target.value);
+                    setCustomError(null);
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                  placeholder={isBasque ? 'Desde' : 'Desde'}
+                />
+              </div>
+              <div className="relative">
+                <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  inputMode="numeric"
+                  value={customTo}
+                  onChange={(e) => {
+                    setCustomTo(e.target.value);
+                    setCustomError(null);
+                  }}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
+                  placeholder={isBasque ? `Hasta (vacío=${customSessionLength})` : `Hasta (vacío=${customSessionLength})`}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <button
+                type="button"
+                onClick={() => setCustomOrder('sequence')}
+                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                  customOrder === 'sequence'
+                    ? 'border-slate-800 bg-slate-50 text-slate-900'
+                    : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {isBasque ? 'Ordenean' : 'En orden'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomOrder('random')}
+                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                  customOrder === 'random'
+                    ? 'border-slate-800 bg-slate-50 text-slate-900'
+                    : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {isBasque ? 'Ausaz' : 'Aleatorio'}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[12px] font-bold text-slate-600">
+              {isBasque
+                ? 'Tartea betetzen baduzu, test hau zenbaki-tarte horretatik sortuko da. Bestela, beheko konfigurazioa erabiliko da.'
+                : 'Si rellenas el rango, este test se construirá desde ese rango numérico. Si no, se usará la configuración de abajo.'}
+            </div>
+          </div>
 
           {!usesSingleScope ? (
             <div className="space-y-3">
