@@ -34,6 +34,21 @@ export type ExecutableSessionPlan = {
 };
 
 import { isGoiTeknikariaCurriculum, type AppLocale } from './lib/locale';
+export type {
+  GeneralLawArticle,
+  GeneralLawArticleQuestionCountParams,
+  GeneralLawArticleQuestionCounts,
+  GeneralLawSelectionMode,
+  GeneralLawTrainingSelection,
+  PracticeFilters,
+} from './types/generalLawTraining';
+export type {
+  OfficialAnswerKey,
+  OfficialPastQuestion,
+  OfficialPastQuestionArticleLink,
+  OfficialQuestionFilters,
+  OfficialQuestionSummary,
+} from './types/officialPastQuestions';
 
 export interface Option {
   id: OptionKey;
@@ -50,6 +65,67 @@ export interface Question {
   syllabus: SyllabusType;
   category: string | null;
   questionScope: PracticeQuestionScope | null;
+  generalLawId?: string | null;
+  generalLawBlockId?: string | null;
+  practiceSource?: 'editorial' | 'official';
+  officialMetadata?: {
+    sourceInstitution: string;
+    sourceYear: number | null;
+    sourceBody: string | null;
+    sourceThemeNumber: number | null;
+    officialQuestionNumber: number;
+    lawShortTitle: string | null;
+    blockTitle: string | null;
+    licenseLabel: string | null;
+    sourceTitle: string;
+    articleLabels?: string[];
+  } | null;
+}
+
+export interface GeneralLaw {
+  id: string;
+  lawKey: string | null;
+  title: string;
+  shortTitle: string | null;
+  curriculumKey: string | null;
+  status: string | null;
+  sortOrder: number | null;
+  publishedAt: string | null;
+}
+
+export interface GeneralLawBlock {
+  id: string;
+  lawId: string;
+  law_id?: string;
+  blockKey: string | null;
+  block_key?: string | null;
+  title: string;
+  titleKey?: string | null;
+  title_key?: string | null;
+  titleLabel?: string | null;
+  title_label?: string | null;
+  chapterKey?: string | null;
+  chapter_key?: string | null;
+  chapterLabel?: string | null;
+  chapter_label?: string | null;
+  sectionKey?: string | null;
+  section_key?: string | null;
+  sectionLabel?: string | null;
+  section_label?: string | null;
+  sortOrder: number | null;
+  sort_order?: number | null;
+  trainingFocus?: string | null;
+  training_focus?: string | null;
+  minQuestionsForTraining?: number | null;
+  min_questions_for_training?: number | null;
+  status: string | null;
+  questionCount: number | null;
+  question_count?: number | null;
+}
+
+export interface QuestionBlockSelection {
+  generalLawId: string;
+  generalLawBlockIds: string[];
 }
 
 export interface AdminQuestionListItem {

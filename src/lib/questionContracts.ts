@@ -1,7 +1,7 @@
 import type { OptionKey, SyllabusType } from '../types';
 
 export const QUESTION_BANK_LIST_SELECT =
-  'id, numero, pregunta, respuesta_correcta, grupo, ley_referencia, temario_pregunta' as const;
+  'id, numero, pregunta, respuesta_correcta, grupo, ley_referencia, temario_pregunta, question_scope_key, general_law_id, general_law_block_id' as const;
 
 const OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
 

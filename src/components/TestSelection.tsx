@@ -1,9 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CheckCircle2, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal } from 'lucide-react';
-import { SyllabusType, formatSyllabusLabel, PracticeMode } from '../types';
+import {
+  SyllabusType,
+  formatSyllabusLabel,
+  PracticeMode,
+  type GeneralLaw,
+  type GeneralLawArticle,
+  type GeneralLawBlock,
+  type GeneralLawSelectionMode,
+  type GeneralLawTrainingSelection,
+  type Question,
+} from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
 import type { CustomPracticeConfig, CustomPracticeContentScope } from '../domain/customPractice/customPracticeTypes';
 import { getCurriculumTopicOptions } from '../lib/quantiaApi';
+import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
 
@@ -37,12 +48,38 @@ interface TestSelectionProps {
   initialSyllabus: SyllabusType | null;
   initialState?: TestSelectionStateSnapshot | null;
   onStateChange?: (state: TestSelectionStateSnapshot) => void;
+  generalLaws?: GeneralLaw[];
+  userId?: string | null;
+  activeGeneralLawId?: string | null;
+  onSelectGeneralLaw?: (lawId: string) => void;
+  generalLawBlocks?: GeneralLawBlock[];
+  generalLawArticles?: GeneralLawArticle[];
+  officialArticleCounts?: Record<string, number>;
+  generalLawSelection?: GeneralLawTrainingSelection | null;
+  selectedGeneralLawBlockIds?: string[];
+  selectedGeneralLawArticleIds?: string[];
+  generalLawBlocksLoading?: boolean;
+  generalLawArticlesLoading?: boolean;
+  generalLawBlockSelectionError?: string | null;
+  generalLawArticlesError?: string | null;
+  onSetGeneralLawSelectionMode?: (mode: GeneralLawSelectionMode) => void;
+  onToggleGeneralLawBlock?: (blockId: string) => void;
+  onSelectOnlyGeneralLawBlock?: (blockId: string) => void;
+  onSelectAllGeneralLawBlocks?: () => void;
+  onClearGeneralLawBlocks?: () => void;
+  onSelectGeneralLawBlockGroup?: (blockIds: string[]) => void;
+  onClearGeneralLawBlockGroup?: (blockIds: string[]) => void;
+  onToggleGeneralLawArticle?: (articleId: string) => void;
+  onSelectAllGeneralLawArticles?: () => void;
+  onClearGeneralLawArticles?: () => void;
+  onSelectGeneralLawArticleGroup?: (articleIds: string[]) => void;
+  onClearGeneralLawArticleGroup?: (articleIds: string[]) => void;
+  onStartOfficialPractice?: (questions: Question[], title: string) => void;
 }
 
 export default function TestSelection({
   curriculum,
   lawOptions,
-  lawOptionsLoading = false,
   initialLaw = null,
   onStart,
   onStartLawTest,
@@ -51,6 +88,33 @@ export default function TestSelection({
   initialSyllabus,
   initialState = null,
   onStateChange,
+  generalLaws = [],
+  userId = null,
+  activeGeneralLawId = null,
+  onSelectGeneralLaw,
+  generalLawBlocks = [],
+  generalLawArticles = [],
+  officialArticleCounts = {},
+  generalLawSelection = null,
+  selectedGeneralLawBlockIds = [],
+  selectedGeneralLawArticleIds = [],
+  generalLawBlocksLoading = false,
+  generalLawArticlesLoading = false,
+  generalLawBlockSelectionError = null,
+  generalLawArticlesError = null,
+  onSetGeneralLawSelectionMode,
+  onToggleGeneralLawBlock,
+  onSelectOnlyGeneralLawBlock,
+  onSelectAllGeneralLawBlocks,
+  onClearGeneralLawBlocks,
+  onSelectGeneralLawBlockGroup,
+  onClearGeneralLawBlockGroup,
+  onToggleGeneralLawArticle,
+  onSelectAllGeneralLawArticles,
+  onClearGeneralLawArticles,
+  onSelectGeneralLawArticleGroup,
+  onClearGeneralLawArticleGroup,
+  onStartOfficialPractice,
 }: TestSelectionProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -129,6 +193,15 @@ export default function TestSelection({
     }
     return `${formatSyllabusLabel('common', locale, { curriculum })} + ${formatSyllabusLabel('specific', locale, { curriculum })}`;
   };
+  const activeGeneralLaw = useMemo(
+    () => generalLaws.find((law) => law.id === activeGeneralLawId) ?? generalLaws[0] ?? null,
+    [activeGeneralLawId, generalLaws],
+  );
+  const activeGeneralLawLabel =
+    activeGeneralLaw?.shortTitle ?? activeGeneralLaw?.title ?? selectedLaw;
+  const selectedBlockCount = selectedGeneralLawBlockIds.length;
+  const selectedArticleCount = selectedGeneralLawArticleIds.length;
+  const publishedBlockCount = generalLawBlocks.length;
 
   useEffect(() => {
     if (!usesLawSelection) return;
@@ -180,7 +253,13 @@ export default function TestSelection({
     simulacroScope,
   ]);
 
-  const MAX_RANGE_QUESTIONS = 200;
+  const COMMON_RANGE_QUESTIONS = 300;
+  const SPECIFIC_RANGE_QUESTIONS = 200;
+  const getSyllabusRangeLimit = (syllabus?: SyllabusType | null) =>
+    syllabus === 'specific' ? SPECIFIC_RANGE_QUESTIONS : COMMON_RANGE_QUESTIONS;
+  const getCustomRangeLimit = (scope: CustomPracticeContentScope) =>
+    scope === 'specific_only' ? SPECIFIC_RANGE_QUESTIONS : COMMON_RANGE_QUESTIONS;
+
   const parsePositiveInt = (value: string) => {
     const raw = value.trim();
     if (!raw) return null;
@@ -189,7 +268,7 @@ export default function TestSelection({
     return parsed;
   };
 
-  const tryBuildRange = (opts: { countFallback: number; allowEmptyTo: boolean }) => {
+  const tryBuildRange = (opts: { countFallback: number; allowEmptyTo: boolean; maxQuestions: number }) => {
     const from = parsePositiveInt(customFrom);
     if (!from) return { ok: false as const, error: isBasque ? 'Sartu hasiera zenbaki bat.' : 'Introduce un número de inicio.' };
 
@@ -202,12 +281,12 @@ export default function TestSelection({
     }
 
     const total = Math.abs(to - from) + 1;
-    if (total > MAX_RANGE_QUESTIONS) {
+    if (total > opts.maxQuestions) {
       return {
         ok: false as const,
         error: isBasque
-          ? `Tarte handiegia da (gehienez ${MAX_RANGE_QUESTIONS} galdera).`
-          : `Rango demasiado grande (máx. ${MAX_RANGE_QUESTIONS} preguntas).`,
+          ? `Tarte handiegia da (gehienez ${opts.maxQuestions} galdera).`
+          : `Rango demasiado grande (máx. ${opts.maxQuestions} preguntas).`,
       };
     }
 
@@ -242,11 +321,34 @@ export default function TestSelection({
   const handleStart = () => {
     if (selectionMode === 'standard') {
       if (usesLawSelection) {
-        onStartLawTest(selectedLaw, questionCount);
+        const selectionModeKey = generalLawSelection?.mode ?? 'blocks';
+        const hasSelection =
+          selectionModeKey === 'articles'
+            ? selectedArticleCount > 0
+            : selectionModeKey === 'blocks'
+              ? selectedBlockCount > 0 || publishedBlockCount === 0
+              : false;
+        if (!hasSelection) {
+          setCustomError(
+            selectionModeKey === 'articles'
+              ? isBasque
+                ? 'Hautatu gutxienez artikulu bat testa hasteko.'
+                : 'Selecciona al menos un artículo para empezar el test.'
+              : isBasque
+                ? 'Hautatu gutxienez bloke bat testa hasteko.'
+                : 'Selecciona al menos un bloque para iniciar el test.',
+          );
+          return;
+        }
+        onStartLawTest(activeGeneralLawLabel, questionCount);
         return;
       }
       if (standardRangeEnabled) {
-        const built = tryBuildRange({ countFallback: questionCount, allowEmptyTo: true });
+        const built = tryBuildRange({
+          countFallback: questionCount,
+          allowEmptyTo: true,
+          maxQuestions: getSyllabusRangeLimit(usesSingleScope ? null : selectedSyllabus),
+        });
         if (!built.ok) {
           setStandardRangeError(built.error);
           return;
@@ -274,7 +376,11 @@ export default function TestSelection({
     } else if (selectionMode === 'custom') {
       const hasAnyRange = Boolean(customFrom.trim()) || Boolean(customTo.trim());
       if (hasAnyRange) {
-        const built = tryBuildRange({ countFallback: customSessionLength, allowEmptyTo: true });
+        const built = tryBuildRange({
+          countFallback: customSessionLength,
+          allowEmptyTo: true,
+          maxQuestions: usesSingleScope ? COMMON_RANGE_QUESTIONS : getCustomRangeLimit(customContentScope),
+        });
         if (!built.ok) {
           setCustomError(built.error);
           return;
@@ -307,6 +413,80 @@ export default function TestSelection({
       };
       onStartCustomPractice(config);
     }
+  };
+
+  const renderGeneralLawBlockSelector = () => {
+    if (!usesLawSelection) return null;
+
+    return (
+      <GeneralLawStudySelector
+        laws={generalLaws}
+        userId={userId}
+        activeLaw={activeGeneralLaw}
+        onSelectLaw={(lawId) => {
+          setCustomError(null);
+          onSelectGeneralLaw?.(lawId);
+        }}
+        blocks={generalLawBlocks}
+        articles={generalLawArticles}
+        officialArticleCounts={officialArticleCounts}
+        selection={generalLawSelection}
+        blocksLoading={generalLawBlocksLoading}
+        articlesLoading={generalLawArticlesLoading}
+        selectionError={generalLawBlockSelectionError ?? customError}
+        articlesError={generalLawArticlesError}
+        isBasque={isBasque}
+        onSetMode={(mode) => {
+          setCustomError(null);
+          onSetGeneralLawSelectionMode?.(mode);
+        }}
+        onToggleBlock={(blockId) => {
+          setCustomError(null);
+          onToggleGeneralLawBlock?.(blockId);
+        }}
+        onSelectOnlyBlock={(blockId) => {
+          setCustomError(null);
+          onSelectOnlyGeneralLawBlock?.(blockId);
+        }}
+        onSelectAllBlocks={() => {
+          setCustomError(null);
+          onSelectAllGeneralLawBlocks?.();
+        }}
+        onClearBlocks={() => {
+          setCustomError(null);
+          onClearGeneralLawBlocks?.();
+        }}
+        onSelectBlockGroup={(blockIds) => {
+          setCustomError(null);
+          onSelectGeneralLawBlockGroup?.(blockIds);
+        }}
+        onClearBlockGroup={(blockIds) => {
+          setCustomError(null);
+          onClearGeneralLawBlockGroup?.(blockIds);
+        }}
+        onToggleArticle={(articleId) => {
+          setCustomError(null);
+          onToggleGeneralLawArticle?.(articleId);
+        }}
+        onSelectAllArticles={() => {
+          setCustomError(null);
+          onSelectAllGeneralLawArticles?.();
+        }}
+        onClearArticles={() => {
+          setCustomError(null);
+          onClearGeneralLawArticles?.();
+        }}
+        onSelectArticleGroup={(articleIds) => {
+          setCustomError(null);
+          onSelectGeneralLawArticleGroup?.(articleIds);
+        }}
+        onClearArticleGroup={(articleIds) => {
+          setCustomError(null);
+          onClearGeneralLawArticleGroup?.(articleIds);
+        }}
+        onStartOfficialPractice={onStartOfficialPractice}
+      />
+    );
   };
 
   return (
@@ -454,22 +634,7 @@ export default function TestSelection({
             <div className="space-y-6">
               {!usesSingleScope ? (
                 usesLawSelection ? (
-                  <div className="space-y-3">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                      {isBasque ? 'Legea' : 'Ley'}
-                    </div>
-                    <select
-                      value={selectedLaw}
-                      onChange={(e) => setSelectedLaw(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
-                    >
-                      {lawOptions.map((law) => (
-                        <option key={law} value={law}>
-                          {law}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  renderGeneralLawBlockSelector()
                 ) : (
                   <div className="space-y-3">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
@@ -935,41 +1100,7 @@ export default function TestSelection({
           </h2>
 
           {usesLawSelection ? (
-            <div className="space-y-4">
-              {lawOptions.length > 0 ? (
-                <>
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                      {isBasque ? 'Legea' : 'Ley'}
-                    </div>
-                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">
-                      {lawOptions.length}
-                    </div>
-                  </div>
-                  <select
-                    value={selectedLaw}
-                    onChange={(e) => setSelectedLaw(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
-                  >
-                    {lawOptions.map((law) => (
-                      <option key={law} value={law}>
-                        {law}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-bold text-slate-500">
-                  {lawOptionsLoading
-                    ? isBasque
-                      ? 'Legeen zerrenda kargatzen...'
-                      : 'Cargando lista de leyes...'
-                    : isBasque
-                      ? 'Oraindik ez da legerik aurkitu oposizio honetarako.'
-                      : 'Aun no aparecen leyes para esta oposicion.'}
-                </div>
-              )}
-            </div>
+            renderGeneralLawBlockSelector()
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <button
@@ -1473,7 +1604,7 @@ export default function TestSelection({
       <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static">
         <button
           onClick={handleStart}
-          disabled={selectionMode === 'standard' && usesLawSelection && (!selectedLaw || lawOptions.length === 0)}
+          disabled={selectionMode === 'standard' && usesLawSelection && !activeGeneralLaw && (!selectedLaw || lawOptions.length === 0)}
           className={`flex w-full items-center justify-center gap-4 rounded-[1.75rem] py-4 text-base font-black shadow-2xl transition-all duration-500 sm:rounded-[2rem] sm:py-6 sm:text-2xl ${
             selectionMode === 'standard'
               ? 'bg-indigo-600 text-white shadow-indigo-200 hover:bg-indigo-700'

@@ -4,8 +4,10 @@ import {
   readText,
 } from './quantiaMappers';
 import { QUESTION_BANK_LIST_SELECT, toOptionKey, toSyllabusType } from './questionContracts';
+import { getQuestionIdsByGeneralLawArticles } from '../repositories/generalLawRepository';
 import type {
   OptionKey,
+  PracticeFilters,
   PracticeQuestionScopeFilter,
   Question,
   QuestionBankListItem,
@@ -37,6 +39,8 @@ type QuestionBankTarget = {
 };
 
 const DEFAULT_CURRICULUM = 'osakidetza_admin';
+const GENERAL_LAWS_CURRICULUM = 'leyes_generales';
+const GENERAL_LAWS_OPPOSITION_ID = '5a8841a0-5d52-4302-b17d-d5594bb370b2';
 
 const questionBankIndexCache = new Map<string, Promise<QuestionBankCacheRow[]>>();
 const questionBankDetailCache = new Map<string, Question>();
@@ -131,6 +135,47 @@ const getSharedQuestionSources = (
   const sources = SHARED_QUESTION_SOURCES[normalized];
   if (!sources) return [];
   return sources[questionScope] ?? [];
+};
+
+const normalizePracticeFilters = (filters?: PracticeFilters | null): PracticeFilters | null => {
+  if (!filters) return null;
+  const oppositionId = readText(filters.oppositionId);
+  const curriculum = readText(filters.curriculum);
+  const curriculumKey = readText(filters.curriculumKey);
+  const grupo = readText(filters.grupo);
+  const questionScopeKey = readText(filters.questionScopeKey) as PracticeFilters['questionScopeKey'];
+  const generalLawId = readText(filters.generalLawId);
+  const generalLawBlockIds = Array.isArray(filters.generalLawBlockIds)
+    ? Array.from(new Set(filters.generalLawBlockIds.map((value) => readText(value)).filter(Boolean) as string[]))
+    : [];
+  const generalLawArticleIds = Array.isArray(filters.generalLawArticleIds)
+    ? Array.from(new Set(filters.generalLawArticleIds.map((value) => readText(value)).filter(Boolean) as string[]))
+    : [];
+  const generalLawScopeId = readText(filters.generalLawScopeId);
+  if (
+    !oppositionId &&
+    !curriculum &&
+    !curriculumKey &&
+    !grupo &&
+    !questionScopeKey &&
+    !generalLawId &&
+    generalLawBlockIds.length === 0 &&
+    generalLawArticleIds.length === 0 &&
+    !generalLawScopeId
+  ) {
+    return null;
+  }
+  return {
+    oppositionId: oppositionId ?? null,
+    curriculum: curriculum ?? null,
+    curriculumKey: curriculumKey ?? null,
+    grupo: grupo ?? null,
+    questionScopeKey: questionScopeKey ?? null,
+    generalLawId: generalLawId ?? null,
+    generalLawBlockIds,
+    generalLawArticleIds,
+    generalLawScopeId: generalLawScopeId ?? null,
+  };
 };
 
 const resolveQuestionBankTargets = (
@@ -279,11 +324,48 @@ const mapPracticeCloudError = (error: PostgrestLikeError) => {
   return message || 'No se ha podido completar la operación.';
 };
 
-const queryQuestionBankRowsForTarget = async (target: QuestionBankTarget) => {
-  const query = supabase
+const queryQuestionBankRowsForTarget = async (
+  target: QuestionBankTarget,
+  filters?: PracticeFilters | null,
+) => {
+  let query = supabase
     .from('preguntas')
     .select(QUESTION_BANK_LIST_SELECT)
     .in('curriculum', target.candidates);
+  const normalizedFilters = normalizePracticeFilters(filters);
+  const explicitEmptyBlockSelection =
+    Array.isArray(filters?.generalLawBlockIds) && filters.generalLawBlockIds.length === 0;
+  const explicitEmptyArticleSelection =
+    Array.isArray(filters?.generalLawArticleIds) && filters.generalLawArticleIds.length === 0;
+  const articleQuestionIds = normalizedFilters?.generalLawArticleIds?.length
+    ? await getQuestionIdsByGeneralLawArticles(normalizedFilters.generalLawArticleIds)
+    : null;
+  if (normalizedFilters?.generalLawId) {
+    query = query.eq('general_law_id', normalizedFilters.generalLawId);
+  }
+  if (normalizedFilters?.generalLawBlockIds?.length) {
+    query = query.in('general_law_block_id', normalizedFilters.generalLawBlockIds);
+  }
+  if (articleQuestionIds?.length) {
+    query = query.in('id', articleQuestionIds);
+  } else if (
+    normalizedFilters?.generalLawId &&
+    (explicitEmptyBlockSelection || explicitEmptyArticleSelection || articleQuestionIds)
+  ) {
+    query = query.eq('id', -1);
+  }
+  if (
+    normalizedFilters?.generalLawId ||
+    normalizedFilters?.generalLawBlockIds?.length ||
+    normalizedFilters?.generalLawArticleIds?.length
+  ) {
+    query = query
+      .eq('opposition_id', normalizedFilters.oppositionId ?? GENERAL_LAWS_OPPOSITION_ID)
+      .eq('curriculum', normalizedFilters.curriculum ?? GENERAL_LAWS_CURRICULUM)
+      .eq('curriculum_key', normalizedFilters.curriculumKey ?? GENERAL_LAWS_CURRICULUM)
+      .eq('grupo', normalizedFilters.grupo ?? 'especifico')
+      .eq('question_scope_key', normalizedFilters.questionScopeKey === 'common' ? 'common' : 'specific');
+  }
 
   const { data, error } = await query
     .order('numero', { ascending: true })
@@ -319,13 +401,24 @@ const mergeQuestionBankRows = (rows: QuestionBankCacheRow[]) => {
 const buildQuestionBankIndexCacheKey = (
   curriculum: string,
   questionScope: PracticeQuestionScopeFilter,
-) => [canonicalizeCurriculumId(curriculum), questionScope].join('|');
+  filters?: PracticeFilters | null,
+) => {
+  const normalizedFilters = normalizePracticeFilters(filters);
+  return [
+    canonicalizeCurriculumId(curriculum),
+    questionScope,
+    normalizedFilters?.generalLawId ?? '',
+    ...(normalizedFilters?.generalLawBlockIds ?? []),
+    ...(normalizedFilters?.generalLawArticleIds ?? []),
+  ].join('|');
+};
 
 const getQuestionBankIndex = async (
   curriculum: string,
   questionScope: PracticeQuestionScopeFilter = 'all',
+  filters?: PracticeFilters | null,
 ) => {
-  const cacheKey = buildQuestionBankIndexCacheKey(curriculum, questionScope);
+  const cacheKey = buildQuestionBankIndexCacheKey(curriculum, questionScope, filters);
   const existing = questionBankIndexCache.get(cacheKey);
   if (existing) {
     return existing;
@@ -333,7 +426,7 @@ const getQuestionBankIndex = async (
 
   const task = (async () => {
     const targets = resolveQuestionBankTargets(curriculum, questionScope);
-    const rows = await Promise.all(targets.map((target) => queryQuestionBankRowsForTarget(target)));
+    const rows = await Promise.all(targets.map((target) => queryQuestionBankRowsForTarget(target, filters)));
     return mergeQuestionBankRows(rows.flat());
   })().catch((error) => {
     questionBankIndexCache.delete(cacheKey);
@@ -350,6 +443,7 @@ export const getQuestionBankPage = async (params: {
   page?: number;
   pageSize?: number;
   search?: string;
+  filters?: PracticeFilters | null;
 }): Promise<QuestionBankPage> => {
   const curriculum = params.curriculum;
   const questionScope = params.questionScope ?? 'all';
@@ -358,13 +452,17 @@ export const getQuestionBankPage = async (params: {
   const search = String(params.search ?? '').trim();
   const start = page * pageSize;
   const end = start + pageSize;
-  const index = await getQuestionBankIndex(curriculum, questionScope);
+  const index = await getQuestionBankIndex(curriculum, questionScope, params.filters ?? null);
   const normalizedSearch = search.toLowerCase();
   const filtered = !normalizedSearch
     ? index
     : /^\d{1,6}$/.test(search)
       ? index.filter((question) => question.number === Number(search))
-      : index.filter((question) => question.text.toLowerCase().includes(normalizedSearch));
+      : index.filter(
+          (question) =>
+            question.text.toLowerCase().includes(normalizedSearch) ||
+            String(question.category ?? '').toLowerCase().includes(normalizedSearch),
+        );
 
   return {
     items: filtered.slice(start, end).map(

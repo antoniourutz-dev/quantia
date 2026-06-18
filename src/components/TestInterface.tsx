@@ -14,6 +14,7 @@ import { FinishedTestPayload, OptionKey, PracticeMode, Question, TestAnswer } fr
 import { useAppLocale } from '../lib/locale';
 import type { StudyQuestionData } from '../lib/quantiaApi';
 import HighlightableText from './HighlightableText';
+import EditorialExplanation from './EditorialExplanation';
 
 interface TestInterfaceProps {
   questions: Question[];
@@ -65,6 +66,7 @@ export default function TestInterface({
 
   const currentQuestion = questions[currentIndex];
   const currentFriction = currentQuestion ? frictionByQuestionId?.[currentQuestion.id] ?? null : null;
+  const officialMetadata = currentQuestion?.practiceSource === 'official' ? currentQuestion.officialMetadata ?? null : null;
   const selectedAnswer = selectedAnswers[currentIndex];
   const isSimulacro = mode === 'simulacro';
   const closingSession = finishRequested || isFinishing;
@@ -302,9 +304,28 @@ export default function TestInterface({
           <>
             <div className={`px-4 sm:px-0 pb-4 pt-4 ${isFocusMode ? '' : 'sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 sm:border-transparent transition-all shadow-sm sm:shadow-none'}`}>
               <div className="mb-1.5 flex items-center justify-between gap-2">
-                <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
-                  {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
-                </span>
+                <div className="min-w-0">
+                  {officialMetadata ? (
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-white">
+                        OFICIAL
+                      </span>
+                      <span className="truncate text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        {officialMetadata.sourceInstitution} {officialMetadata.sourceYear ?? ''}
+                        {officialMetadata.sourceThemeNumber ? ` · Tema ${officialMetadata.sourceThemeNumber}` : ''}
+                        {` · Pregunta ${officialMetadata.officialQuestionNumber}`}
+                      </span>
+                    </div>
+                  ) : null}
+                  <span className="block truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
+                    {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
+                  </span>
+                  {officialMetadata ? (
+                    <span className="mt-1 block truncate text-xs font-bold text-slate-500">
+                      {[officialMetadata.lawShortTitle, officialMetadata.articleLabels?.join(', ')].filter(Boolean).join(' · ')}
+                    </span>
+                  ) : null}
+                </div>
                 {reviewPriority === 'most_problematic' && frictionBadgeLabel ? (
                   <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
                     {frictionBadgeLabel}
@@ -482,20 +503,24 @@ export default function TestInterface({
                         {isBasque ? 'Itxi' : 'Cerrar'}
                       </button>
                     </div>
-                    <p className="text-slate-600 leading-relaxed font-medium text-sm antialiased">
-                      {showMarks ? (
-                        <HighlightableText
-                          text={currentQuestion.explanation}
-                          highlights={studyData?.highlights?.[`${currentQuestion.id}_exp`] ?? []}
-                          onAddHighlight={() => {}}
-                          onRemoveHighlight={() => {}}
-                          readOnly
-                          maxSelectionChars={160}
-                        />
-                      ) : (
-                        currentQuestion.explanation
-                      )}
-                    </p>
+                    <EditorialExplanation
+                      text={currentQuestion.explanation}
+                      highlights={showMarks ? studyData?.highlights?.[`${currentQuestion.id}_exp`] ?? [] : []}
+                      readOnly
+                      emptyLabel={isBasque ? 'Ez dago azalpenik.' : 'Sin explicación disponible.'}
+                    />
+                    {officialMetadata ? (
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Respuesta oficial
+                        </div>
+                        <div className="mt-1 text-slate-900">{currentQuestion.correctAnswer.toUpperCase()}</div>
+                        <div className="mt-3 text-xs leading-relaxed text-slate-500">
+                          Fuente: {officialMetadata.sourceTitle}
+                          {officialMetadata.licenseLabel ? ` · Licencia: ${officialMetadata.licenseLabel}` : ''}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </div>

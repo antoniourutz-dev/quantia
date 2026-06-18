@@ -13,6 +13,7 @@ import type { OptionKey, PracticeMode, Question } from '../types';
 import { useAppLocale } from '../lib/locale';
 import HighlightableText, { TextHighlight } from './HighlightableText';
 import { createId } from '../lib/id';
+import EditorialExplanation from './EditorialExplanation';
 
 import { getStudyData, saveStudyData, setLastVisitedStudyQuestion } from '../lib/quantiaApi';
 
@@ -284,25 +285,25 @@ export default function StudyInterface({
                 <Info size={16} />
                 {isBasque ? 'Zehaztapena' : 'Explicación detallada'}
               </div>
-              <div className="text-slate-700 leading-relaxed font-medium text-[15px] select-text">
-                <HighlightableText
-                  text={currentQuestion.explanation}
-                  highlights={highlightsMap[`${currentQuestion.id}_exp`] || []}
-                  onAddHighlight={(hl) => {
-                     const fakeId = `${currentQuestion.id}_exp`;
-                     const newHl = { ...hl, id: createId() };
-                     const nextList = [...(highlightsMap[fakeId] || []), newHl];
-                     setHighlightsMap(prev => ({ ...prev, [fakeId]: nextList }));
-                     void saveStudyData(fakeId, { highlights: nextList });
-                  }}
-                  onRemoveHighlight={(id) => {
-                     const fakeId = `${currentQuestion.id}_exp`;
-                     const nextList = (highlightsMap[fakeId] || []).filter(h => h.id !== id);
-                     setHighlightsMap(prev => ({ ...prev, [fakeId]: nextList }));
-                     void saveStudyData(fakeId, { highlights: nextList });
-                  }}
-                />
-              </div>
+              <EditorialExplanation
+                text={currentQuestion.explanation}
+                highlights={highlightsMap[`${currentQuestion.id}_exp`] || []}
+                onAddHighlight={(hl) => {
+                   const fakeId = `${currentQuestion.id}_exp`;
+                   const newHl = { ...hl, id: createId() };
+                   const nextList = [...(highlightsMap[fakeId] || []), newHl];
+                   setHighlightsMap(prev => ({ ...prev, [fakeId]: nextList }));
+                   void saveStudyData(fakeId, { highlights: nextList });
+                }}
+                onRemoveHighlight={(id) => {
+                   const fakeId = `${currentQuestion.id}_exp`;
+                   const nextList = (highlightsMap[fakeId] || []).filter(h => h.id !== id);
+                   setHighlightsMap(prev => ({ ...prev, [fakeId]: nextList }));
+                   void saveStudyData(fakeId, { highlights: nextList });
+                }}
+                readOnly={false}
+                emptyLabel={isBasque ? 'Ez dago azalpenik.' : 'Sin explicación disponible.'}
+              />
             </div>
           </div>
         )}

@@ -27,7 +27,7 @@ interface StudyExplorerProps {
 export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
-  const MAX_RANGE_QUESTIONS = 200;
+  const MAX_RANGE_QUESTIONS = 300;
   
   const [studyMode, setStudyMode] = useState<StudyModeType>('topic');
   

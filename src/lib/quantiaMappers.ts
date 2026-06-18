@@ -254,6 +254,8 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
       'ley_referencia',
     ]),
     questionScope,
+    generalLawId: readText(row.general_law_id ?? row.generalLawId) ?? null,
+    generalLawBlockId: readText(row.general_law_block_id ?? row.generalLawBlockId) ?? null,
   };
 };
 

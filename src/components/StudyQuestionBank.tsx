@@ -1,8 +1,20 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronLeft, ChevronRight, CheckCircle2, Info, Search } from 'lucide-react';
-import { formatSyllabusLabel, type PracticeQuestionScopeFilter, type Question, type QuestionBankListItem } from '../types';
-import { isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
+import {
+  formatSyllabusLabel,
+  type GeneralLaw,
+  type GeneralLawArticle,
+  type GeneralLawBlock,
+  type GeneralLawSelectionMode,
+  type GeneralLawTrainingSelection,
+  type PracticeQuestionScopeFilter,
+  type Question,
+  type QuestionBankListItem,
+} from '../types';
+import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
 import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail } from '../lib/quantiaApi';
+import EditorialExplanation from './EditorialExplanation';
+import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type StudyScope = PracticeQuestionScopeFilter;
 
@@ -17,15 +29,66 @@ const formatScopeLabel = (scope: StudyScope, locale: 'es' | 'eu', curriculum: st
 
 export default function StudyQuestionBank({
   curriculum,
+  generalLaw = null,
+  userId = null,
+  generalLawBlocks = [],
+  generalLawArticles = [],
+  officialArticleCounts = {},
+  generalLawSelection = null,
+  selectedGeneralLawBlockIds = [],
+  selectedGeneralLawArticleIds = [],
+  generalLawBlocksLoading = false,
+  generalLawArticlesLoading = false,
+  generalLawBlockSelectionError = null,
+  generalLawArticlesError = null,
+  onSetGeneralLawSelectionMode,
+  onToggleGeneralLawBlock,
+  onSelectOnlyGeneralLawBlock,
+  onSelectAllGeneralLawBlocks,
+  onClearGeneralLawBlocks,
+  onSelectGeneralLawBlockGroup,
+  onClearGeneralLawBlockGroup,
+  onToggleGeneralLawArticle,
+  onSelectAllGeneralLawArticles,
+  onClearGeneralLawArticles,
+  onSelectGeneralLawArticleGroup,
+  onClearGeneralLawArticleGroup,
+  onStartOfficialPractice,
   onBack,
 }: {
   curriculum: string;
+  generalLaw?: GeneralLaw | null;
+  userId?: string | null;
+  generalLawBlocks?: GeneralLawBlock[];
+  generalLawArticles?: GeneralLawArticle[];
+  officialArticleCounts?: Record<string, number>;
+  generalLawSelection?: GeneralLawTrainingSelection | null;
+  selectedGeneralLawBlockIds?: string[];
+  selectedGeneralLawArticleIds?: string[];
+  generalLawBlocksLoading?: boolean;
+  generalLawArticlesLoading?: boolean;
+  generalLawBlockSelectionError?: string | null;
+  generalLawArticlesError?: string | null;
+  onSetGeneralLawSelectionMode?: (mode: GeneralLawSelectionMode) => void;
+  onToggleGeneralLawBlock?: (blockId: string) => void;
+  onSelectOnlyGeneralLawBlock?: (blockId: string) => void;
+  onSelectAllGeneralLawBlocks?: () => void;
+  onClearGeneralLawBlocks?: () => void;
+  onSelectGeneralLawBlockGroup?: (blockIds: string[]) => void;
+  onClearGeneralLawBlockGroup?: (blockIds: string[]) => void;
+  onToggleGeneralLawArticle?: (articleId: string) => void;
+  onSelectAllGeneralLawArticles?: () => void;
+  onClearGeneralLawArticles?: () => void;
+  onSelectGeneralLawArticleGroup?: (articleIds: string[]) => void;
+  onClearGeneralLawArticleGroup?: (articleIds: string[]) => void;
+  onStartOfficialPractice?: (questions: Question[], title: string) => void;
   onBack?: (() => void) | null;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const t = (es: string, eu: string) => (isBasque ? eu : es);
-  const initialScope = isSingleScopeCurriculum(curriculum) ? 'specific' : 'common';
+  const usesOnlySpecificScope = isSingleScopeCurriculum(curriculum) || isLawSelectionCurriculum(curriculum);
+  const initialScope = usesOnlySpecificScope ? 'specific' : 'common';
 
   const [scope, setScope] = useState<StudyScope>(initialScope);
   const [listLoading, setListLoading] = useState(false);
@@ -43,6 +106,21 @@ export default function StudyQuestionBank({
   const searchTerm = deferredSearchInput.trim();
   const searchKey = searchTerm.toLowerCase();
   const detailCacheRef = useRef(new Map<string, Question>());
+  const questionFilters = useMemo(
+    () =>
+      isLawSelectionCurriculum(curriculum) && generalLaw
+        ? generalLawSelection?.mode === 'articles'
+          ? {
+              generalLawId: generalLaw.id,
+              generalLawArticleIds: selectedGeneralLawArticleIds,
+            }
+          : {
+              generalLawId: generalLaw.id,
+              generalLawBlockIds: selectedGeneralLawBlockIds,
+            }
+        : null,
+    [curriculum, generalLaw, generalLawSelection?.mode, selectedGeneralLawArticleIds, selectedGeneralLawBlockIds],
+  );
 
   const listErrorMessage = t(
     'No se han podido cargar las preguntas.',
@@ -54,8 +132,8 @@ export default function StudyQuestionBank({
   );
 
   const scopeLabels = useMemo<StudyScope[]>(
-    () => (isSingleScopeCurriculum(curriculum) ? ['specific'] : ['common', 'specific']),
-    [curriculum],
+    () => (usesOnlySpecificScope ? ['specific'] : ['common', 'specific']),
+    [usesOnlySpecificScope],
   );
 
   useEffect(() => {
@@ -85,6 +163,7 @@ export default function StudyQuestionBank({
       page: pageIndex,
       pageSize: PAGE_SIZE,
       search: searchTerm,
+      filters: questionFilters,
     })
       .then((page) => {
         if (cancelled) return;
@@ -105,7 +184,7 @@ export default function StudyQuestionBank({
     return () => {
       cancelled = true;
     };
-  }, [curriculum, listErrorMessage, pageIndex, scope, searchTerm]);
+  }, [curriculum, listErrorMessage, pageIndex, questionFilters, scope, searchTerm]);
 
   useEffect(() => {
     if (pageItems.length === 0) {
@@ -219,6 +298,39 @@ export default function StudyQuestionBank({
           </button>
         ) : null}
       </div>
+
+      {isLawSelectionCurriculum(curriculum) && generalLaw ? (
+        <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
+          <GeneralLawStudySelector
+            laws={[generalLaw]}
+            userId={userId}
+            activeLaw={generalLaw}
+            blocks={generalLawBlocks}
+            articles={generalLawArticles}
+            officialArticleCounts={officialArticleCounts}
+            selection={generalLawSelection}
+            blocksLoading={generalLawBlocksLoading}
+            articlesLoading={generalLawArticlesLoading}
+            selectionError={generalLawBlockSelectionError}
+            articlesError={generalLawArticlesError}
+            isBasque={isBasque}
+            compact
+            onSetMode={onSetGeneralLawSelectionMode}
+            onToggleBlock={onToggleGeneralLawBlock}
+            onSelectOnlyBlock={onSelectOnlyGeneralLawBlock}
+            onSelectAllBlocks={onSelectAllGeneralLawBlocks}
+            onClearBlocks={onClearGeneralLawBlocks}
+            onSelectBlockGroup={onSelectGeneralLawBlockGroup}
+            onClearBlockGroup={onClearGeneralLawBlockGroup}
+            onToggleArticle={onToggleGeneralLawArticle}
+            onSelectAllArticles={onSelectAllGeneralLawArticles}
+            onClearArticles={onClearGeneralLawArticles}
+            onSelectArticleGroup={onSelectGeneralLawArticleGroup}
+            onClearArticleGroup={onClearGeneralLawArticleGroup}
+            onStartOfficialPractice={onStartOfficialPractice}
+          />
+        </div>
+      ) : null}
 
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-4 sm:p-8 space-y-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
@@ -434,9 +546,10 @@ export default function StudyQuestionBank({
                           {t('Cerrar', 'Itxi')}
                         </button>
                       </div>
-                      <div className="text-slate-600 leading-relaxed font-medium text-sm whitespace-pre-line">
-                        {selectedQuestion.explanation || t('Sin explicación disponible.', 'Ez dago azalpenik.')}
-                      </div>
+                      <EditorialExplanation
+                        text={selectedQuestion.explanation}
+                        emptyLabel={t('Sin explicación disponible.', 'Ez dago azalpenik.')}
+                      />
                     </div>
                   )}
               </div>

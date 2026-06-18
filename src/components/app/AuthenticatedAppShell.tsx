@@ -44,6 +44,8 @@ import {
   getAvailableCurriculums,
   getCurriculumCategoryGroupLabel,
   getCurriculumCategoryOptions,
+  getPublishedGeneralLawBlocks,
+  getPublishedGeneralLaws,
   getPracticeBatchByCategory,
   getCustomPracticeBatch,
   getPracticeQuestionsByIds,
@@ -63,6 +65,9 @@ import {
   type DashboardBundle,
   type StudyQuestionData,
 } from '../../lib/quantiaApi';
+import { useGeneralLawArticles } from '../../hooks/useGeneralLawArticles';
+import { useGeneralLawTrainingSelection } from '../../hooks/useGeneralLawTrainingSelection';
+import { getOfficialArticleCounts } from '../../repositories/officialPastQuestionsRepository';
 import type { CustomPracticeConfig } from '../../domain/customPractice/customPracticeTypes';
 import { buildCoachPlanV2, buildExecutableSessionPlanFromCoach } from '../../lib/coach';
 import { getContinuityLine } from '../../lib/continuity';
@@ -130,6 +135,10 @@ import {
 import {
   ActivePracticeSession,
   FinishedTestPayload,
+  GeneralLaw,
+  GeneralLawBlock,
+  GeneralLawTrainingSelection,
+  PracticeFilters,
   PracticeMode,
   Question,
   SyllabusType,
@@ -227,6 +236,12 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   );
   const [discoveredLawOptions, setDiscoveredLawOptions] = useState<string[]>([]);
   const [discoveredLawOptionsLoading, setDiscoveredLawOptionsLoading] = useState(false);
+  const [generalLawOptions, setGeneralLawOptions] = useState<GeneralLaw[]>([]);
+  const [activeGeneralLawId, setActiveGeneralLawId] = useState<string | null>(null);
+  const [generalLawBlocks, setGeneralLawBlocks] = useState<GeneralLawBlock[]>([]);
+  const [generalLawBlocksLoading, setGeneralLawBlocksLoading] = useState(false);
+  const [officialArticleCounts, setOfficialArticleCounts] = useState<Record<string, number>>({});
+  const [generalLawBlockSelectionError, setGeneralLawBlockSelectionError] = useState<string | null>(null);
   const [mobileChromeCompact, setMobileChromeCompact] = useState(false);
   const curriculumMenuRef = useRef<HTMLDivElement | null>(null);
   const curriculumTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -673,6 +688,90 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   }, [curriculum, isLawSelectionCurriculum, session]);
 
   useEffect(() => {
+    if (!session || !isLawSelectionCurriculum) {
+      setGeneralLawOptions([]);
+      setActiveGeneralLawId(null);
+      setGeneralLawBlocks([]);
+      setGeneralLawBlockSelectionError(null);
+      return;
+    }
+
+    let disposed = false;
+    getPublishedGeneralLaws(curriculum)
+      .then((laws) => {
+        if (disposed) return;
+        setGeneralLawOptions(laws);
+        setActiveGeneralLawId((current) =>
+          current && laws.some((law) => law.id === current) ? current : laws[0]?.id ?? null,
+        );
+      })
+      .catch(() => {
+        if (disposed) return;
+        setGeneralLawOptions([]);
+        setActiveGeneralLawId(null);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [curriculum, isLawSelectionCurriculum, session]);
+
+  useEffect(() => {
+    if (!session || !isLawSelectionCurriculum || !activeGeneralLawId) {
+      setGeneralLawBlocks([]);
+      setOfficialArticleCounts({});
+      setGeneralLawBlocksLoading(false);
+      return;
+    }
+
+    let disposed = false;
+    setGeneralLawBlocksLoading(true);
+    setGeneralLawBlockSelectionError(null);
+
+    getPublishedGeneralLawBlocks(activeGeneralLawId, { curriculumKey: curriculum })
+      .then((blocks) => {
+        if (disposed) return;
+        setGeneralLawBlocks(blocks);
+      })
+      .catch((error) => {
+        if (disposed) return;
+        setGeneralLawBlocks([]);
+        setGeneralLawBlockSelectionError(
+          error instanceof Error
+            ? error.message
+            : t('No se han podido cargar los bloques de la ley.', 'Ezin izan dira legearen blokeak kargatu.'),
+        );
+      })
+      .finally(() => {
+        if (!disposed) {
+          setGeneralLawBlocksLoading(false);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [activeGeneralLawId, curriculum, isLawSelectionCurriculum, session, t]);
+
+  useEffect(() => {
+    if (!session || !isLawSelectionCurriculum || !activeGeneralLawId) {
+      setOfficialArticleCounts({});
+      return;
+    }
+    let disposed = false;
+    getOfficialArticleCounts(activeGeneralLawId)
+      .then((counts) => {
+        if (!disposed) setOfficialArticleCounts(counts);
+      })
+      .catch(() => {
+        if (!disposed) setOfficialArticleCounts({});
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [activeGeneralLawId, isLawSelectionCurriculum, session]);
+
+  useEffect(() => {
     const userId = String(session?.user?.id ?? '').trim();
     if (!userId) return;
     if (!preferredCurriculumId) return;
@@ -1117,6 +1216,142 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     () => getCurriculumCategoryGroupLabel(curriculum, weakCategory?.category) ?? weakCategory?.category ?? null,
     [curriculum, weakCategory?.category],
   );
+  const activeGeneralLaw = useMemo(
+    () => generalLawOptions.find((law) => law.id === activeGeneralLawId) ?? null,
+    [activeGeneralLawId, generalLawOptions],
+  );
+  const generalLawArticleCountParams = useMemo(
+    () => ({
+      oppositionId: '5a8841a0-5d52-4302-b17d-d5594bb370b2',
+      curriculum,
+      curriculumKey: 'leyes_generales',
+      grupo: 'especifico',
+      questionScopeKey: 'specific' as const,
+    }),
+    [curriculum],
+  );
+  const {
+    articles: generalLawArticles,
+    loading: generalLawArticlesLoading,
+    error: generalLawArticlesError,
+  } = useGeneralLawArticles({
+    lawId: activeGeneralLawId,
+    enabled: Boolean(session && isLawSelectionCurriculum && activeGeneralLawId),
+    countParams: generalLawArticleCountParams,
+  });
+  const generalLawTrainingSelection = useGeneralLawTrainingSelection({
+    userId: session?.user?.id ?? null,
+    curriculum,
+    generalLawId: activeGeneralLawId,
+    blocks: generalLawBlocks,
+    articles: generalLawArticles,
+    enabled: Boolean(session && isLawSelectionCurriculum && activeGeneralLawId),
+  });
+  const selectedGeneralLawBlockIds = generalLawTrainingSelection.selection.selectedBlockIds;
+  const selectedGeneralLawArticleIds = generalLawTrainingSelection.selection.selectedArticleIds;
+  const activeGeneralLawPracticeFilters = useMemo<PracticeFilters | null>(() => {
+    if (!isLawSelectionCurriculum || !activeGeneralLawId) return null;
+    const baseFilters: PracticeFilters = {
+      oppositionId: '5a8841a0-5d52-4302-b17d-d5594bb370b2',
+      curriculum,
+      curriculumKey: 'leyes_generales',
+      grupo: 'especifico',
+      questionScopeKey: 'specific',
+      generalLawId: activeGeneralLawId,
+    };
+    if (generalLawTrainingSelection.selection.mode === 'articles') {
+      return {
+        ...baseFilters,
+        generalLawArticleIds: selectedGeneralLawArticleIds,
+      };
+    }
+    if (generalLawTrainingSelection.selection.mode === 'scope' || generalLawTrainingSelection.selection.mode === 'official') {
+      return {
+        ...baseFilters,
+        generalLawScopeId: generalLawTrainingSelection.selection.selectedScopeId ?? null,
+      };
+    }
+    return {
+      ...baseFilters,
+      generalLawBlockIds: selectedGeneralLawBlockIds,
+    };
+  }, [
+    activeGeneralLawId,
+    curriculum,
+    generalLawTrainingSelection.selection.mode,
+    generalLawTrainingSelection.selection.selectedScopeId,
+    isLawSelectionCurriculum,
+    selectedGeneralLawArticleIds,
+    selectedGeneralLawBlockIds,
+  ]);
+  const toggleGeneralLawBlock = useCallback((blockId: string) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.toggleBlock(blockId);
+  }, [generalLawTrainingSelection]);
+  const selectAllGeneralLawBlocks = useCallback(() => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.selectAllBlocks();
+  }, [generalLawTrainingSelection]);
+  const clearGeneralLawBlocks = useCallback(() => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.clearBlocks();
+  }, [generalLawTrainingSelection]);
+  const selectOnlyGeneralLawBlock = useCallback((blockId: string) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.selectOnlyBlock(blockId);
+  }, [generalLawTrainingSelection]);
+  const selectGeneralLawBlockGroup = useCallback((blockIds: string[]) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.selectBlockIds(blockIds);
+  }, [generalLawTrainingSelection]);
+  const clearGeneralLawBlockGroup = useCallback((blockIds: string[]) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.clearBlockIds(blockIds);
+  }, [generalLawTrainingSelection]);
+  const setGeneralLawSelectionMode = useCallback((mode: GeneralLawTrainingSelection['mode']) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.setMode(mode);
+  }, [generalLawTrainingSelection]);
+  const toggleGeneralLawArticle = useCallback((articleId: string) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.toggleArticle(articleId);
+  }, [generalLawTrainingSelection]);
+  const selectAllGeneralLawArticles = useCallback(() => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.selectAllArticlesWithQuestions();
+  }, [generalLawTrainingSelection]);
+  const clearGeneralLawArticles = useCallback(() => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.clearArticles();
+  }, [generalLawTrainingSelection]);
+  const selectGeneralLawArticleGroup = useCallback((articleIds: string[]) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.selectArticleIds(articleIds);
+  }, [generalLawTrainingSelection]);
+  const clearGeneralLawArticleGroup = useCallback((articleIds: string[]) => {
+    setGeneralLawBlockSelectionError(null);
+    generalLawTrainingSelection.clearArticleIds(articleIds);
+  }, [generalLawTrainingSelection]);
+  const handleStartOfficialPractice = useCallback((questions: Question[], title: string) => {
+    if (questions.length === 0) return;
+    setDataError(null);
+    setPracticeEmptyState(null);
+    setActiveTestSupport(null);
+    const practiceSession: ActivePracticeSession = {
+      id: createId(),
+      mode: 'standard',
+      title,
+      startedAt: new Date().toISOString(),
+      questions,
+      batchNumber: 1,
+      totalBatches: 1,
+      batchStartIndex: null,
+      nextStandardBatchStartIndex: null,
+      source: 'manual',
+    };
+    setActiveSession(practiceSession);
+    setCurrentView('test-active');
+  }, []);
   const weakAreaCopy = useMemo(
     () =>
       buildWeakAreaCopy({
@@ -1356,7 +1591,11 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   );
 
   const handleStartLawTest = useCallback(
-    async (law: string, count = 20) => {
+    async (
+      law: string,
+      count = 20,
+      filters?: PracticeFilters | null,
+    ) => {
       const normalizedLaw = law.trim();
       if (!normalizedLaw) {
         setDataError(
@@ -1373,7 +1612,22 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setActiveTestSupport(null);
 
       try {
-        const questions = await getPracticeBatchByCategory(count, curriculum, normalizedLaw);
+        const normalizedFilters = filters?.generalLawId ? filters : null;
+        const hasLawSelection =
+          Boolean(normalizedFilters?.generalLawBlockIds?.length) ||
+          Boolean(normalizedFilters?.generalLawArticleIds?.length);
+        if (normalizedFilters && !hasLawSelection) {
+          const emptyArticleSelection = Array.isArray(normalizedFilters.generalLawArticleIds);
+          setGeneralLawBlockSelectionError(
+            emptyArticleSelection
+              ? t('Selecciona al menos un artículo para empezar el test.', 'Hautatu gutxienez artikulu bat testa hasteko.')
+              : t('Selecciona al menos un bloque para iniciar el test.', 'Hautatu gutxienez bloke bat testa hasteko.'),
+          );
+          return;
+        }
+        const questions = normalizedFilters
+          ? await getRandomPracticeBatch(count, curriculum, 'specific', normalizedFilters)
+          : await getPracticeBatchByCategory(count, curriculum, normalizedLaw);
         if (questions.length === 0) {
           const request = { kind: 'law' as const, law: normalizedLaw, count };
           const kind = resolveEmptyStateReason({
@@ -1391,7 +1645,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             surface: 'test',
             curriculum,
             action: 'session_abandoned',
-            context: { reason: kind, law: normalizedLaw, count },
+          context: { reason: kind, law: normalizedLaw, count },
           });
           return;
         }
@@ -1902,9 +2156,28 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       const { mode, scope, topic, count, range, resumeId } = params;
 
       let selected: Question[] = [];
+      const filters = activeGeneralLawPracticeFilters;
+      if (
+        isLawSelectionCurriculum &&
+        filters?.generalLawId &&
+        !filters.generalLawBlockIds?.length &&
+        !filters.generalLawArticleIds?.length
+      ) {
+        const emptyArticleSelection = Array.isArray(filters.generalLawArticleIds);
+        setGeneralLawBlockSelectionError(
+          emptyArticleSelection
+            ? t('Selecciona al menos un artículo para iniciar el estudio.', 'Hautatu gutxienez artikulu bat ikasketa hasteko.')
+            : t('Selecciona al menos un bloque para iniciar el estudio.', 'Hautatu gutxienez bloke bat ikasketa hasteko.'),
+        );
+        throw new Error(
+          emptyArticleSelection
+            ? t('Selecciona al menos un artículo para iniciar el estudio.', 'Hautatu gutxienez artikulu bat ikasketa hasteko.')
+            : t('Selecciona al menos un bloque para iniciar el estudio.', 'Hautatu gutxienez bloke bat ikasketa hasteko.'),
+        );
+      }
 
       if (mode === 'range' && range) {
-        const MAX_RANGE_QUESTIONS = 200;
+        const MAX_RANGE_QUESTIONS = 300;
         const fromValue = Math.trunc(Number(range[0]));
         const toValue = Math.trunc(Number(range[1]));
         if (!Number.isFinite(fromValue) || !Number.isFinite(toValue) || fromValue <= 0 || toValue <= 0) {
@@ -1919,13 +2192,13 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             ),
           );
         }
-        const filtered = await getQuestionsByNumberRange({ curriculum, from: fromValue, to: toValue, randomize: false });
+        const filtered = await getQuestionsByNumberRange({ curriculum, from: fromValue, to: toValue, randomize: false, filters });
         if (filtered.length === 0) {
           throw new Error(t('No hay preguntas disponibles en ese rango numérico.', 'Ez dago galderarik tarte horretan.'));
         }
         selected = filtered;
       } else {
-        const pool = await getStudyQuestionsSlice(500, 0, curriculum);
+        const pool = await getStudyQuestionsSlice(500, 0, curriculum, filters);
         const normalizedTopic = topic.trim().toLowerCase();
         const filtered = pool.filter((q) => {
           if (scope !== 'all' && q.syllabus !== scope) return false;
@@ -1951,7 +2224,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       }
 
       if (resumeId) {
-        const pool = await getStudyQuestionsSlice(1000, 0, curriculum);
+        const pool = await getStudyQuestionsSlice(1000, 0, curriculum, filters);
         const target = pool.find(q => q.id === resumeId);
         if (target) {
           const others = selected.filter(q => q.id !== resumeId);
@@ -1974,7 +2247,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setActiveStudySession(session);
       setCurrentView('study-active');
     },
-    [curriculum, t],
+    [activeGeneralLawPracticeFilters, curriculum, isLawSelectionCurriculum, t],
   );
 
   const handleCurriculumChange = useCallback(
@@ -2845,11 +3118,47 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               initialLaw={selectedLawFilter}
               initialState={testSelectionState}
               onStart={handleStartTest}
-              onStartLawTest={handleStartLawTest}
+              onStartLawTest={(law, count) =>
+                handleStartLawTest(
+                  law,
+                  count,
+                  isLawSelectionCurriculum ? activeGeneralLawPracticeFilters : null,
+                )
+              }
               onStartCustomTest={(params) => void handleStartCustomTest(params)}
               onStartCustomPractice={handleStartCustomPractice}
               initialSyllabus={selectedSyllabus}
               onStateChange={setTestSelectionState}
+              generalLaws={generalLawOptions}
+              userId={session.user.id}
+              activeGeneralLawId={activeGeneralLawId}
+              onSelectGeneralLaw={(lawId) => {
+                setGeneralLawBlockSelectionError(null);
+                setActiveGeneralLawId(lawId);
+              }}
+              generalLawBlocks={generalLawBlocks}
+              generalLawArticles={generalLawArticles}
+              officialArticleCounts={officialArticleCounts}
+              generalLawSelection={generalLawTrainingSelection.selection}
+              selectedGeneralLawBlockIds={selectedGeneralLawBlockIds}
+              selectedGeneralLawArticleIds={selectedGeneralLawArticleIds}
+              generalLawBlocksLoading={generalLawBlocksLoading}
+              generalLawArticlesLoading={generalLawArticlesLoading}
+              generalLawBlockSelectionError={generalLawBlockSelectionError}
+              generalLawArticlesError={generalLawArticlesError}
+              onSetGeneralLawSelectionMode={setGeneralLawSelectionMode}
+              onToggleGeneralLawBlock={toggleGeneralLawBlock}
+              onSelectOnlyGeneralLawBlock={selectOnlyGeneralLawBlock}
+              onSelectAllGeneralLawBlocks={selectAllGeneralLawBlocks}
+              onClearGeneralLawBlocks={clearGeneralLawBlocks}
+              onSelectGeneralLawBlockGroup={selectGeneralLawBlockGroup}
+              onClearGeneralLawBlockGroup={clearGeneralLawBlockGroup}
+              onToggleGeneralLawArticle={toggleGeneralLawArticle}
+              onSelectAllGeneralLawArticles={selectAllGeneralLawArticles}
+              onClearGeneralLawArticles={clearGeneralLawArticles}
+              onSelectGeneralLawArticleGroup={selectGeneralLawArticleGroup}
+              onClearGeneralLawArticleGroup={clearGeneralLawArticleGroup}
+              onStartOfficialPractice={handleStartOfficialPractice}
             />
           </Suspense>
         ) : null}
@@ -2869,6 +3178,31 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           <Suspense fallback={screenLoader}>
             <StudyQuestionBank
               curriculum={curriculum}
+              generalLaw={activeGeneralLaw}
+              userId={session.user.id}
+              generalLawBlocks={generalLawBlocks}
+              generalLawArticles={generalLawArticles}
+              officialArticleCounts={officialArticleCounts}
+              generalLawSelection={generalLawTrainingSelection.selection}
+              selectedGeneralLawBlockIds={selectedGeneralLawBlockIds}
+              selectedGeneralLawArticleIds={selectedGeneralLawArticleIds}
+              generalLawBlocksLoading={generalLawBlocksLoading}
+              generalLawArticlesLoading={generalLawArticlesLoading}
+              generalLawBlockSelectionError={generalLawBlockSelectionError}
+              generalLawArticlesError={generalLawArticlesError}
+              onSetGeneralLawSelectionMode={setGeneralLawSelectionMode}
+              onToggleGeneralLawBlock={toggleGeneralLawBlock}
+              onSelectOnlyGeneralLawBlock={selectOnlyGeneralLawBlock}
+              onSelectAllGeneralLawBlocks={selectAllGeneralLawBlocks}
+              onClearGeneralLawBlocks={clearGeneralLawBlocks}
+              onSelectGeneralLawBlockGroup={selectGeneralLawBlockGroup}
+              onClearGeneralLawBlockGroup={clearGeneralLawBlockGroup}
+              onToggleGeneralLawArticle={toggleGeneralLawArticle}
+              onSelectAllGeneralLawArticles={selectAllGeneralLawArticles}
+              onClearGeneralLawArticles={clearGeneralLawArticles}
+              onSelectGeneralLawArticleGroup={selectGeneralLawArticleGroup}
+              onClearGeneralLawArticleGroup={clearGeneralLawArticleGroup}
+              onStartOfficialPractice={handleStartOfficialPractice}
               onBack={() => setCurrentView('study')}
             />
           </Suspense>
@@ -2995,6 +3329,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                   void handleStartLawTest(
                     selectedLawFilter,
                     questionCount ?? (activeSession.questions.length || 20),
+                    isLawSelectionCurriculum ? activeGeneralLawPracticeFilters : null,
                   );
                   return;
                 }
@@ -3003,7 +3338,11 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               }}
               onRestart={() => {
                 if (selectedLawFilter) {
-                  void handleStartLawTest(selectedLawFilter, activeSession.questions.length || 20);
+                  void handleStartLawTest(
+                    selectedLawFilter,
+                    activeSession.questions.length || 20,
+                    isLawSelectionCurriculum ? activeGeneralLawPracticeFilters : null,
+                  );
                   return;
                 }
                 void handleStartTest(activeSession.mode, selectedSyllabus || undefined);
