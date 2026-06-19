@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  RotateCcw,
   Info,
   Loader2,
   Timer,
@@ -29,6 +30,7 @@ interface TestInterfaceProps {
   > | null;
   supportMode?: { showMarks: boolean; showNotes: boolean } | null;
   studyData?: StudyQuestionData | null;
+  allowInSessionMistakeReview?: boolean;
   onFinish: (payload: FinishedTestPayload) => void | Promise<void>;
   onCancel: () => void;
   isFinishing?: boolean;
@@ -41,6 +43,7 @@ export default function TestInterface({
   frictionByQuestionId = null,
   supportMode = null,
   studyData = null,
+  allowInSessionMistakeReview = false,
   onFinish,
   onCancel,
   isFinishing = false,
@@ -61,33 +64,61 @@ export default function TestInterface({
   const [questionStartAt, setQuestionStartAt] = useState(() => Date.now());
   const [finishRequested, setFinishRequested] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [mistakeReview, setMistakeReview] = useState<{
+    questions: Question[];
+    returnIndex: number;
+    selectedAnswers: (OptionKey | null)[];
+    answerDetails: Array<TestAnswer | null>;
+  } | null>(null);
+  const [resolvedMistakeQuestionIds, setResolvedMistakeQuestionIds] = useState<string[]>([]);
   const finishStartedRef = useRef(false);
   const wasFinishingRef = useRef(false);
 
-  const currentQuestion = questions[currentIndex];
+  const activeQuestions = mistakeReview?.questions ?? questions;
+  const activeSelectedAnswers = mistakeReview?.selectedAnswers ?? selectedAnswers;
+  const activeAnswerDetails = mistakeReview?.answerDetails ?? answerDetails;
+  const currentQuestion = activeQuestions[currentIndex];
   const currentFriction = currentQuestion ? frictionByQuestionId?.[currentQuestion.id] ?? null : null;
   const officialMetadata = currentQuestion?.practiceSource === 'official' ? currentQuestion.officialMetadata ?? null : null;
-  const selectedAnswer = selectedAnswers[currentIndex];
+  const selectedAnswer = activeSelectedAnswers[currentIndex];
   const isSimulacro = mode === 'simulacro';
+  const isMistakeReview = Boolean(mistakeReview);
   const closingSession = finishRequested || isFinishing;
   const showMarks = Boolean(supportMode?.showMarks);
   const showNotes = Boolean(supportMode?.showNotes);
 
-  const score = useMemo(
+  const mainScore = useMemo(
     () => answerDetails.filter((answer) => answer?.isCorrect).length,
     [answerDetails],
   );
-  const answeredCount = useMemo(
-    () => selectedAnswers.filter((answer) => answer !== null).length,
-    [selectedAnswers],
+  const score = useMemo(
+    () => activeAnswerDetails.filter((answer) => answer?.isCorrect).length,
+    [activeAnswerDetails],
   );
+  const answeredCount = useMemo(
+    () => activeSelectedAnswers.filter((answer) => answer !== null).length,
+    [activeSelectedAnswers],
+  );
+  const resolvedMistakeQuestionIdSet = useMemo(
+    () => new Set(resolvedMistakeQuestionIds),
+    [resolvedMistakeQuestionIds],
+  );
+  const accumulatedMistakeQuestions = useMemo(() => {
+    if (!allowInSessionMistakeReview || isSimulacro || isMistakeReview || questions.length <= 40 || currentIndex + 1 < 20) return [];
+    return answerDetails
+      .slice(0, currentIndex + 1)
+      .map((answer, index) => (answer && !answer.isCorrect ? questions[index] : null))
+      .filter((question): question is Question => Boolean(question))
+      .filter((question) => !resolvedMistakeQuestionIdSet.has(question.id));
+  }, [allowInSessionMistakeReview, answerDetails, currentIndex, isMistakeReview, isSimulacro, questions, resolvedMistakeQuestionIdSet]);
+  const canStartMistakeReview = accumulatedMistakeQuestions.length > 0 && !closingSession;
 
   const finishPayload = useMemo(
     () => ({
-      score,
+      score: mainScore,
       answers: answerDetails.filter((answer): answer is TestAnswer => Boolean(answer)),
     }),
-    [answerDetails, score],
+    [answerDetails, mainScore],
   );
 
   useEffect(() => {
@@ -110,6 +141,8 @@ export default function TestInterface({
   useEffect(() => {
     setFinishRequested(false);
     finishStartedRef.current = false;
+    setMistakeReview(null);
+    setResolvedMistakeQuestionIds([]);
   }, [mode, questions]);
 
   useEffect(() => {
@@ -121,11 +154,19 @@ export default function TestInterface({
   }, [currentQuestion?.id]);
 
   const requestFinish = useCallback(() => {
+    if (mistakeReview) {
+      setCurrentIndex(mistakeReview.returnIndex);
+      setMistakeReview(null);
+      setShowExplanation(!isSimulacro && selectedAnswers[mistakeReview.returnIndex] !== null);
+      setManualExplanationOpen(false);
+      setQuestionStartAt(Date.now());
+      return;
+    }
     if (finishStartedRef.current) return;
     finishStartedRef.current = true;
     setFinishRequested(true);
     void onFinish(finishPayload);
-  }, [finishPayload, onFinish]);
+  }, [finishPayload, isSimulacro, mistakeReview, onFinish, selectedAnswers]);
 
   useEffect(() => {
     if (isSimulacro && timeLeft === 0) {
@@ -145,7 +186,7 @@ export default function TestInterface({
 
     const answeredAt = new Date().toISOString();
     const responseTimeMs = Math.max(0, Date.now() - questionStartAt);
-    const previousDetail = answerDetails[currentIndex];
+    const previousDetail = activeAnswerDetails[currentIndex];
     const detail: TestAnswer = {
       questionId: currentQuestion.id,
       selectedOption: optionId,
@@ -157,13 +198,21 @@ export default function TestInterface({
       changedAnswer: previousDetail ? previousDetail.selectedOption !== optionId : false,
     };
 
-    const nextSelected = [...selectedAnswers];
+    const nextSelected = [...activeSelectedAnswers];
     nextSelected[currentIndex] = optionId;
-    setSelectedAnswers(nextSelected);
 
-    const nextDetails = [...answerDetails];
+    const nextDetails = [...activeAnswerDetails];
     nextDetails[currentIndex] = detail;
-    setAnswerDetails(nextDetails);
+    if (mistakeReview) {
+      setMistakeReview({
+        ...mistakeReview,
+        selectedAnswers: nextSelected,
+        answerDetails: nextDetails,
+      });
+    } else {
+      setSelectedAnswers(nextSelected);
+      setAnswerDetails(nextDetails);
+    }
     setShowExplanation(!isSimulacro);
     setManualExplanationOpen(false);
 
@@ -174,10 +223,58 @@ export default function TestInterface({
 
   const nextQuestion = () => {
     if (closingSession) return;
-    if (currentIndex < questions.length - 1) {
+    if (mistakeReview) {
+      const currentDetail = activeAnswerDetails[currentIndex];
+      if (!currentDetail) return;
+      const currentReviewQuestion = mistakeReview.questions[currentIndex];
+      if (currentReviewQuestion) {
+        setResolvedMistakeQuestionIds((ids) => {
+          if (currentDetail.isCorrect) {
+            return ids.includes(currentReviewQuestion.id) ? ids : [...ids, currentReviewQuestion.id];
+          }
+          return ids.filter((id) => id !== currentReviewQuestion.id);
+        });
+      }
+
+      const nextReview = currentDetail.isCorrect
+        ? {
+            questions: mistakeReview.questions.filter((_, index) => index !== currentIndex),
+            selectedAnswers: mistakeReview.selectedAnswers.filter((_, index) => index !== currentIndex),
+            answerDetails: mistakeReview.answerDetails.filter((_, index) => index !== currentIndex),
+          }
+        : {
+            questions: mistakeReview.questions,
+            selectedAnswers: mistakeReview.selectedAnswers.map((answer, index) => (index === currentIndex ? null : answer)),
+            answerDetails: mistakeReview.answerDetails.map((answer, index) => (index === currentIndex ? null : answer)),
+          };
+
+      if (nextReview.questions.length === 0) {
+        requestFinish();
+        return;
+      }
+
+      const nextIndex = currentDetail.isCorrect
+        ? currentIndex >= nextReview.questions.length
+          ? 0
+          : currentIndex
+        : currentIndex < nextReview.questions.length - 1
+          ? currentIndex + 1
+          : 0;
+
+      setMistakeReview({
+        ...mistakeReview,
+        ...nextReview,
+      });
+      setCurrentIndex(nextIndex);
+      setShowExplanation(false);
+      setManualExplanationOpen(false);
+      setQuestionStartAt(Date.now());
+      return;
+    }
+    if (currentIndex < activeQuestions.length - 1) {
       const nextIndex = currentIndex + 1;
       setCurrentIndex(nextIndex);
-      setShowExplanation(!isSimulacro && selectedAnswers[nextIndex] !== null);
+      setShowExplanation(!isSimulacro && activeSelectedAnswers[nextIndex] !== null);
       setManualExplanationOpen(false);
       setQuestionStartAt(Date.now());
     } else {
@@ -190,13 +287,28 @@ export default function TestInterface({
     if (currentIndex > 0) {
       const nextIndex = currentIndex - 1;
       setCurrentIndex(nextIndex);
-      setShowExplanation(!isSimulacro && selectedAnswers[nextIndex] !== null);
+      setShowExplanation(!isSimulacro && activeSelectedAnswers[nextIndex] !== null);
       setManualExplanationOpen(false);
       setQuestionStartAt(Date.now());
     }
   };
 
-  const progress = ((currentIndex + 1) / questions.length) * 100;
+  const startMistakeReview = () => {
+    if (!canStartMistakeReview) return;
+    setMistakeReview({
+      questions: accumulatedMistakeQuestions,
+      returnIndex: currentIndex,
+      selectedAnswers: new Array(accumulatedMistakeQuestions.length).fill(null),
+      answerDetails: new Array(accumulatedMistakeQuestions.length).fill(null),
+    });
+    setCurrentIndex(0);
+    setShowExplanation(false);
+    setManualExplanationOpen(false);
+    setQuestionStartAt(Date.now());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const progress = ((currentIndex + 1) / activeQuestions.length) * 100;
 
   const frictionBadgeLabel = useMemo(() => {
     if (!currentFriction) return null;
@@ -236,12 +348,17 @@ export default function TestInterface({
                     <span className="w-8 sm:w-9 font-mono tabular-nums">{formatTime(timeLeft)}</span>
                     <span className="mx-0.5 text-slate-200">|</span>
                     <Trophy size={14} className="text-slate-400" />
-                    <span>{answeredCount}/{questions.length}</span>
+                    <span>{answeredCount}/{activeQuestions.length}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-600">
                     <Trophy size={14} className="text-emerald-600" />
-                    <span>{score}/{questions.length}</span>
+                    <span>{score}/{activeQuestions.length}</span>
+                    {isMistakeReview ? (
+                      <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                        {isBasque ? 'Akatsak' : 'Fallos'}
+                      </span>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -259,7 +376,7 @@ export default function TestInterface({
                   Focus
                 </button>
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  {currentIndex + 1} / {questions.length}
+                  {currentIndex + 1} / {activeQuestions.length}
                 </span>
                 <button
                   onClick={onCancel}
@@ -278,6 +395,20 @@ export default function TestInterface({
                 style={{ width: `${progress}%` }}
               />
             </div>
+            {canStartMistakeReview ? (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={startMistakeReview}
+                  className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 transition-all hover:bg-amber-100 sm:px-4"
+                >
+                  <RotateCcw size={14} />
+                  {isBasque
+                    ? `Orain arteko ${accumulatedMistakeQuestions.length} akatsak berrikusi`
+                    : `Repasar ${accumulatedMistakeQuestions.length} fallos acumulados`}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -574,9 +705,11 @@ export default function TestInterface({
               ) : (
                 <>
                   <span>
-                    {currentIndex === questions.length - 1
-                      ? isBasque ? 'Amaitu' : 'Finalizar'
-                      : isBasque ? 'Hurrengoa' : 'Siguiente'}
+                    {isMistakeReview
+                      ? isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
+                      : currentIndex === activeQuestions.length - 1
+                        ? isBasque ? 'Amaitu' : 'Finalizar'
+                        : isBasque ? 'Hurrengoa' : 'Siguiente'}
                   </span>
                   <ChevronRight size={20} />
                 </>
@@ -603,9 +736,11 @@ export default function TestInterface({
                   disabled={closingSession}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-indigo-500/20 transition-all active:scale-[0.98]"
                 >
-                  {currentIndex === questions.length - 1
-                    ? isBasque ? 'Amaitu test' : 'Finalizar test'
-                    : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
+                  {isMistakeReview
+                    ? isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
+                    : currentIndex === activeQuestions.length - 1
+                      ? isBasque ? 'Amaitu test' : 'Finalizar test'
+                      : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
                   <ChevronRight size={20} className="relative left-[1px]" />
                 </button>
               </div>

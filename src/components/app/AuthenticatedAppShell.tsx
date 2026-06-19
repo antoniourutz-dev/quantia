@@ -3285,6 +3285,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               frictionByQuestionId={activeSession.frictionByQuestionId ?? null}
               supportMode={activeTestSupport?.supportMode ?? null}
               studyData={activeTestSupport?.studyData ?? null}
+              allowInSessionMistakeReview={activeSession.mode === 'custom' && activeQuestions.length > 40}
               onFinish={handleFinishTest}
               isFinishing={syncingSession}
               onCancel={() => {
