@@ -65,6 +65,7 @@ export default function TestInterface({
   const [finishRequested, setFinishRequested] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [mistakeReview, setMistakeReview] = useState<{
+    kind: 'pending' | 'all';
     questions: Question[];
     returnIndex: number;
     selectedAnswers: (OptionKey | null)[];
@@ -111,7 +112,15 @@ export default function TestInterface({
       .filter((question): question is Question => Boolean(question))
       .filter((question) => !resolvedMistakeQuestionIdSet.has(question.id));
   }, [allowInSessionMistakeReview, answerDetails, currentIndex, isMistakeReview, isSimulacro, questions, resolvedMistakeQuestionIdSet]);
+  const allAccumulatedMistakeQuestions = useMemo(() => {
+    if (!allowInSessionMistakeReview || isSimulacro || isMistakeReview || questions.length <= 40 || currentIndex + 1 < 20) return [];
+    return answerDetails
+      .slice(0, currentIndex + 1)
+      .map((answer, index) => (answer && !answer.isCorrect ? questions[index] : null))
+      .filter((question): question is Question => Boolean(question));
+  }, [allowInSessionMistakeReview, answerDetails, currentIndex, isMistakeReview, isSimulacro, questions]);
   const canStartMistakeReview = accumulatedMistakeQuestions.length > 0 && !closingSession;
+  const canStartFullMistakeReview = allAccumulatedMistakeQuestions.length > 0 && !closingSession;
 
   const finishPayload = useMemo(
     () => ({
@@ -226,6 +235,20 @@ export default function TestInterface({
     if (mistakeReview) {
       const currentDetail = activeAnswerDetails[currentIndex];
       if (!currentDetail) return;
+
+      if (mistakeReview.kind === 'all') {
+        if (currentIndex < mistakeReview.questions.length - 1) {
+          const nextIndex = currentIndex + 1;
+          setCurrentIndex(nextIndex);
+          setShowExplanation(false);
+          setManualExplanationOpen(false);
+          setQuestionStartAt(Date.now());
+        } else {
+          requestFinish();
+        }
+        return;
+      }
+
       const currentReviewQuestion = mistakeReview.questions[currentIndex];
       if (currentReviewQuestion) {
         setResolvedMistakeQuestionIds((ids) => {
@@ -296,10 +319,27 @@ export default function TestInterface({
   const startMistakeReview = () => {
     if (!canStartMistakeReview) return;
     setMistakeReview({
+      kind: 'pending',
       questions: accumulatedMistakeQuestions,
       returnIndex: currentIndex,
       selectedAnswers: new Array(accumulatedMistakeQuestions.length).fill(null),
       answerDetails: new Array(accumulatedMistakeQuestions.length).fill(null),
+    });
+    setCurrentIndex(0);
+    setShowExplanation(false);
+    setManualExplanationOpen(false);
+    setQuestionStartAt(Date.now());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startFullMistakeReview = () => {
+    if (!canStartFullMistakeReview) return;
+    setMistakeReview({
+      kind: 'all',
+      questions: allAccumulatedMistakeQuestions,
+      returnIndex: currentIndex,
+      selectedAnswers: new Array(allAccumulatedMistakeQuestions.length).fill(null),
+      answerDetails: new Array(allAccumulatedMistakeQuestions.length).fill(null),
     });
     setCurrentIndex(0);
     setShowExplanation(false);
@@ -356,7 +396,9 @@ export default function TestInterface({
                     <span>{score}/{activeQuestions.length}</span>
                     {isMistakeReview ? (
                       <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                        {isBasque ? 'Akatsak' : 'Fallos'}
+                        {mistakeReview?.kind === 'all'
+                          ? isBasque ? 'Akats guztiak' : 'Todos los fallos'
+                          : isBasque ? 'Akatsak' : 'Fallos pendientes'}
                       </span>
                     ) : null}
                   </div>
@@ -395,18 +437,32 @@ export default function TestInterface({
                 style={{ width: `${progress}%` }}
               />
             </div>
-            {canStartMistakeReview ? (
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={startMistakeReview}
-                  className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 transition-all hover:bg-amber-100 sm:px-4"
-                >
-                  <RotateCcw size={14} />
-                  {isBasque
-                    ? `Orain arteko ${accumulatedMistakeQuestions.length} akatsak berrikusi`
-                    : `Repasar ${accumulatedMistakeQuestions.length} fallos acumulados`}
-                </button>
+            {canStartMistakeReview || canStartFullMistakeReview ? (
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                {canStartMistakeReview ? (
+                  <button
+                    type="button"
+                    onClick={startMistakeReview}
+                    className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 transition-all hover:bg-amber-100 sm:px-4"
+                  >
+                    <RotateCcw size={14} />
+                    {isBasque
+                      ? `${accumulatedMistakeQuestions.length} akats pendiente berrikusi`
+                      : `Repasar ${accumulatedMistakeQuestions.length} fallos pendientes`}
+                  </button>
+                ) : null}
+                {canStartFullMistakeReview ? (
+                  <button
+                    type="button"
+                    onClick={startFullMistakeReview}
+                    className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-800 transition-all hover:bg-indigo-100 sm:px-4"
+                  >
+                    <RotateCcw size={14} />
+                    {isBasque
+                      ? `${allAccumulatedMistakeQuestions.length} akats guztiak berriro`
+                      : `Repasar siempre ${allAccumulatedMistakeQuestions.length} fallos`}
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -706,7 +762,9 @@ export default function TestInterface({
                 <>
                   <span>
                     {isMistakeReview
-                      ? isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
+                      ? mistakeReview?.kind === 'all' && currentIndex === activeQuestions.length - 1
+                        ? isBasque ? 'Repasoa amaitu' : 'Terminar repaso'
+                        : isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
                       : currentIndex === activeQuestions.length - 1
                         ? isBasque ? 'Amaitu' : 'Finalizar'
                         : isBasque ? 'Hurrengoa' : 'Siguiente'}
@@ -737,7 +795,9 @@ export default function TestInterface({
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-indigo-500/20 transition-all active:scale-[0.98]"
                 >
                   {isMistakeReview
-                    ? isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
+                    ? mistakeReview?.kind === 'all' && currentIndex === activeQuestions.length - 1
+                      ? isBasque ? 'Repasoa amaitu' : 'Terminar repaso'
+                      : isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
                     : currentIndex === activeQuestions.length - 1
                       ? isBasque ? 'Amaitu test' : 'Finalizar test'
                       : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
