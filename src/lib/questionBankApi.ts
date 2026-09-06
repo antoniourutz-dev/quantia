@@ -41,6 +41,7 @@ type QuestionBankTarget = {
 const DEFAULT_CURRICULUM = 'osakidetza_admin';
 const GENERAL_LAWS_CURRICULUM = 'leyes_generales';
 const GENERAL_LAWS_OPPOSITION_ID = '5a8841a0-5d52-4302-b17d-d5594bb370b2';
+const GOI_TEKNIKARIA_EXAM_SOURCE_KEY = 'goi-mailako-azterketa-2026';
 
 const questionBankIndexCache = new Map<string, Promise<QuestionBankCacheRow[]>>();
 const questionBankDetailCache = new Map<string, Question>();
@@ -83,6 +84,11 @@ const SHARED_QUESTION_SOURCES: Record<
 
 const canonicalizeCurriculumId = (value: string) =>
   String(value).trim().toLowerCase().replace(/_/g, '-');
+
+const getActiveExamSourceKey = (curriculum: string) =>
+  canonicalizeCurriculumId(curriculum) === 'goi-teknikaria'
+    ? GOI_TEKNIKARIA_EXAM_SOURCE_KEY
+    : null;
 
 const getCurriculumAliasGroup = (value: string) => {
   const normalized = canonicalizeCurriculumId(value);
@@ -332,6 +338,10 @@ const queryQuestionBankRowsForTarget = async (
     .from('preguntas')
     .select(QUESTION_BANK_LIST_SELECT)
     .in('curriculum', target.candidates);
+  const activeExamSourceKey = getActiveExamSourceKey(target.curriculum);
+  if (activeExamSourceKey) {
+    query = query.eq('exam_source_key', activeExamSourceKey);
+  }
   const normalizedFilters = normalizePracticeFilters(filters);
   const explicitEmptyBlockSelection =
     Array.isArray(filters?.generalLawBlockIds) && filters.generalLawBlockIds.length === 0;
@@ -513,3 +523,4 @@ export const getQuestionBankQuestionDetail = async (params: {
   questionBankDetailCache.set(questionId, question);
   return question;
 };
+

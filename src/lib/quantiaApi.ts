@@ -97,6 +97,7 @@ const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
 export const GENERAL_LAWS_CURRICULUM = 'leyes_generales';
 export const FALLBACK_GENERAL_LAW_39_2015_ID = '34736bf6-7cda-43da-8610-5aa5635af2cb';
 const GENERAL_LAWS_OPPOSITION_ID = '5a8841a0-5d52-4302-b17d-d5594bb370b2';
+const GOI_TEKNIKARIA_EXAM_SOURCE_KEY = 'goi-mailako-azterketa-2026';
 
 const CURRICULUM_RPC_NAMES: string[] = [];
 
@@ -268,6 +269,13 @@ const getCurriculumAliasCandidates = (value: string) => {
     );
   });
 };
+
+const getActiveExamSourceKey = (curriculum: string) =>
+  canonicalizeCurriculumId(curriculum) === 'goi-teknikaria'
+    ? GOI_TEKNIKARIA_EXAM_SOURCE_KEY
+    : null;
+
+const shouldUseExamSourceScopedTables = (curriculum: string) => Boolean(getActiveExamSourceKey(curriculum));
 
 const getSharedCurriculumSources = (
   curriculum: string,
@@ -720,6 +728,10 @@ const queryQuestionBankRowsForTarget = async (
     .from('preguntas')
     .select(QUESTION_BANK_LIST_SELECT)
     .in('curriculum', target.candidates);
+  const activeExamSourceKey = getActiveExamSourceKey(target.curriculum);
+  if (activeExamSourceKey) {
+    query = query.eq('exam_source_key', activeExamSourceKey);
+  }
   const normalizedFilters = normalizePracticeFilters(filters);
   const explicitEmptyBlockSelection =
     Array.isArray(filters?.generalLawBlockIds) && filters.generalLawBlockIds.length === 0;
@@ -1989,6 +2001,10 @@ const queryQuestionsFromSource = async (
   };
   const applyQuestionFilters = <T,>(query: T): T => {
     let nextQuery = query as unknown as FilterableQuestionQuery;
+    const activeExamSourceKey = getActiveExamSourceKey(curriculum);
+    if (activeExamSourceKey) {
+      nextQuery = nextQuery.eq('exam_source_key', activeExamSourceKey);
+    }
     if (normalizedFilters?.generalLawId) {
       nextQuery = nextQuery.eq('general_law_id', normalizedFilters.generalLawId);
     }
@@ -2269,7 +2285,7 @@ async function getRandomPracticeBatchPreview(
   curriculum: string,
   questionScope: PracticeQuestionScopeFilter = 'all',
 ) {
-  if (hasSharedQuestionSources(curriculum, questionScope)) {
+  if (hasSharedQuestionSources(curriculum, questionScope) || shouldUseExamSourceScopedTables(curriculum)) {
     const preview = await getQuestionsFromTables({
       curriculum,
       limit: 1,
@@ -2520,7 +2536,7 @@ export const getPracticeCatalogSummary = async (
     return { totalQuestions: 0 };
   };
 
-  if (hasSharedQuestionSources(curriculum, questionScope)) {
+  if (hasSharedQuestionSources(curriculum, questionScope) || shouldUseExamSourceScopedTables(curriculum)) {
     return loadFallbackSummary();
   }
 
@@ -2581,7 +2597,11 @@ export const getRandomPracticeBatch = async (
   questionScope: PracticeQuestionScopeFilter = 'all',
   filters?: PracticeFilters | null,
 ) => {
-  if (hasGeneralLawScopedFilters(filters) || hasSharedQuestionSources(curriculum, questionScope)) {
+  if (
+    hasGeneralLawScopedFilters(filters) ||
+    hasSharedQuestionSources(curriculum, questionScope) ||
+    shouldUseExamSourceScopedTables(curriculum)
+  ) {
     return getQuestionsFromTables({
       curriculum,
       limit: batchSize,
@@ -2803,7 +2823,7 @@ export const getWeakPracticeBatch = async (
   questionScope: PracticeQuestionScopeFilter = 'all',
   filters?: PracticeFilters | null,
 ) => {
-  if (hasGeneralLawScopedFilters(filters)) {
+  if (hasGeneralLawScopedFilters(filters) || shouldUseExamSourceScopedTables(curriculum)) {
     return getQuestionsFromTables({
       curriculum,
       limit: batchSize,
@@ -3995,3 +4015,4 @@ export const computeSharedCommonOverride = async (curriculum: string): Promise<S
 export const signOut = async () => {
   await supabase.auth.signOut();
 };
+

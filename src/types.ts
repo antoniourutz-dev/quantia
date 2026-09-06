@@ -413,7 +413,7 @@ export const formatSyllabusLabel = (
   },
 ) => {
   if (isGoiTeknikariaCurriculum(options?.curriculum)) {
-    return syllabus === 'common' ? 'Azterketa 2018' : 'Azterketa 2022';
+    return syllabus === 'common' ? 'Azterketa 2.026 - Orokorra' : 'Azterketa 2.026 - Espezifikoa';
   }
 
   const variant = options?.variant ?? 'default';
