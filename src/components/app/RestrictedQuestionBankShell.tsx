@@ -110,7 +110,7 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
           <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="font-black tracking-tighter text-xl">kuantia</div>
-              <div className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Banco de preguntas</div>
+              <div className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">{curriculumLocale === 'eu' ? 'Galdera-bankua' : 'Banco de preguntas'}</div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <select
@@ -137,7 +137,7 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
                 className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all"
               >
                 <LogOut className="h-4 w-4" />
-                Cerrar sesión
+                {curriculumLocale === 'eu' ? 'Saioa itxi' : 'Cerrar sesión'}
               </button>
             </div>
           </div>

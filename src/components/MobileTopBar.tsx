@@ -144,7 +144,7 @@ export default function MobileTopBar({
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
                 {t('Selecciona oposicion', 'Hautatu oposizioa')}
               </div>
-              <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Temarios', 'Temarioak')}</div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Temarios', 'Gai-zerrendak')}</div>
               <div className="mt-4">
                 <input
                   value={query}

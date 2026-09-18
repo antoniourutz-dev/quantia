@@ -638,7 +638,7 @@ export default function TestSelection({
                 ) : (
                   <div className="space-y-3">
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                      {isBasque ? 'Temarioa' : 'Temario'}
+                      {isBasque ? 'Gai-zerrenda' : 'Temario'}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <button

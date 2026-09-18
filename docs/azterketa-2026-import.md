@@ -1,6 +1,6 @@
-# Importacion de Azterketa 2.026
+# Importacion de Azterketa 2026
 
-Objetivo: cargar en `public.preguntas` el examen `Azterketa 2.026` para Goi Mailako / Goi-teknikaria.
+Objetivo: cargar en `public.preguntas` el examen `Azterketa 2026` para Goi Mailako / Goi-teknikaria.
 
 Datos confirmados en Supabase:
 
@@ -38,8 +38,8 @@ Ejemplo:
 
 ```csv
 numero,syllabus,pregunta,opcion_a,opcion_b,opcion_c,opcion_d,respuesta_correcta,temario_pregunta,ley_referencia,language_code
-1,common,"Galderaren enuntziatua","A aukera","B aukera","C aukera","D aukera",a,"Azterketa 2.026 - Temario comun","",eu
-1,specific,"Galderaren enuntziatua","A aukera","B aukera","C aukera","D aukera",c,"Azterketa 2.026 - Temario especifico","",eu
+1,common,"Galderaren enuntziatua","A aukera","B aukera","C aukera","D aukera",a,"Azterketa 2026 - Temario comun","",eu
+1,specific,"Galderaren enuntziatua","A aukera","B aukera","C aukera","D aukera",c,"Azterketa 2026 - Temario especifico","",eu
 ```
 
 ## Validacion

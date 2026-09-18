@@ -480,7 +480,7 @@ export default function AdminQuestions({
           </div>
 
           <div className="md:col-span-2">
-            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Temario', 'Temarioa')}</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Temario', 'Gai-zerrenda')}</div>
             <select
               value={filterScope}
               onChange={(e) => setFilterScope(e.target.value as PracticeQuestionScopeFilter)}
@@ -757,7 +757,7 @@ export default function AdminQuestions({
                 />
               </div>
               <div className="space-y-2">
-                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Temario', 'Temarioa')}</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Temario', 'Gai-zerrenda')}</div>
                 <select
                   value={draft.syllabus}
                   onChange={(e) => setDraft((prev) => ({ ...prev, syllabus: e.target.value as SyllabusType }))}

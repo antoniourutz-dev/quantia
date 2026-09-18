@@ -336,7 +336,7 @@ export default function StudyQuestionBank({
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <div className="space-y-3">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {t('Temario', 'Temarioa')}
+              {t('Temario', 'Gai-zerrenda')}
             </div>
             <div className="flex flex-wrap gap-2">
               {scopeLabels.map((value) => (
@@ -418,7 +418,7 @@ export default function StudyQuestionBank({
                 <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold leading-relaxed">
                   {t(
                     'No hay preguntas disponibles con este filtro. Prueba cambiando de temario o ajustando la búsqueda.',
-                    'Ez dago galderarik iragazki honekin. Saiatu temarioa aldatzen edo bilaketa doitzen.',
+                    'Ez dago galderarik iragazki honekin. Saiatu gai-zerrenda aldatzen edo bilaketa doitzen.',
                   )}
                 </div>
               ) : (

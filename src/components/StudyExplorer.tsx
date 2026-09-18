@@ -181,7 +181,7 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
           </h2>
           <p className="mt-2 text-slate-500 text-lg font-medium max-w-2xl">
             {isBasque
-              ? 'Aukeratu temarioa eta gaia. Joan galderaz galdera, erantzun zuzena eta azalpena ikusiz.'
+              ? 'Aukeratu gai-zerrenda eta gaia. Joan galderaz galdera, erantzun zuzena eta azalpena ikusiz.'
               : 'Asimila el temario de forma activa. Una pregunta a la vez, con subrayados y anotaciones persistentes.'}
           </p>
         </div>
@@ -250,7 +250,7 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
              <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-300">
                 <div className="space-y-3">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                    {isBasque ? 'Temarioa' : 'Temario'}
+                    {isBasque ? 'Gai-zerrenda' : 'Temario'}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {(['all', 'common', 'specific'] as StudyScope[]).map((value) => (
@@ -411,9 +411,9 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
             <div className="flex gap-4">
                <div className="w-10 h-10 shrink-0 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">1</div>
                <div>
-                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">Sin presión de tiempo</h4>
+                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">{isBasque ? 'Denbora-presiorik gabe' : 'Sin presión de tiempo'}</h4>
                  <p className="text-sm font-medium text-slate-500 leading-relaxed">
-                   Diseñado no para acertar rápido, sino para asimilar el conocimiento profundo leyendo pregunta, opciones y explicación.
+                   {isBasque ? 'Ez dago azkar asmatzeko diseinatuta, galdera, aukerak eta azalpena irakurriz ezagutza sakon barneratzeko baizik.' : 'Diseñado no para acertar rápido, sino para asimilar el conocimiento profundo leyendo pregunta, opciones y explicación.'}
                  </p>
                </div>
             </div>
@@ -421,9 +421,9 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
             <div className="flex gap-4">
                <div className="w-10 h-10 shrink-0 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-bold">2</div>
                <div>
-                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">Marcador semántico personal</h4>
+                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">{isBasque ? 'Markatzaile semantiko pertsonala' : 'Marcador semántico personal'}</h4>
                  <p className="text-sm font-medium text-slate-500 leading-relaxed">
-                   Subraya leyes en azul, plazos en naranja, excepciones en rojo y conceptos clave en verde. Todo se queda guardado para el futuro.
+                   {isBasque ? 'Nabarmendu legeak urdinez, epeak laranjaz, salbuespenak gorriz eta funtsezko kontzeptuak berdez. Dena gordeta geratuko da etorkizunerako.' : 'Subraya leyes en azul, plazos en naranja, excepciones en rojo y conceptos clave en verde. Todo se queda guardado para el futuro.'}
                  </p>
                </div>
             </div>
@@ -431,9 +431,9 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
             <div className="flex gap-4">
                <div className="w-10 h-10 shrink-0 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">3</div>
                <div>
-                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">Anotaciones propias (Novedad)</h4>
+                 <h4 className="font-bold text-slate-800 text-[15px] mb-1">{isBasque ? 'Ohar pertsonalak (Berria)' : 'Anotaciones propias (Novedad)'}</h4>
                  <p className="text-sm font-medium text-slate-500 leading-relaxed">
-                   Añade reglas mnemotécnicas, dudas o reflexiones a cada pregunta en un espacio privado que viaja contigo.
+                   {isBasque ? 'Gehitu arau mnemoteknikoak, zalantzak edo hausnarketak galdera bakoitzean, zurekin doan eremu pribatu batean.' : 'Añade reglas mnemotécnicas, dudas o reflexiones a cada pregunta en un espacio privado que viaja contigo.'}
                  </p>
                </div>
             </div>
@@ -443,7 +443,7 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
                  <Tag size={18} />
                </div>
                <p className="text-[13px] font-bold text-indigo-900/80 leading-relaxed">
-                 En modo Estudio no se penaliza ni se alteran tus métricas de Oposik. Es gimnasio puro.
+                 {isBasque ? 'Ikasketa moduan ez dago zigorrik, eta Oposik-eko zure metrikak ez dira aldatzen. Entrenamendu hutsa da.' : 'En modo Estudio no se penaliza ni se alteran tus métricas de Oposik. Es gimnasio puro.'}
                </p>
             </div>
           </div>

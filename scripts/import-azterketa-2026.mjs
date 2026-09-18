@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const EXAM_SOURCE_KEY = 'goi-mailako-azterketa-2026';
-const EXAM_SOURCE_TITLE = 'Azterketa 2.026';
+const EXAM_SOURCE_TITLE = 'Azterketa 2026';
 const OPPOSITION_ID = 'f0c0d3cd-8ca3-4ed4-ac0a-2caab180a77b';
 const CURRICULUM = 'goi_teknikaria';
 const CURRICULUM_KEY = 'goi_teknikaria';
