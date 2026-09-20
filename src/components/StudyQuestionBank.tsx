@@ -18,7 +18,8 @@ import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type StudyScope = PracticeQuestionScopeFilter;
 
-const PAGE_SIZE = 60;
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [50, 100] as const;
 
 const toAnswerLabel = (value: QuestionBankListItem['correctAnswer']) => value.toUpperCase();
 
@@ -99,6 +100,7 @@ export default function StudyQuestionBank({
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
   const [explanationOpen, setExplanationOpen] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [searchInput, setSearchInput] = useState('');
   const [hasNextPage, setHasNextPage] = useState(false);
 
@@ -161,7 +163,7 @@ export default function StudyQuestionBank({
       curriculum,
       questionScope: scope,
       page: pageIndex,
-      pageSize: PAGE_SIZE,
+      pageSize,
       search: searchTerm,
       filters: questionFilters,
     })
@@ -184,7 +186,7 @@ export default function StudyQuestionBank({
     return () => {
       cancelled = true;
     };
-  }, [curriculum, listErrorMessage, pageIndex, questionFilters, scope, searchTerm]);
+  }, [curriculum, listErrorMessage, pageIndex, pageSize, questionFilters, scope, searchTerm]);
 
   useEffect(() => {
     if (pageItems.length === 0) {
@@ -258,17 +260,17 @@ export default function StudyQuestionBank({
     if (listLoading) return t('Cargando página...', 'Orria kargatzen...');
     if (pageItems.length === 0) return null;
 
-    const from = pageIndex * PAGE_SIZE + 1;
+    const from = pageIndex * pageSize + 1;
     const to = from + pageItems.length - 1;
 
-    return `${t('Página', 'Orria')} ${pageIndex + 1} · ${from}-${to} · ${PAGE_SIZE} ${t('preguntas por página', 'galdera orriko')} · ${
+    return `${t('Página', 'Orria')} ${pageIndex + 1} · ${from}-${to} · ${pageSize} ${t('preguntas por página', 'galdera orriko')} · ${
       hasNextPage ? t('Hay más páginas', 'Orrialde gehiago daude') : t('Última página', 'Azken orria')
     }`;
-  }, [hasNextPage, listLoading, pageIndex, pageItems.length, t]);
+  }, [hasNextPage, listLoading, pageIndex, pageItems.length, pageSize, t]);
 
   const getDisplayNumber = (question: QuestionBankListItem, indexInPage: number) => {
     if (typeof question.number === 'number' && Number.isFinite(question.number)) return question.number;
-    return pageIndex * PAGE_SIZE + indexInPage + 1;
+    return pageIndex * pageSize + indexInPage + 1;
   };
 
   return (
@@ -367,7 +369,23 @@ export default function StudyQuestionBank({
               />
             </div>
             <div className="flex flex-col items-start sm:items-end gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-500">
+                  <span>{t('Por página', 'Orriko')}</span>
+                  <select
+                    value={pageSize}
+                    onChange={(event) => {
+                      setPageSize(Number(event.target.value));
+                      setPageIndex(0);
+                    }}
+                    className="bg-transparent text-slate-700 outline-none"
+                    aria-label={t('Preguntas por página', 'Galderak orriko')}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
                 <button
                   type="button"
                   onClick={() => setPageIndex((prev) => Math.max(0, prev - 1))}
