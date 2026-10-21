@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>kuantia</title>
+    <script>
+      (function () {
+        var KEY = 'quantia.boot.recover.v2';
+        function shouldRecover(msg) {
+          msg = String(msg || '').toLowerCase();
+          return (
+            msg.indexOf('chunkloaderror') !== -1 ||
+            msg.indexOf('loading chunk') !== -1 ||
+            msg.indexOf('failed to fetch dynamically imported module') !== -1 ||
+            msg.indexOf('importing a module script failed') !== -1 ||
+            msg.indexOf('boot-timeout') !== -1
+          );
+        }
+        function recover(reason) {
+          try {
+            if (!shouldRecover(reason)) return;
+            var now = Date.now();
+            var last = Number(sessionStorage.getItem(KEY) || 0);
+            if (Number.isFinite(last) && now - last < 30000) return;
+            sessionStorage.setItem(KEY, String(now));
+          } catch (e) {}
+          try {
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                regs.forEach(function (r) {
+                  try {
+                    r.unregister();
+                  } catch (e) {}
+                });
+              });
+            }
+            if ('caches' in window) {
+              caches.keys().then(function (keys) {
+                keys.forEach(function (k) {
+                  try {
+                    caches.delete(k);
+                  } catch (e) {}
+                });
+              });
+            }
+          } catch (e) {}
+          try {
+            location.reload();
+          } catch (e) {}
+        }
+        window.addEventListener(
+          'error',
+          function (e) {
+            recover((e && (e.error && e.error.message)) || (e && e.message) || 'error');
+          },
+          true
+        );
+        window.addEventListener('unhandledrejection', function (e) {
+          recover((e && e.reason && e.reason.message) || (e && e.reason) || 'unhandledrejection');
+        });
+        setTimeout(function () {
+          try {
+            if (window.__QUANTIA_BOOT_RENDERED__) return;
+            recover('boot-timeout');
+          } catch (e) {}
+        }, 8000);
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-iZAZd_OK.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-CDApkL9M.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-supabase-XETuKJ8-.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-JvH4RlBx.css">
+  <link rel="manifest" href="/manifest.webmanifest"></head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
