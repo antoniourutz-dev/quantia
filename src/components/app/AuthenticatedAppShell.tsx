@@ -876,10 +876,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       void refreshDashboard();
       return;
     }
-    if (!isAdminEmail && currentView === 'stats' && !bundle) {
+    if (!isAdminEmail && currentView === 'stats') {
       void refreshDashboard();
     }
-  }, [currentView, isAdminEmail, refreshDashboard, session, bundle]);
+  }, [currentView, isAdminEmail, refreshDashboard, session]);
 
   useEffect(() => {
     if (currentView !== 'dashboard') return;
@@ -1933,7 +1933,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               },
             });
             await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
-            void refreshDashboardSilently();
+            await refreshDashboardSilently();
           } catch (error) {
             console.error('Session sync failed:', error);
             setDataError(
@@ -3286,6 +3286,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               supportMode={activeTestSupport?.supportMode ?? null}
               studyData={activeTestSupport?.studyData ?? null}
               allowInSessionMistakeReview={activeSession.mode === 'custom' && activeQuestions.length > 40}
+              activityContext={{ userId: session.user.id, curriculum, sessionId: activeSession.id }}
               onFinish={handleFinishTest}
               isFinishing={syncingSession}
               onCancel={() => {
@@ -3303,6 +3304,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               questions={activeStudyQuestions}
               mode={activeStudySession.mode}
               curriculum={curriculum}
+              activityContext={{ userId: session.user.id, curriculum, sessionId: activeStudySession.id }}
               onFinish={() => {
                 setActiveStudySession(null);
                 setCurrentView('study');

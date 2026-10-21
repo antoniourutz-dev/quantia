@@ -15,6 +15,8 @@ import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from 
 import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail } from '../lib/quantiaApi';
 import EditorialExplanation from './EditorialExplanation';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
+import { createId } from '../lib/id';
+import { recordQuestionView } from '../lib/questionActivity';
 
 type StudyScope = PracticeQuestionScopeFilter;
 
@@ -108,6 +110,8 @@ export default function StudyQuestionBank({
   const searchTerm = deferredSearchInput.trim();
   const searchKey = searchTerm.toLowerCase();
   const detailCacheRef = useRef(new Map<string, Question>());
+  const activitySessionIdRef = useRef(`question-bank-${createId()}`);
+  const viewOccurrencesRef = useRef(new Map<string, number>());
   const questionFilters = useMemo(
     () =>
       isLawSelectionCurriculum(curriculum) && generalLaw
@@ -152,6 +156,21 @@ export default function StudyQuestionBank({
     setHasNextPage(false);
     setError(null);
   }, [curriculum, scope, searchKey]);
+
+  useEffect(() => {
+    if (!userId || !selectedQuestion) return;
+    const occurrence = (viewOccurrencesRef.current.get(selectedQuestion.id) ?? 0) + 1;
+    viewOccurrencesRef.current.set(selectedQuestion.id, occurrence);
+    recordQuestionView({
+      userId,
+      curriculum,
+      sessionId: activitySessionIdRef.current,
+      eventId: `${activitySessionIdRef.current}:bank:${selectedQuestion.id}:${occurrence}`,
+      surface: 'question-bank',
+      mode: 'question-bank',
+      question: selectedQuestion,
+    });
+  }, [curriculum, selectedQuestion, userId]);
 
   useEffect(() => {
     let cancelled = false;

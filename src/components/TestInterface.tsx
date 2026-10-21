@@ -16,6 +16,7 @@ import { useAppLocale } from '../lib/locale';
 import type { StudyQuestionData } from '../lib/quantiaApi';
 import HighlightableText from './HighlightableText';
 import EditorialExplanation from './EditorialExplanation';
+import { recordQuestionAnswer, recordQuestionView } from '../lib/questionActivity';
 
 interface TestInterfaceProps {
   questions: Question[];
@@ -34,6 +35,7 @@ interface TestInterfaceProps {
   onFinish: (payload: FinishedTestPayload) => void | Promise<void>;
   onCancel: () => void;
   isFinishing?: boolean;
+  activityContext?: { userId: string; curriculum: string; sessionId: string } | null;
 }
 
 export default function TestInterface({
@@ -47,6 +49,7 @@ export default function TestInterface({
   onFinish,
   onCancel,
   isFinishing = false,
+  activityContext = null,
 }: TestInterfaceProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -74,6 +77,8 @@ export default function TestInterface({
   const [resolvedMistakeQuestionIds, setResolvedMistakeQuestionIds] = useState<string[]>([]);
   const finishStartedRef = useRef(false);
   const wasFinishingRef = useRef(false);
+  const viewOccurrencesRef = useRef(new Map<string, number>());
+  const currentViewEventIdRef = useRef<string | null>(null);
 
   const activeQuestions = mistakeReview?.questions ?? questions;
   const activeSelectedAnswers = mistakeReview?.selectedAnswers ?? selectedAnswers;
@@ -87,6 +92,9 @@ export default function TestInterface({
   const closingSession = finishRequested || isFinishing;
   const showMarks = Boolean(supportMode?.showMarks);
   const showNotes = Boolean(supportMode?.showNotes);
+  const activityUserId = activityContext?.userId ?? null;
+  const activityCurriculum = activityContext?.curriculum ?? null;
+  const activitySessionId = activityContext?.sessionId ?? null;
 
   const mainScore = useMemo(
     () => answerDetails.filter((answer) => answer?.isCorrect).length,
@@ -162,6 +170,25 @@ export default function TestInterface({
     setNoteOpen(false);
   }, [currentQuestion?.id]);
 
+  useEffect(() => {
+    if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion) return;
+    const phase = isMistakeReview ? 'mistake-review' : 'test';
+    const occurrenceKey = `${phase}:${currentQuestion.id}`;
+    const occurrence = (viewOccurrencesRef.current.get(occurrenceKey) ?? 0) + 1;
+    viewOccurrencesRef.current.set(occurrenceKey, occurrence);
+    const eventId = `${activitySessionId}:${occurrenceKey}:${occurrence}`;
+    currentViewEventIdRef.current = eventId;
+    recordQuestionView({
+      userId: activityUserId,
+      curriculum: activityCurriculum,
+      sessionId: activitySessionId,
+      eventId,
+      surface: phase,
+      mode,
+      question: currentQuestion,
+    });
+  }, [activityCurriculum, activitySessionId, activityUserId, currentIndex, currentQuestion, isMistakeReview]);
+
   const requestFinish = useCallback(() => {
     if (mistakeReview) {
       setCurrentIndex(mistakeReview.returnIndex);
@@ -206,6 +233,14 @@ export default function TestInterface({
       timeToFirstSelectionMs: previousDetail?.timeToFirstSelectionMs ?? responseTimeMs,
       changedAnswer: previousDetail ? previousDetail.selectedOption !== optionId : false,
     };
+    if (activityUserId && activityCurriculum && currentViewEventIdRef.current) {
+      recordQuestionAnswer({
+        userId: activityUserId,
+        curriculum: activityCurriculum,
+        eventId: currentViewEventIdRef.current,
+        isCorrect: detail.isCorrect,
+      });
+    }
 
     const nextSelected = [...activeSelectedAnswers];
     nextSelected[currentIndex] = optionId;

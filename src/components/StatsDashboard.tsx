@@ -59,10 +59,24 @@ export default function StatsDashboard({
   const isBasque = locale === 'eu';
   const t = (es: string, eu: string) => (isBasque ? eu : es);
   const [mobileView, setMobileView] = useState<'summary' | 'detail'>('summary');
+  const [blockScope, setBlockScope] = useState<'common' | 'specific'>('common');
+  const [selectedBlockStart, setSelectedBlockStart] = useState<number | null>(null);
 
   const learningV2 = bundle?.practiceState.learningDashboardV2 ?? null;
   const pressureV2 = bundle?.practiceState.pressureInsightsV2 ?? null;
   const weakCategories = bundle?.weakCategories ?? [];
+  const questionBlocks = bundle?.questionBlocks ?? [];
+  const visibleQuestionBlocks = useMemo(
+    () => questionBlocks.filter((block) => block.scope === blockScope),
+    [blockScope, questionBlocks],
+  );
+  const selectedQuestionBlock = useMemo(
+    () =>
+      visibleQuestionBlocks.find((block) => block.start === selectedBlockStart) ??
+      visibleQuestionBlocks[0] ??
+      null,
+    [selectedBlockStart, visibleQuestionBlocks],
+  );
 
   const readiness = Math.round((learningV2?.examReadinessRate ?? 0) * 100);
   const readinessConfidence = learningV2?.examReadinessConfidenceFlag ?? 'low';
@@ -847,6 +861,118 @@ export default function StatsDashboard({
         <div className="mt-4 [@media(max-height:800px)]:mt-3 rounded-3xl border border-slate-100 bg-slate-50 px-6 py-5 [@media(max-height:800px)]:px-5 [@media(max-height:800px)]:py-4 text-sm font-bold text-slate-700 leading-relaxed">
           {trendNarrative}
         </div>
+      </div>
+
+      <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2.5rem] sm:p-8">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+              {t('Cobertura real del examen', 'Azterketaren benetako estaldura')}
+            </div>
+            <h3 className="mt-2 text-2xl font-black text-slate-900">
+              {t('Detalle por pregunta en bloques de 10', 'Galderaz galderako xehetasuna, 10eko bloketan')}
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-slate-500">
+              {t(
+                'Elige la parte del examen y después una decena. Cada aparición de una pregunta cuenta como vista, aunque no llegues a responderla.',
+                'Aukeratu azterketaren zatia eta gero hamar galderako blokea. Behean galdera bakoitza zenbat aldiz erantzun duzun ikusiko duzu, asmatze eta akatsekin.',
+              )}
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
+              {(['common', 'specific'] as const).map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => {
+                    setBlockScope(scope);
+                    setSelectedBlockStart(null);
+                  }}
+                  className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all ${
+                    blockScope === scope ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white'
+                  }`}
+                >
+                  {scope === 'common' ? t('Comun', 'Orokorra') : t('Especifico', 'Espezifikoa')}
+                </button>
+              ))}
+            </div>
+            <label className="flex min-w-[220px] flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                {t('Bloque de preguntas', 'Galdera blokea')}
+              </span>
+              <select
+                value={selectedQuestionBlock?.start ?? ''}
+                onChange={(event) => setSelectedBlockStart(Number(event.target.value))}
+                disabled={visibleQuestionBlocks.length === 0}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none focus:border-indigo-400 disabled:bg-slate-100"
+              >
+                {visibleQuestionBlocks.map((block) => (
+                  <option key={`${block.scope}:${block.start}`} value={block.start}>
+                    {t('Preguntas', 'Galderak')} {block.start}–{block.end}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {!selectedQuestionBlock ? (
+          <div className="mt-6 rounded-3xl border border-slate-100 bg-slate-50 px-6 py-5 text-sm font-bold text-slate-600">
+            {t('No hay preguntas numeradas para este bloque del examen.', 'Ez dago zenbakitutako galderarik azterketaren atal honetan.')}
+          </div>
+        ) : (
+          <div className="mt-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {[
+                { label: t('Preguntas vistas', 'Ikusitako galderak'), value: `${selectedQuestionBlock.attemptedQuestionCount}/${selectedQuestionBlock.questionCount}` },
+                { label: t('Visualizaciones', 'Ikustaldiak'), value: selectedQuestionBlock.views },
+                { label: t('Intentos', 'Saiakerak'), value: selectedQuestionBlock.attempts },
+                { label: t('Aciertos', 'Asmatzeak'), value: selectedQuestionBlock.correct },
+                { label: t('Errores', 'Akatsak'), value: selectedQuestionBlock.incorrect },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</div>
+                  <div className="mt-1 text-xl font-black text-slate-900">{item.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="max-h-[560px] overflow-auto rounded-3xl border border-slate-200">
+              <div className="min-w-[940px]">
+                <div className="sticky top-0 z-10 grid grid-cols-[0.55fr_2.8fr_repeat(5,0.8fr)] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  <span>#</span>
+                  <span>{t('Pregunta', 'Galdera')}</span>
+                  <span>{t('Veces vista', 'Ikustaldiak')}</span>
+                  <span>{t('Intentos', 'Saiakerak')}</span>
+                  <span>{t('Aciertos', 'Asmatzeak')}</span>
+                  <span>{t('Errores', 'Akatsak')}</span>
+                  <span>{t('Precision', 'Doitasuna')}</span>
+                </div>
+                {selectedQuestionBlock.questions.map((question) => {
+                  const accuracy = question.accuracyRate == null ? null : Math.round(question.accuracyRate * 100);
+                  return (
+                    <div
+                      key={question.id}
+                      className="grid grid-cols-[0.55fr_2.8fr_repeat(5,0.8fr)] gap-3 border-b border-slate-100 px-5 py-4 text-sm last:border-b-0"
+                    >
+                      <div className="font-black text-indigo-600">{question.number}</div>
+                      <div className="line-clamp-2 pr-4 font-bold leading-relaxed text-slate-700" title={question.text}>
+                        {question.text}
+                      </div>
+                      <div className="font-black text-indigo-600">{question.views}</div>
+                      <div className="font-black text-slate-700">{question.attempts}</div>
+                      <div className="font-black text-emerald-600">{question.correct}</div>
+                      <div className="font-black text-rose-600">{question.incorrect}</div>
+                      <div className={`font-black ${accuracy == null ? 'text-slate-300' : accuracy >= 80 ? 'text-emerald-600' : accuracy >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
+                        {accuracy == null ? '—' : `${accuracy}%`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={`${mobileView === 'detail' ? 'grid' : 'hidden'} lg:grid grid-cols-1 xl:grid-cols-3 gap-6 [@media(max-height:800px)]:gap-4`}>

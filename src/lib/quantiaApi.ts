@@ -10,6 +10,12 @@ import {
 } from './questionContracts';
 import { getLocaleForCurriculum, isGoiTeknikariaCurriculum } from './locale';
 import { getQuestionIdsByGeneralLawArticles } from '../repositories/generalLawRepository';
+import { selectQuestionsFromRandomCycle } from './randomQuestionCycle';
+import {
+  buildQuestionBlockPerformance,
+  type QuestionBlockAttempt,
+} from './questionBlockStats';
+import { getQuestionActivity, syncQuestionActivity } from './questionActivity';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -2039,6 +2045,7 @@ const queryQuestionsFromSource = async (
       .from(source.table)
       .select('*')
       .in(field, curriculumCandidates)
+      .order('id', { ascending: true })
       .range(offset, end);
     const { data, error } = await applyQuestionFilters(baseQuery);
 
@@ -2057,6 +2064,7 @@ const queryQuestionsFromSource = async (
   const baseQuery = getSchemaClient(source.schema)
     .from(source.table)
     .select('*')
+    .order('id', { ascending: true })
     .range(offset, end);
   const { data, error } = await applyQuestionFilters(baseQuery);
 
@@ -2261,6 +2269,46 @@ const getAttemptedQuestionRefsFromSessions = async (
 
   if (lastError) return null;
   return null;
+};
+
+const getCloudSeenQuestionIds = async (curriculum: string): Promise<Set<string>> => {
+  const { data, error } = await supabase.rpc('get_my_seen_question_ids', {
+    p_curriculum: curriculum,
+  });
+  if (error) return new Set<string>();
+  return new Set(
+    ((data ?? []) as Array<Record<string, unknown>>)
+      .map((row) => readText(row.question_id))
+      .filter((id): id is string => Boolean(id)),
+  );
+};
+
+const getQuestionCoverageContext = async (questions: Question[], curriculum: string) => {
+  const session = await getSafeSupabaseSession().catch(() => null);
+  const activityContext = session?.user?.id ? { userId: session.user.id, curriculum } : null;
+  if (activityContext) await syncQuestionActivity(activityContext).catch(() => undefined);
+  const [attemptedRefs, cloudSeenIds] = await Promise.all([
+    getAttemptedQuestionRefsFromSessions(curriculum).catch(() => null),
+    activityContext ? getCloudSeenQuestionIds(curriculum) : Promise.resolve(new Set<string>()),
+  ]);
+  const locallySeenIds = new Set(
+    activityContext ? getQuestionActivity(activityContext).map((event) => event.questionId) : [],
+  );
+  const seenIds = questions.flatMap((question) => {
+    const dedupeKey = buildQuestionContentDedupKey({
+      number: question.number,
+      category: question.category,
+      text: question.text,
+      correctAnswer: question.correctAnswer,
+    });
+    return cloudSeenIds.has(question.id) ||
+      locallySeenIds.has(question.id) ||
+      attemptedRefs?.ids.has(question.id) ||
+      Boolean(dedupeKey && attemptedRefs?.dedupeKeys.has(dedupeKey))
+      ? [question.id]
+      : [];
+  });
+  return { seenIds, userId: session?.user?.id ?? 'anonymous' };
 };
 
 export const getCurriculumCategoryOptions = async (curriculum = DEFAULT_CURRICULUM) => {
@@ -2597,10 +2645,41 @@ export const getRandomPracticeBatch = async (
   questionScope: PracticeQuestionScopeFilter = 'all',
   filters?: PracticeFilters | null,
 ) => {
+  if (shouldUseExamSourceScopedTables(curriculum)) {
+    const snapshot = await getQuestionSnapshotFromTables({
+      curriculum,
+      maxQuestions: 5000,
+      questionScope,
+      filters: filters ?? null,
+    });
+    if (snapshot.length === 0) return [];
+
+    const coverage = await getQuestionCoverageContext(snapshot, curriculum);
+    const normalizedFilters = normalizePracticeFilters(filters);
+    const cycleContext = JSON.stringify({
+      curriculum: canonicalizeCurriculumId(curriculum),
+      questionScope,
+      filters: normalizedFilters
+        ? {
+            ...normalizedFilters,
+            generalLawBlockIds: [...(normalizedFilters.generalLawBlockIds ?? [])].sort(),
+            generalLawArticleIds: [...(normalizedFilters.generalLawArticleIds ?? [])].sort(),
+          }
+        : null,
+      userId: coverage.userId,
+    });
+
+    return selectQuestionsFromRandomCycle({
+      questions: snapshot,
+      count: batchSize,
+      storageKey: `quantia.random-question-cycle.v1:${cycleContext}`,
+      historicallySeenIds: coverage.seenIds,
+    });
+  }
+
   if (
     hasGeneralLawScopedFilters(filters) ||
-    hasSharedQuestionSources(curriculum, questionScope) ||
-    shouldUseExamSourceScopedTables(curriculum)
+    hasSharedQuestionSources(curriculum, questionScope)
   ) {
     return getQuestionsFromTables({
       curriculum,
@@ -2793,7 +2872,7 @@ export const getCustomPracticeBatch = async (params: {
   filters?: PracticeFilters | null;
 }): Promise<Question[]> => {
   const curriculum = String(params.curriculum ?? '').trim() || DEFAULT_CURRICULUM;
-  const limit = Math.max(1, Math.min(200, Math.trunc(params.limit)));
+  const limit = Math.max(1, Math.min(700, Math.trunc(params.limit)));
   const randomize = params.randomize !== false;
   const scope: PracticeQuestionScopeFilter = params.syllabus ?? 'all';
   const topicId = String(params.topicId ?? '').trim() || null;
@@ -2812,6 +2891,21 @@ export const getCustomPracticeBatch = async (params: {
   const filtered = normalizedTarget
     ? snapshot.filter((q) => normalizeCategoryLabel(getCurriculumCategoryGroupLabel(curriculum, q.category)) === normalizedTarget)
     : snapshot;
+
+  if (randomize && shouldUseExamSourceScopedTables(curriculum)) {
+    const coverage = await getQuestionCoverageContext(filtered, curriculum);
+    return selectQuestionsFromRandomCycle({
+      questions: filtered,
+      count: limit,
+      storageKey: `quantia.custom-question-cycle.v1:${JSON.stringify({
+        curriculum: canonicalizeCurriculumId(curriculum),
+        scope,
+        topicId: normalizedTarget,
+        userId: coverage.userId,
+      })}`,
+      historicallySeenIds: coverage.seenIds,
+    });
+  }
 
   const shuffled = randomize ? shuffleQuestions(filtered) : filtered;
   return shuffled.slice(0, limit);
@@ -3861,6 +3955,7 @@ export const loadDashboardPrimaryBundle = async (
     activitySessions,
     questionsCount: inferredQuestionsCount,
     weakCategories: [],
+    questionBlocks: [],
   };
 };
 
@@ -3868,18 +3963,196 @@ export const getRecentSessionsForHome = async (curriculum = DEFAULT_CURRICULUM) 
   return getPracticeSessions(curriculum);
 };
 
+const readAttemptCorrectness = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1 ? true : value === 0 ? false : null;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1') return true;
+  if (normalized === 'false' || normalized === '0') return false;
+  return null;
+};
+
+const getGranularAttemptRowsForCurriculum = async (curriculum: string) => {
+  const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
+    buildCurriculumCandidates(curriculum),
+  );
+  const normalizedCandidates = buildNormalizedCurriculumCandidateSet(curriculumCandidates);
+  const sources: TableSource[] = [
+    { schema: 'app', table: 'question_attempt_events' },
+    { schema: 'app', table: 'practice_attempts' },
+    { schema: 'app', table: 'practice_sessions' },
+  ];
+
+  for (const source of sources) {
+    if (isKnownMissingTableSource(source)) continue;
+    const { data, error } = await getSchemaClient(source.schema)
+      .from(source.table)
+      .select('*')
+      .limit(source.table === 'practice_sessions' ? 1000 : 4000);
+    if (error) {
+      if (isMissingRelationError(error)) {
+        markTableSourceMissing(source);
+        continue;
+      }
+      continue;
+    }
+
+    const sourceRows = ((data ?? []) as Array<Record<string, unknown>>).filter(
+      (row) => !rowHasCurriculumMetadata(row) || rowMatchesCurriculumCandidates(row, normalizedCandidates),
+    );
+    const attempts: Array<Record<string, unknown>> = [];
+    for (const row of sourceRows) {
+      const nestedAttempts = extractAttemptRows(row);
+      if (nestedAttempts.length > 0) {
+        const parentSessionId = readText(
+          row.session_id ?? row.sessionId ?? row.practice_session_id ?? row.practiceSessionId ?? row.id,
+        );
+        attempts.push(...nestedAttempts.map((attempt) => ({ ...attempt, __sessionId: parentSessionId })));
+        continue;
+      }
+      const correctness = readAttemptCorrectness(
+        row.is_correct ?? row.isCorrect ?? row.was_correct ?? row.correct,
+      );
+      if (correctness != null) attempts.push(row);
+    }
+    if (attempts.length > 0) return attempts;
+  }
+
+  return [];
+};
+
+const getCloudQuestionActivityRows = async (curriculum: string) => {
+  const candidates = await resolveCurriculumCandidates(curriculum).catch(() =>
+    buildCurriculumCandidates(curriculum),
+  );
+  const rows: Array<Record<string, unknown>> = [];
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('user_question_activity')
+      .select('event_id,session_id,question_id,question_number,question_scope,viewed_at,is_correct')
+      .in('curriculum', candidates)
+      .order('viewed_at', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) {
+      if (isMissingRelationError(error)) return [];
+      throw error;
+    }
+    const page = (data ?? []) as Array<Record<string, unknown>>;
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+};
+
+export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => {
+  const [bank, attemptRows, authResult] = await Promise.all([
+    getQuestionBankIndex(curriculum, 'all'),
+    getGranularAttemptRowsForCurriculum(curriculum),
+    supabase.auth.getSession(),
+  ]);
+  const attempts: QuestionBlockAttempt[] = [];
+  const userId = authResult.data.session?.user.id ?? null;
+  const localActivity = userId ? getQuestionActivity({ userId, curriculum }) : [];
+  if (userId) {
+    await syncQuestionActivity({ userId, curriculum }).catch(() => undefined);
+  }
+  const cloudActivity = userId
+    ? await getCloudQuestionActivityRows(curriculum).catch(() => [])
+    : [];
+  const recordedAnsweredKeys = new Set(
+    localActivity
+      .filter((event) => event.isCorrect != null)
+      .map((event) => `${event.sessionId}:${event.questionId}`),
+  );
+  for (const event of cloudActivity) {
+    const isCorrect = readAttemptCorrectness(event.is_correct);
+    const sessionId = readText(event.session_id);
+    const questionId = readText(event.question_id);
+    if (isCorrect != null && sessionId && questionId) {
+      recordedAnsweredKeys.add(`${sessionId}:${questionId}`);
+    }
+  }
+
+  for (const attempt of attemptRows) {
+    const isCorrect = readAttemptCorrectness(
+      attempt.is_correct ?? attempt.isCorrect ?? attempt.was_correct ?? attempt.correct,
+    );
+    if (isCorrect == null) continue;
+    const questionId = readText(
+        attempt.question_id ?? attempt.questionId ?? attempt.pregunta_id ?? attempt.preguntaId ?? attempt.id,
+      );
+    const sessionId = readText(
+      attempt.__sessionId ?? attempt.session_id ?? attempt.sessionId ?? attempt.practice_session_id,
+    );
+    if (sessionId && questionId && recordedAnsweredKeys.has(`${sessionId}:${questionId}`)) continue;
+    attempts.push({
+      eventId: readText(attempt.event_id ?? attempt.eventId ?? attempt.attempt_id) ??
+        (sessionId && questionId ? `cloud:${sessionId}:${questionId}` : null),
+      sessionId,
+      questionId,
+      questionNumber: readOptionalNumber(
+        attempt.question_number ?? attempt.questionNumber ?? attempt.numero ?? attempt.number,
+      ),
+      scope: normalizeQuestionScope(
+        attempt.question_scope ??
+          attempt.questionScope ??
+          attempt.question_scope_key ??
+          attempt.scope ??
+          attempt.grupo,
+      ),
+      dedupeKey: buildAttemptQuestionDedupKey(attempt),
+      isCorrect,
+    });
+  }
+
+  attempts.push(
+    ...cloudActivity.map((event) => ({
+      eventId: readText(event.event_id),
+      sessionId: readText(event.session_id),
+      questionId: readText(event.question_id),
+      questionNumber: readOptionalNumber(event.question_number),
+      scope: normalizeQuestionScope(event.question_scope),
+      isCorrect: readAttemptCorrectness(event.is_correct),
+    })),
+  );
+
+  attempts.push(
+    ...localActivity.map((event) => ({
+      eventId: event.eventId,
+      sessionId: event.sessionId,
+      questionId: event.questionId,
+      questionNumber: event.questionNumber,
+      scope: event.scope,
+      isCorrect: event.isCorrect,
+    })),
+  );
+
+  return buildQuestionBlockPerformance(
+    bank.map((question) => ({
+      id: question.id,
+      number: question.number,
+      scope: question.syllabus,
+      text: question.text,
+      dedupeKey: question.dedupeKey,
+    })),
+    attempts,
+  );
+};
+
 export const hydrateDashboardBundle = async (
   primaryBundle: DashboardBundle,
   curriculum = DEFAULT_CURRICULUM,
   options?: { skipSharedCommonOverride?: boolean },
 ): Promise<DashboardBundle> => {
-  const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories] = await Promise.all([
+  const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories, questionBlocks] = await Promise.all([
     getMyLearningDashboardV2(curriculum).catch(() => null),
     getMyPressureDashboardV2(curriculum).catch(() => null),
     getPracticeCatalogSummary(curriculum).catch(async () => ({
       totalQuestions: await getQuestionCountFromTables(curriculum),
     })),
     getWeakCategorySummary(curriculum, 5).catch(() => []),
+    getQuestionBlockStats(curriculum).catch(() => []),
   ]);
 
   const skipSharedCommonOverride = options?.skipSharedCommonOverride ?? false;
@@ -3943,6 +4216,7 @@ export const hydrateDashboardBundle = async (
     activitySessions: primaryBundle.activitySessions,
     questionsCount: normalizedQuestionsCount,
     weakCategories,
+    questionBlocks,
   };
 };
 
@@ -4015,4 +4289,3 @@ export const computeSharedCommonOverride = async (curriculum: string): Promise<S
 export const signOut = async () => {
   await supabase.auth.signOut();
 };
-

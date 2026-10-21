@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,6 +14,7 @@ import { useAppLocale } from '../lib/locale';
 import HighlightableText, { TextHighlight } from './HighlightableText';
 import { createId } from '../lib/id';
 import EditorialExplanation from './EditorialExplanation';
+import { recordQuestionAnswer, recordQuestionView } from '../lib/questionActivity';
 
 import { getStudyData, saveStudyData, setLastVisitedStudyQuestion } from '../lib/quantiaApi';
 
@@ -23,12 +24,14 @@ interface StudyInterfaceProps {
   onFinish: () => void | Promise<void>;
   onCancel: () => void;
   curriculum: string;
+  activityContext?: { userId: string; curriculum: string; sessionId: string } | null;
 }
 
 export default function StudyInterface({
   questions,
   onFinish,
   onCancel,
+  activityContext = null,
 }: StudyInterfaceProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -47,6 +50,11 @@ export default function StudyInterface({
   
   const currentQuestion = questions[currentIndex];
   const selectedAnswer = selectedAnswers[currentIndex];
+  const activityUserId = activityContext?.userId ?? null;
+  const activityCurriculum = activityContext?.curriculum ?? null;
+  const activitySessionId = activityContext?.sessionId ?? null;
+  const viewOccurrencesRef = useRef(new Map<string, number>());
+  const currentViewEventIdRef = useRef<string | null>(null);
   
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -54,6 +62,23 @@ export default function StudyInterface({
       setLastVisitedStudyQuestion(currentQuestion.id);
     }
   }, [currentIndex, currentQuestion]);
+
+  useEffect(() => {
+    if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion) return;
+    const occurrence = (viewOccurrencesRef.current.get(currentQuestion.id) ?? 0) + 1;
+    viewOccurrencesRef.current.set(currentQuestion.id, occurrence);
+    const eventId = `${activitySessionId}:study:${currentQuestion.id}:${occurrence}`;
+    currentViewEventIdRef.current = eventId;
+    recordQuestionView({
+      userId: activityUserId,
+      curriculum: activityCurriculum,
+      sessionId: activitySessionId,
+      eventId,
+      surface: 'study',
+      mode: 'study',
+      question: currentQuestion,
+    });
+  }, [activityCurriculum, activitySessionId, activityUserId, currentIndex, currentQuestion]);
 
   useEffect(() => {
     if (questions.length === 0) return;
@@ -122,6 +147,15 @@ export default function StudyInterface({
     const nextSelected = [...selectedAnswers];
     nextSelected[currentIndex] = optionId;
     setSelectedAnswers(nextSelected);
+
+    if (activityUserId && activityCurriculum && currentViewEventIdRef.current) {
+      recordQuestionAnswer({
+        userId: activityUserId,
+        curriculum: activityCurriculum,
+        eventId: currentViewEventIdRef.current,
+        isCorrect: optionId === currentQuestion.correctAnswer,
+      });
+    }
 
     if (navigator.vibrate) {
       navigator.vibrate(optionId === currentQuestion.correctAnswer ? 10 : [10, 30, 10]);

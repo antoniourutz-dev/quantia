@@ -16,7 +16,7 @@ export const buildExecutableSessionPlanFromCustomPractice = (
 ): CustomPracticeExecutableSessionPlan => {
   const syllabus = toSyllabus(config.contentScope);
   const topicId = config.topicMode.type === 'single_topic' ? config.topicMode.topicId : null;
-  const sessionLength = Math.max(1, Math.min(200, Math.round(config.sessionLength)));
+  const sessionLength = Math.max(1, Math.min(700, Math.round(config.sessionLength)));
 
   return {
     source: 'custom_practice',
@@ -28,4 +28,3 @@ export const buildExecutableSessionPlanFromCustomPractice = (
     supportMode: config.supportMode,
   };
 };
-

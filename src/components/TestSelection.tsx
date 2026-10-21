@@ -17,10 +17,11 @@ import { getCurriculumTopicOptions } from '../lib/quantiaApi';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
+type StandardSyllabusSelection = 'mixed' | SyllabusType;
 
 export type TestSelectionStateSnapshot = {
   selectionMode: SelectionMode;
-  selectedSyllabus: SyllabusType;
+  selectedSyllabus: StandardSyllabusSelection;
   selectedLaw: string;
   questionCount: number;
   simulacroScope: 'mixed' | SyllabusType;
@@ -119,7 +120,7 @@ export default function TestSelection({
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialState?.selectionMode ?? 'standard');
-  const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType>(
+  const [selectedSyllabus, setSelectedSyllabus] = useState<StandardSyllabusSelection>(
     initialState?.selectedSyllabus ?? initialSyllabus ?? 'common',
   );
   const [selectedLaw, setSelectedLaw] = useState<string>(initialState?.selectedLaw ?? initialLaw ?? '');
@@ -141,7 +142,11 @@ export default function TestSelection({
   const [customTopic, setCustomTopic] = useState(initialState?.customTopic ?? '');
   const [customTopics, setCustomTopics] = useState<string[]>([]);
   const [customTopicsLoading, setCustomTopicsLoading] = useState(false);
-  const [customSessionLength, setCustomSessionLength] = useState(initialState?.customSessionLength ?? 10);
+  const initialCustomSessionLength = initialState?.customSessionLength ?? 50;
+  const [customSessionLength, setCustomSessionLength] = useState(initialCustomSessionLength);
+  const [customSessionLengthInput, setCustomSessionLengthInput] = useState(
+    [20, 50, 100].includes(initialCustomSessionLength) ? '' : String(initialCustomSessionLength),
+  );
   const [customShowMarks, setCustomShowMarks] = useState(initialState?.customShowMarks ?? false);
   const [customShowNotes, setCustomShowNotes] = useState(initialState?.customShowNotes ?? false);
   const usesLawSelection = useMemo(() => isLawSelectionCurriculum(curriculum), [curriculum]);
@@ -255,6 +260,7 @@ export default function TestSelection({
 
   const COMMON_RANGE_QUESTIONS = 300;
   const SPECIFIC_RANGE_QUESTIONS = 200;
+  const MAX_CUSTOM_SESSION_QUESTIONS = 700;
   const getSyllabusRangeLimit = (syllabus?: SyllabusType | null) =>
     syllabus === 'specific' ? SPECIFIC_RANGE_QUESTIONS : COMMON_RANGE_QUESTIONS;
   const getCustomRangeLimit = (scope: CustomPracticeContentScope) =>
@@ -344,10 +350,11 @@ export default function TestSelection({
         return;
       }
       if (standardRangeEnabled) {
+        const standardSyllabus = selectedSyllabus === 'mixed' ? null : selectedSyllabus;
         const built = tryBuildRange({
           countFallback: questionCount,
           allowEmptyTo: true,
-          maxQuestions: getSyllabusRangeLimit(usesSingleScope ? null : selectedSyllabus),
+          maxQuestions: getSyllabusRangeLimit(usesSingleScope ? null : standardSyllabus),
         });
         if (!built.ok) {
           setStandardRangeError(built.error);
@@ -358,11 +365,15 @@ export default function TestSelection({
           from: built.from,
           to: built.to,
           randomize: built.randomize,
-          syllabus: usesSingleScope ? null : selectedSyllabus,
+          syllabus: usesSingleScope ? null : standardSyllabus,
         });
         return;
       }
-      onStart('standard', usesSingleScope ? undefined : selectedSyllabus, questionCount);
+      onStart(
+        'standard',
+        usesSingleScope || selectedSyllabus === 'mixed' ? undefined : selectedSyllabus,
+        questionCount,
+      );
     } else if (selectionMode === 'quick') {
       onStart('quick_five', undefined, 5);
     } else if (selectionMode === 'errors') {
@@ -374,10 +385,22 @@ export default function TestSelection({
         simulacroCount,
       );
     } else if (selectionMode === 'custom') {
+      const requestedLength = customSessionLengthInput.trim()
+        ? parsePositiveInt(customSessionLengthInput)
+        : customSessionLength;
+      if (!requestedLength || requestedLength > MAX_CUSTOM_SESSION_QUESTIONS) {
+        setCustomError(
+          isBasque
+            ? `Sartu 1 eta ${MAX_CUSTOM_SESSION_QUESTIONS} arteko galdera kopurua.`
+            : `Indica una cantidad entre 1 y ${MAX_CUSTOM_SESSION_QUESTIONS} preguntas.`,
+        );
+        return;
+      }
+      setCustomSessionLength(requestedLength);
       const hasAnyRange = Boolean(customFrom.trim()) || Boolean(customTo.trim());
       if (hasAnyRange) {
         const built = tryBuildRange({
-          countFallback: customSessionLength,
+          countFallback: requestedLength,
           allowEmptyTo: true,
           maxQuestions: usesSingleScope ? COMMON_RANGE_QUESTIONS : getCustomRangeLimit(customContentScope),
         });
@@ -408,12 +431,67 @@ export default function TestSelection({
           customTopicMode === 'single'
             ? { type: 'single_topic', topicId: customTopic.trim() }
             : { type: 'all_topics' },
-        sessionLength: customSessionLength,
+        sessionLength: requestedLength,
         supportMode: { showMarks: customShowMarks, showNotes: customShowNotes },
       };
       onStartCustomPractice(config);
     }
   };
+
+  const renderCustomSessionLengthSelector = () => (
+    <div className="space-y-3">
+      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+        {isBasque ? 'Luzera' : 'Longitud'}
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[20, 50, 100].map((count) => (
+          <button
+            key={count}
+            type="button"
+            onClick={() => {
+              setCustomSessionLength(count);
+              setCustomSessionLengthInput('');
+              setCustomError(null);
+            }}
+            className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
+              customSessionLengthInput === '' && customSessionLength === count
+                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                : 'border-slate-100 bg-white text-slate-500'
+            }`}
+          >
+            {count}
+          </button>
+        ))}
+        <label className="relative">
+          <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={MAX_CUSTOM_SESSION_QUESTIONS}
+            value={customSessionLengthInput}
+            onChange={(event) => {
+              const value = event.target.value;
+              setCustomSessionLengthInput(value);
+              const parsed = parsePositiveInt(value);
+              if (parsed && parsed <= MAX_CUSTOM_SESSION_QUESTIONS) {
+                setCustomSessionLength(parsed);
+                setCustomError(null);
+              }
+            }}
+            className="h-full min-h-16 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-center text-lg font-black text-slate-700 outline-none focus:border-indigo-500 focus:bg-white"
+            placeholder={isBasque ? 'Eskuz' : 'Manual'}
+            aria-label={isBasque ? 'Galdera kopurua eskuz' : 'Cantidad manual de preguntas'}
+          />
+        </label>
+      </div>
+      <div className="text-xs font-bold text-slate-400">
+        {isBasque
+          ? `Eskuzko kopurua: 1–${MAX_CUSTOM_SESSION_QUESTIONS}`
+          : `Cantidad manual: 1–${MAX_CUSTOM_SESSION_QUESTIONS}`}
+      </div>
+    </div>
+  );
 
   const renderGeneralLawBlockSelector = () => {
     if (!usesLawSelection) return null;
@@ -640,11 +718,22 @@ export default function TestSelection({
                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
                       {isBasque ? 'Gai-zerrenda' : 'Temario'}
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSyllabus('mixed')}
+                        className={`rounded-2xl border-2 px-3 py-4 font-black text-xs transition-all ${
+                          selectedSyllabus === 'mixed'
+                            ? 'border-slate-800 bg-slate-50 text-slate-900'
+                            : 'border-slate-100 bg-white text-slate-600'
+                        }`}
+                      >
+                        {isBasque ? 'Biak nahasian' : 'Mixto'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => setSelectedSyllabus('common')}
-                        className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                        className={`rounded-2xl border-2 px-3 py-4 font-black text-xs transition-all ${
                           selectedSyllabus === 'common'
                             ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                             : 'border-slate-100 bg-white text-slate-600'
@@ -655,7 +744,7 @@ export default function TestSelection({
                       <button
                         type="button"
                         onClick={() => setSelectedSyllabus('specific')}
-                        className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
+                        className={`rounded-2xl border-2 px-3 py-4 font-black text-xs transition-all ${
                           selectedSyllabus === 'specific'
                             ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                             : 'border-slate-100 bg-white text-slate-600'
@@ -1029,27 +1118,7 @@ export default function TestSelection({
                 ) : null}
               </div>
 
-              <div className="space-y-3">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                  {isBasque ? 'Luzera' : 'Longitud'}
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[5, 10, 20].map((count) => (
-                    <button
-                      key={count}
-                      type="button"
-                      onClick={() => setCustomSessionLength(count)}
-                      className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
-                        customSessionLength === count
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                          : 'border-slate-100 bg-white text-slate-500'
-                      }`}
-                    >
-                      {count}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {renderCustomSessionLengthSelector()}
 
               <div className="space-y-3">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
@@ -1102,7 +1171,22 @@ export default function TestSelection({
           {usesLawSelection ? (
             renderGeneralLawBlockSelector()
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <button
+                onClick={() => setSelectedSyllabus('mixed')}
+                className={`p-6 rounded-2xl border-2 transition-all duration-300 flex items-center gap-4 ${
+                  selectedSyllabus === 'mixed'
+                    ? 'border-slate-800 bg-slate-50'
+                    : 'border-slate-50 bg-white hover:border-slate-200'
+                }`}
+              >
+                <div className={`p-2 rounded-lg ${selectedSyllabus === 'mixed' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <CheckCircle2 size={24} />
+                </div>
+                <span className="font-bold text-lg text-slate-800">
+                  {isBasque ? 'Biak nahasian' : 'Mixto (ambos)'}
+                </span>
+              </button>
               <button
                 onClick={() => setSelectedSyllabus('common')}
                 className={`p-6 rounded-2xl border-2 transition-all duration-300 flex items-center gap-4 ${
@@ -1364,6 +1448,7 @@ export default function TestSelection({
       ) : null}
 
       {selectionMode === 'custom' ? (
+        <div className="hidden lg:block">
         <div className="bg-white p-6 sm:p-8 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -1547,27 +1632,7 @@ export default function TestSelection({
             ) : null}
           </div>
 
-          <div className="space-y-3">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {isBasque ? 'Luzera' : 'Longitud'}
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {[5, 10, 20].map((count) => (
-                <button
-                  key={count}
-                  type="button"
-                  onClick={() => setCustomSessionLength(count)}
-                  className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all ${
-                    customSessionLength === count
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-100 bg-white text-slate-500'
-                  }`}
-                >
-                  {count}
-                </button>
-              ))}
-            </div>
-          </div>
+          {renderCustomSessionLengthSelector()}
 
           <div className="space-y-3">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
@@ -1598,6 +1663,7 @@ export default function TestSelection({
               </button>
             </div>
           </div>
+        </div>
         </div>
       ) : null}
 
