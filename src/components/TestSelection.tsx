@@ -151,7 +151,11 @@ export default function TestSelection({
   const [customShowNotes, setCustomShowNotes] = useState(initialState?.customShowNotes ?? false);
   const usesLawSelection = useMemo(() => isLawSelectionCurriculum(curriculum), [curriculum]);
   const usesSingleScope = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
-  const modeNeedsConfig = selectionMode === 'standard' || selectionMode === 'simulacro' || selectionMode === 'custom';
+  const modeNeedsConfig =
+    selectionMode === 'standard' ||
+    selectionMode === 'errors' ||
+    selectionMode === 'simulacro' ||
+    selectionMode === 'custom';
   const startLabel =
     selectionMode === 'standard'
       ? isBasque
@@ -377,7 +381,11 @@ export default function TestSelection({
     } else if (selectionMode === 'quick') {
       onStart('quick_five', undefined, 5);
     } else if (selectionMode === 'errors') {
-      onStart('review', usesSingleScope ? undefined : 'specific', 10);
+      onStart(
+        'review',
+        usesSingleScope || usesLawSelection || selectedSyllabus === 'mixed' ? undefined : selectedSyllabus,
+        questionCount,
+      );
     } else if (selectionMode === 'simulacro') {
       onStart(
         'simulacro',
@@ -566,6 +574,66 @@ export default function TestSelection({
       />
     );
   };
+
+  const renderReviewConfiguration = () => (
+    <div className="space-y-6">
+      {!usesSingleScope && !usesLawSelection ? (
+        <div className="space-y-3">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+            {isBasque ? 'Gai-zerrenda' : 'Temario'}
+          </div>
+          <div className="grid grid-cols-3 gap-2 lg:gap-6">
+            {([
+              { id: 'mixed', label: isBasque ? 'Biak nahasian' : 'Mixto' },
+              { id: 'common', label: formatSyllabusUiLabel('common') },
+              { id: 'specific', label: formatSyllabusUiLabel('specific') },
+            ] as const).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setSelectedSyllabus(option.id)}
+                className={`rounded-2xl border-2 px-3 py-4 font-black text-xs transition-all lg:px-6 lg:text-base ${
+                  selectedSyllabus === option.id
+                    ? 'border-rose-500 bg-rose-50 text-rose-700'
+                    : 'border-slate-100 bg-white text-slate-600'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-3">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+          {isBasque ? 'Galdera kopurua' : 'Cantidad'}
+        </div>
+        <div className="grid grid-cols-3 gap-3 lg:gap-6">
+          {options.map((count) => (
+            <button
+              key={count}
+              type="button"
+              onClick={() => setQuestionCount(count)}
+              className={`rounded-2xl border-2 px-4 py-4 font-black text-lg transition-all lg:py-6 lg:text-2xl ${
+                questionCount === count
+                  ? 'border-rose-500 bg-rose-50 text-rose-700'
+                  : 'border-slate-100 bg-white text-slate-500'
+              }`}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
+        {isBasque
+          ? 'Aurretik ikusi eta huts egin dituzun galderak bakarrik agertuko dira, gehien huts egindakoetatik hasita.'
+          : 'Solo aparecerán preguntas que ya hayas visto y fallado, empezando por las que más veces has fallado.'}
+      </div>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-16 sm:space-y-8 sm:pb-20">
@@ -884,6 +952,8 @@ export default function TestSelection({
               ) : null}
             </div>
           ) : null}
+
+          {selectionMode === 'errors' ? renderReviewConfiguration() : null}
 
           {selectionMode === 'simulacro' ? (
             <div className="space-y-6">
@@ -1352,6 +1422,18 @@ export default function TestSelection({
             </div>
           ) : null}
         </div>
+        </div>
+      ) : null}
+
+      {selectionMode === 'errors' ? (
+        <div className="hidden lg:block">
+          <div className="space-y-8 rounded-[2.5rem] border border-slate-100 bg-white p-8 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+            <h2 className="flex items-center gap-2 text-xl font-bold text-slate-800">
+              <AlertCircle className="h-5 w-5 text-rose-600" />
+              {isBasque ? 'Prestatu hutsegiteen errepasoa' : 'Configura tu repaso de fallos'}
+            </h2>
+            {renderReviewConfiguration()}
+          </div>
         </div>
       ) : null}
 

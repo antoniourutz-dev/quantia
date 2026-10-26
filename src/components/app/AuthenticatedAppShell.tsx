@@ -48,13 +48,12 @@ import {
   getPublishedGeneralLaws,
   getPracticeBatchByCategory,
   getCustomPracticeBatch,
-  getPracticeQuestionsByIds,
+  getMostFailedPracticeBatch,
   getRandomPracticeBatch,
   getRecentSessionsForHome,
   getQuestionsByNumberRange,
   getStudyData,
   getStudyQuestionsSlice,
-  getWeakPracticeBatch,
   computeSharedCommonOverride,
   hydrateDashboardBundle,
   loadDashboardPrimaryBundle,
@@ -89,7 +88,6 @@ import {
   type PracticeEmptyStateAction,
   type PracticeEmptyStateModel,
 } from '../../lib/practiceEmptyState';
-import { getUserQuestionFriction } from '../../services/questionFrictionApi';
 
 const loadTestSelection = () => import('../TestSelection');
 const loadTestInterface = () => import('../TestInterface');
@@ -1419,9 +1417,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
 
       try {
         let questions: Question[] = [];
-        let resolvedMode = mode;
+        const resolvedMode = mode;
         let reviewPriority: ActivePracticeSession['reviewPriority'] = null;
-        let frictionByQuestionId: ActivePracticeSession['frictionByQuestionId'] = null;
+        const frictionByQuestionId: ActivePracticeSession['frictionByQuestionId'] = null;
         const selectedScopeLabel =
           syllabus
             ? formatSyllabusLabel(syllabus, locale, { curriculum })
@@ -1445,81 +1443,36 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         const scope = syllabus ?? 'all';
 
         if (mode === 'review') {
-          try {
-            const userId = session?.user?.id ?? null;
-            if (userId) {
-              const frictionItems = await getUserQuestionFriction(userId, curriculum, Math.max(40, batchSize * 4)).catch(
-                () => [],
-              );
-              if (frictionItems.length > 0) {
-                const prioritized = await getPracticeQuestionsByIds({
-                  curriculum,
-                  questionIds: frictionItems.map((item) => item.questionId),
-                  questionScope: scope,
-                  limit: batchSize,
-                });
-                if (prioritized.length > 0) {
-                  questions = prioritized;
-                  reviewPriority = 'most_problematic';
-                  const map: NonNullable<ActivePracticeSession['frictionByQuestionId']> = {};
-                  for (const item of frictionItems) {
-                    map[item.questionId] = {
-                      frictionScore: item.frictionScore,
-                      primaryTag: item.primaryTag,
-                    };
-                  }
-                  frictionByQuestionId = map;
-                  resolvedTitle = t('Review prioritizado', 'Lehentasunezko reviewa');
-                }
-              }
-            }
-
-            if (questions.length === 0) {
-              questions = await getWeakPracticeBatch(batchSize, curriculum, scope);
-            }
-            if (questions.length === 0) {
-              questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
-              if (questions.length === 0) {
-                const request = {
-                  kind: 'test' as const,
-                  mode,
-                  syllabus: syllabus ?? null,
-                  count: batchSize,
-                };
-                const kind = resolveEmptyStateReason({
-                  request,
-                  bundleQuestionsCount:
-                    typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
-                });
-                const model = buildPracticeEmptyStateModel({
-                  locale,
-                  kind,
-                  request,
-                });
-                setPracticeEmptyState(model);
-                trackEffect({
-                  surface: 'test',
-                  curriculum,
-                  action: 'session_abandoned',
-                  context: { reason: kind, requestedMode: mode, syllabus: syllabus ?? null, count: batchSize },
-                });
-                return;
-              }
-
-              resolvedMode = 'mixed';
-              resolvedTitle = t('Repaso guiado', 'Errepaso gidatua');
-            }
-          } catch (error) {
-            questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
-            if (questions.length === 0) {
-              throw error;
-            }
-
-            resolvedMode = 'mixed';
-            resolvedTitle = t('Repaso guiado', 'Errepaso gidatua');
+          questions = await getMostFailedPracticeBatch({
+            curriculum,
+            batchSize,
+            questionScope: scope,
+          });
+          if (questions.length === 0) {
+            const request = {
+              kind: 'test' as const,
+              mode,
+              syllabus: syllabus ?? null,
+              count: batchSize,
+            };
+            const kind = resolveEmptyStateReason({
+              request,
+              bundleQuestionsCount:
+                typeof bundle?.questionsCount === 'number' ? bundle.questionsCount : null,
+            });
+            setPracticeEmptyState(buildPracticeEmptyStateModel({ locale, kind, request }));
+            trackEffect({
+              surface: 'test',
+              curriculum,
+              action: 'session_abandoned',
+              context: { reason: kind, requestedMode: mode, syllabus: syllabus ?? null, count: batchSize },
+            });
+            return;
           }
+          reviewPriority = 'most_problematic';
+          resolvedTitle = t('Corregir fallos', 'Hutsegiteak zuzendu');
         } else if (mode === 'simulacro') {
-          questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
+          questions = await getRandomPracticeBatch(batchSize, curriculum, scope, null, 'simulacro');
         } else {
           questions = await getRandomPracticeBatch(batchSize, curriculum, scope);
         }

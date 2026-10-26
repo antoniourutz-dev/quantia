@@ -80,6 +80,27 @@ export const rankQuestionPerformance = (
   });
 };
 
+export const selectMostFailedQuestionIds = (
+  blocks: QuestionBlockPerformance[],
+  scope: SyllabusType | 'all',
+  limit: number,
+): string[] => {
+  const questions = blocks
+    .filter((block) => scope === 'all' || block.scope === scope)
+    .flatMap((block) => block.questions)
+    .filter((question) => question.views > 0 && question.incorrect > 0)
+    .sort((left, right) => {
+      if (left.incorrect !== right.incorrect) return right.incorrect - left.incorrect;
+      const leftAccuracy = left.accuracyRate ?? 1;
+      const rightAccuracy = right.accuracyRate ?? 1;
+      if (leftAccuracy !== rightAccuracy) return leftAccuracy - rightAccuracy;
+      if (left.views !== right.views) return right.views - left.views;
+      return left.number - right.number || left.id.localeCompare(right.id);
+    });
+
+  return questions.slice(0, Math.max(0, Math.trunc(limit))).map((question) => question.id);
+};
+
 const toBlockStart = (questionNumber: number) => Math.floor((questionNumber - 1) / 10) * 10 + 1;
 const blockKey = (scope: SyllabusType, start: number) => `${scope}:${start}`;
 

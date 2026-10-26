@@ -12,10 +12,16 @@ import { getLocaleForCurriculum, isGoiTeknikariaCurriculum } from './locale';
 import { getQuestionIdsByGeneralLawArticles } from '../repositories/generalLawRepository';
 import { selectQuestionsFromRandomCycle } from './randomQuestionCycle';
 import {
+  selectAdaptiveQuestions,
+  type AdaptiveQuestionActivity,
+  type AdaptiveSelectionProfile,
+} from './adaptiveQuestionSelection';
+import {
   buildQuestionBlockPerformance,
+  selectMostFailedQuestionIds,
   type QuestionBlockAttempt,
 } from './questionBlockStats';
-import { getQuestionActivity, syncQuestionActivity } from './questionActivity';
+import { getPendingQuestionActivity, syncQuestionActivity } from './questionActivity';
 import {
   enqueuePracticeSessionSync,
   readQueuedPracticeSessionSyncs,
@@ -2306,13 +2312,13 @@ const getQuestionCoverageContext = async (questions: Question[], curriculum: str
   const session = await getSafeSupabaseSession().catch(() => null);
   const activityContext = session?.user?.id ? { userId: session.user.id, curriculum } : null;
   if (activityContext) await syncQuestionActivity(activityContext).catch(() => undefined);
-  const [attemptedRefs, cloudSeenIds] = await Promise.all([
+  const [attemptedRefs, cloudSeenIds, cloudActivity] = await Promise.all([
     getAttemptedQuestionRefsFromSessions(curriculum).catch(() => null),
     activityContext ? getCloudSeenQuestionIds(curriculum) : Promise.resolve(new Set<string>()),
+    activityContext ? getCloudQuestionActivityRows(curriculum).catch(() => []) : Promise.resolve([]),
   ]);
-  const locallySeenIds = new Set(
-    activityContext ? getQuestionActivity(activityContext).map((event) => event.questionId) : [],
-  );
+  const pendingActivity = activityContext ? getPendingQuestionActivity(activityContext) : [];
+  const locallySeenIds = new Set(pendingActivity.map((event) => event.questionId));
   const seenIds = questions.flatMap((question) => {
     const dedupeKey = buildQuestionContentDedupKey({
       number: question.number,
@@ -2327,7 +2333,50 @@ const getQuestionCoverageContext = async (questions: Question[], curriculum: str
       ? [question.id]
       : [];
   });
-  return { seenIds, userId: session?.user?.id ?? 'anonymous' };
+  const activity: AdaptiveQuestionActivity[] = [
+    ...cloudActivity.flatMap((event) => {
+      const questionId = readText(event.question_id);
+      const viewedAt = readText(event.viewed_at);
+      if (!questionId || !viewedAt) return [];
+      return [{
+        questionId,
+        viewedAt,
+        isCorrect: readAttemptCorrectness(event.is_correct),
+      }];
+    }),
+    ...pendingActivity.map((event) => ({
+      questionId: event.questionId,
+      viewedAt: event.viewedAt,
+      isCorrect: event.isCorrect,
+    })),
+  ];
+  return { seenIds, userId: session?.user?.id ?? 'anonymous', activity };
+};
+
+const selectCoverageAwareQuestions = (params: {
+  questions: Question[];
+  count: number;
+  storageKey: string;
+  coverage: Awaited<ReturnType<typeof getQuestionCoverageContext>>;
+  profile?: AdaptiveSelectionProfile;
+}) => {
+  const seenIds = new Set(params.coverage.seenIds);
+  const hasUnseenQuestions = params.questions.some((question) => !seenIds.has(question.id));
+  if (hasUnseenQuestions) {
+    return selectQuestionsFromRandomCycle({
+      questions: params.questions,
+      count: params.count,
+      storageKey: params.storageKey,
+      historicallySeenIds: seenIds,
+    });
+  }
+
+  return selectAdaptiveQuestions({
+    questions: params.questions,
+    count: params.count,
+    activity: params.coverage.activity,
+    profile: params.profile,
+  });
 };
 
 export const getCurriculumCategoryOptions = async (curriculum = DEFAULT_CURRICULUM) => {
@@ -2663,16 +2712,15 @@ export const getRandomPracticeBatch = async (
   curriculum = DEFAULT_CURRICULUM,
   questionScope: PracticeQuestionScopeFilter = 'all',
   filters?: PracticeFilters | null,
+  selectionProfile: AdaptiveSelectionProfile = 'adaptive',
 ) => {
-  if (shouldUseExamSourceScopedTables(curriculum)) {
-    const snapshot = await getQuestionSnapshotFromTables({
-      curriculum,
-      maxQuestions: 5000,
-      questionScope,
-      filters: filters ?? null,
-    });
-    if (snapshot.length === 0) return [];
-
+  const snapshot = await getQuestionSnapshotFromTables({
+    curriculum,
+    maxQuestions: 5000,
+    questionScope,
+    filters: filters ?? null,
+  });
+  if (snapshot.length > 0) {
     const coverage = await getQuestionCoverageContext(snapshot, curriculum);
     const normalizedFilters = normalizePracticeFilters(filters);
     const cycleContext = JSON.stringify({
@@ -2688,11 +2736,12 @@ export const getRandomPracticeBatch = async (
       userId: coverage.userId,
     });
 
-    return selectQuestionsFromRandomCycle({
+    return selectCoverageAwareQuestions({
       questions: snapshot,
       count: batchSize,
       storageKey: `quantia.random-question-cycle.v1:${cycleContext}`,
-      historicallySeenIds: coverage.seenIds,
+      coverage,
+      profile: selectionProfile,
     });
   }
 
@@ -2756,16 +2805,24 @@ export const getPracticeBatchByCategory = async (
     questionScope: 'all',
     filters,
   });
-  const mapped = shuffleQuestions(
-    snapshot.filter(
-      (question) =>
-        normalizeCategoryLabel(
-          getCurriculumCategoryGroupLabel(curriculum, question.category),
-        ) === normalizedTarget,
-    ),
-  ).slice(0, batchSize);
+  const mapped = snapshot.filter(
+    (question) =>
+      normalizeCategoryLabel(
+        getCurriculumCategoryGroupLabel(curriculum, question.category),
+      ) === normalizedTarget,
+  );
   if (mapped.length > 0) {
-    return mapped;
+    const coverage = await getQuestionCoverageContext(mapped, curriculum);
+    return selectCoverageAwareQuestions({
+      questions: mapped,
+      count: batchSize,
+      storageKey: `quantia.category-question-cycle.v1:${JSON.stringify({
+        curriculum: canonicalizeCurriculumId(curriculum),
+        category: normalizedTarget,
+        userId: coverage.userId,
+      })}`,
+      coverage,
+    });
   }
 
   const fallbackPool = await getStudyQuestionsSlice(2000, 0, curriculum);
@@ -2911,9 +2968,9 @@ export const getCustomPracticeBatch = async (params: {
     ? snapshot.filter((q) => normalizeCategoryLabel(getCurriculumCategoryGroupLabel(curriculum, q.category)) === normalizedTarget)
     : snapshot;
 
-  if (randomize && shouldUseExamSourceScopedTables(curriculum)) {
+  if (randomize && filtered.length > 0) {
     const coverage = await getQuestionCoverageContext(filtered, curriculum);
-    return selectQuestionsFromRandomCycle({
+    return selectCoverageAwareQuestions({
       questions: filtered,
       count: limit,
       storageKey: `quantia.custom-question-cycle.v1:${JSON.stringify({
@@ -2922,7 +2979,7 @@ export const getCustomPracticeBatch = async (params: {
         topicId: normalizedTarget,
         userId: coverage.userId,
       })}`,
-      historicallySeenIds: coverage.seenIds,
+      coverage,
     });
   }
 
@@ -4103,15 +4160,17 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
   ]);
   const attempts: QuestionBlockAttempt[] = [];
   const userId = authResult.data.session?.user.id ?? null;
-  const localActivity = userId ? getQuestionActivity({ userId, curriculum }) : [];
   if (userId) {
     await syncQuestionActivity({ userId, curriculum }).catch(() => undefined);
   }
+  const pendingLocalActivity = userId
+    ? getPendingQuestionActivity({ userId, curriculum })
+    : [];
   const cloudActivity = userId
     ? await getCloudQuestionActivityRows(curriculum).catch(() => [])
     : [];
   const recordedAnsweredKeys = new Set(
-    localActivity
+    pendingLocalActivity
       .filter((event) => event.isCorrect != null)
       .map((event) => `${event.sessionId}:${event.questionId}`),
   );
@@ -4168,7 +4227,7 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
   );
 
   attempts.push(
-    ...localActivity.map((event) => ({
+    ...pendingLocalActivity.map((event) => ({
       eventId: event.eventId,
       sessionId: event.sessionId,
       questionId: event.questionId,
@@ -4188,6 +4247,27 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
     })),
     attempts,
   );
+};
+
+export const getMostFailedPracticeBatch = async (params: {
+  curriculum?: string;
+  batchSize: number;
+  questionScope?: PracticeQuestionScopeFilter;
+  filters?: PracticeFilters | null;
+}): Promise<Question[]> => {
+  const curriculum = String(params.curriculum ?? '').trim() || DEFAULT_CURRICULUM;
+  const batchSize = Math.max(1, Math.min(120, Math.trunc(params.batchSize)));
+  const questionScope = params.questionScope ?? 'all';
+  const blocks = await getQuestionBlockStats(curriculum);
+  const questionIds = selectMostFailedQuestionIds(blocks, questionScope, batchSize);
+
+  return getPracticeQuestionsByIds({
+    curriculum,
+    questionIds,
+    questionScope,
+    limit: batchSize,
+    filters: params.filters ?? null,
+  });
 };
 
 export const hydrateDashboardBundle = async (

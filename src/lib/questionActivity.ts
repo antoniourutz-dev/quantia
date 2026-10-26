@@ -6,6 +6,7 @@ const STORAGE_PREFIX = 'quantia.question_activity.v1';
 const MAX_EVENTS = 20000;
 const SYNC_BATCH_SIZE = 100;
 const SYNC_DELAY_MS = 500;
+const ACTIVE_VIEW_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export type QuestionActivityEvent = {
   eventId: string;
@@ -85,12 +86,26 @@ const toCloudRow = (context: ActivityContext, event: QuestionActivityEvent) => (
 const eventVersion = (event: QuestionActivityEvent) =>
   `${event.isCorrect ?? 'unanswered'}:${event.answeredAt ?? ''}`;
 
+const compactDurableEvents = (events: QuestionActivityEvent[], now = Date.now()) => {
+  const activeViewCutoff = now - ACTIVE_VIEW_RETENTION_MS;
+  return events.filter((event) => {
+    if (event.pending) return true;
+    if (event.isCorrect != null) return false;
+    const viewedAt = Date.parse(event.viewedAt);
+    return Number.isFinite(viewedAt) && viewedAt >= activeViewCutoff;
+  });
+};
+
 export const syncQuestionActivity = async (context: ActivityContext): Promise<void> => {
   const key = storageKey(context);
   const running = runningSyncs.get(key);
   if (running) return running;
 
   const sync = (async () => {
+    const stored = readEvents(context);
+    const compacted = compactDurableEvents(stored);
+    if (compacted.length !== stored.length) writeEvents(context, compacted);
+
     let pending = readEvents(context).filter((event) => event.pending).slice(0, SYNC_BATCH_SIZE);
     while (pending.length > 0) {
       const versions = new Map(pending.map((event) => [event.eventId, eventVersion(event)]));
@@ -101,13 +116,14 @@ export const syncQuestionActivity = async (context: ActivityContext): Promise<vo
 
       const latest = readEvents(context);
       let changed = false;
-      const next = latest.map((event) => {
+      const next = latest.flatMap((event) => {
         const syncedVersion = versions.get(event.eventId);
-        if (!syncedVersion || eventVersion(event) !== syncedVersion || !event.pending) return event;
+        if (!syncedVersion || eventVersion(event) !== syncedVersion || !event.pending) return [event];
         changed = true;
-        return { ...event, pending: false };
+        if (event.isCorrect != null) return [];
+        return [{ ...event, pending: false }];
       });
-      if (changed) writeEvents(context, next);
+      if (changed) writeEvents(context, compactDurableEvents(next));
       pending = readEvents(context).filter((event) => event.pending).slice(0, SYNC_BATCH_SIZE);
     }
   })().finally(() => runningSyncs.delete(key));
@@ -132,7 +148,11 @@ const scheduleSync = (context: ActivityContext) => {
 const writeEvents = (context: ActivityContext, events: QuestionActivityEvent[]) => {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(storageKey(context), JSON.stringify(events.slice(-MAX_EVENTS)));
+    if (events.length === 0) {
+      window.localStorage.removeItem(storageKey(context));
+    } else {
+      window.localStorage.setItem(storageKey(context), JSON.stringify(events.slice(-MAX_EVENTS)));
+    }
     window.dispatchEvent(new CustomEvent('quantia:question-activity-changed'));
   } catch {
     // El seguimiento no debe interrumpir una sesión si el navegador bloquea el almacenamiento.
@@ -177,3 +197,6 @@ export const recordQuestionAnswer = (
 };
 
 export const getQuestionActivity = (context: ActivityContext) => readEvents(context);
+
+export const getPendingQuestionActivity = (context: ActivityContext) =>
+  readEvents(context).filter((event) => event.pending);

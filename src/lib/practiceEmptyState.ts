@@ -80,8 +80,8 @@ export const buildPracticeEmptyStateModel = (input: {
       tone: 'positive',
       title: t('Este repaso está limpio', 'Errepaso hau garbi dago'),
       body: t(
-        'No quedan preguntas pendientes aquí. Buen trabajo: hoy has cerrado un frente.',
-        'Ez dago galdera pendenterik hemen. Lan ona: gaur fronte bat itxi duzu.',
+        'No tienes preguntas falladas en esta parte del temario. Cuando falles una pregunta ya vista, aparecerá aquí.',
+        'Ez duzu huts egindako galderarik gai-zerrendaren zati honetan. Ikusitako galdera batean huts egiten duzunean, hemen agertuko da.',
       ),
       primaryCta: { label: t('Hacer sesión recomendada', 'Gomendatutako saioa egin'), action: { type: 'start_recommended' } },
       secondaryCta: { label: t('Volver al panel', 'Panelera itzuli'), action: { type: 'go_dashboard' } },
@@ -159,4 +159,3 @@ export const buildPracticeEmptyStateModel = (input: {
     secondaryCta: { label: t('Volver al panel', 'Panelera itzuli'), action: { type: 'go_dashboard' } },
   };
 };
-

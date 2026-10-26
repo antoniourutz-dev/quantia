@@ -1,4 +1,8 @@
-import { buildQuestionBlockPerformance, rankQuestionPerformance } from './questionBlockStats';
+import {
+  buildQuestionBlockPerformance,
+  rankQuestionPerformance,
+  selectMostFailedQuestionIds,
+} from './questionBlockStats';
 
 describe('buildQuestionBlockPerformance', () => {
   it('separa comun y especifico y conserva bloques sin intentos', () => {
@@ -56,5 +60,28 @@ describe('buildQuestionBlockPerformance', () => {
       .toEqual(['c2', 'c1', 'c3']);
     expect(rankQuestionPerformance(blocks, 'specific', 'most_viewed').map((question) => question.id))
       .toEqual(['s1']);
+  });
+
+  it('selecciona solo preguntas vistas y falladas, priorizando las que mas se fallan', () => {
+    const blocks = buildQuestionBlockPerformance(
+      [
+        { id: 'c1', number: 1, scope: 'common', text: 'Comun uno' },
+        { id: 'c2', number: 2, scope: 'common', text: 'Comun dos' },
+        { id: 'c3', number: 3, scope: 'common', text: 'Comun tres' },
+        { id: 's1', number: 1, scope: 'specific', text: 'Especifica uno' },
+      ],
+      [
+        { eventId: 'c1-1', questionId: 'c1', questionNumber: null, scope: null, isCorrect: false },
+        { eventId: 'c1-2', questionId: 'c1', questionNumber: null, scope: null, isCorrect: false },
+        { eventId: 'c2-1', questionId: 'c2', questionNumber: null, scope: null, isCorrect: false },
+        { eventId: 'c2-2', questionId: 'c2', questionNumber: null, scope: null, isCorrect: true },
+        { eventId: 'c3-1', questionId: 'c3', questionNumber: null, scope: null, isCorrect: true },
+        { eventId: 's1-1', questionId: 's1', questionNumber: null, scope: null, isCorrect: false },
+      ],
+    );
+
+    expect(selectMostFailedQuestionIds(blocks, 'all', 10)).toEqual(['c1', 's1', 'c2']);
+    expect(selectMostFailedQuestionIds(blocks, 'common', 1)).toEqual(['c1']);
+    expect(selectMostFailedQuestionIds(blocks, 'specific', 10)).toEqual(['s1']);
   });
 });
