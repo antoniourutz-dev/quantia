@@ -17,6 +17,12 @@ import {
 } from './questionBlockStats';
 import { getQuestionActivity, syncQuestionActivity } from './questionActivity';
 import {
+  enqueuePracticeSessionSync,
+  readQueuedPracticeSessionSyncs,
+  removeQueuedPracticeSessionSync,
+  type PracticeSessionSyncPayload,
+} from './practiceSessionSyncQueue';
+import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
   mapLearningDashboard,
@@ -36,7 +42,6 @@ import type {
   OptionKey,
   PracticeExamTarget,
   PracticeFilters,
-  PracticeMode,
   PracticeQuestionScopeFilter,
   AdminQuestionDetail,
   AdminQuestionListItem,
@@ -91,6 +96,7 @@ const questionBankIndexCache = new Map<string, Promise<QuestionBankCacheRow[]>>(
 const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: DEFAULT_CURRICULUM, label: 'Administrativo' },
   { id: 'auxiliar_administrativo', label: 'Auxiliar administrativo' },
+  { id: 'osakidetza_electromedicina', label: 'Electromedicina' },
   {
     id: 'tecnico_superior_administracion_y_gestion',
     label: 'Técnico/a Superior Administración y Gestión',
@@ -217,6 +223,15 @@ const CURRICULUM_ALIAS_GROUPS = [
     aliases: ['auxiliar_administrativo', 'auxiliar-administrativo', 'auxiliar administrativo'],
   },
   {
+    key: 'osakidetza-electromedicina',
+    label: 'Electromedicina',
+    aliases: [
+      'osakidetza_electromedicina',
+      'osakidetza-electromedicina',
+      'electromedicina',
+    ],
+  },
+  {
     key: 'goi-teknikaria',
     label: 'Goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
@@ -245,6 +260,10 @@ const CURRICULUM_SHARED_QUESTION_SOURCES: Record<
   Partial<Record<PracticeQuestionScopeFilter, SharedCurriculumSource[]>>
 > = {
   'auxiliar-administrativo': {
+    all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+    common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+  },
+  'osakidetza-electromedicina': {
     all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
     common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
   },
@@ -283,7 +302,7 @@ const getActiveExamSourceKey = (curriculum: string) =>
 
 const shouldUseExamSourceScopedTables = (curriculum: string) => Boolean(getActiveExamSourceKey(curriculum));
 
-const getSharedCurriculumSources = (
+export const getSharedCurriculumSources = (
   curriculum: string,
   questionScope: PracticeQuestionScopeFilter,
 ) => {
@@ -3860,28 +3879,15 @@ export const buildRandomPracticeSession = (questions: Question[]): ActivePractic
   nextStandardBatchStartIndex: null,
 });
 
-const normalizePracticeModeForCloudSync = (mode: PracticeMode): PracticeMode => {
-  switch (mode) {
-    case 'custom':
-    case 'mixed':
-    case 'anti_trap':
-      return 'standard';
-    case 'weakest':
-      return 'review';
-    default:
-      return mode;
-  }
-};
-
-export const recordPracticeSessionInCloud = async (
+export const buildPracticeSessionSyncPayload = (
   session: ActivePracticeSession,
   answers: TestAnswer[],
   curriculum = DEFAULT_CURRICULUM,
-) => {
-  const syncedMode = normalizePracticeModeForCloudSync(session.mode);
+): PracticeSessionSyncPayload => {
+  const questionsById = new Map(session.questions.map((question) => [question.id, question]));
   const attempts = answers
     .map((answer) => {
-      const question = session.questions.find((item) => item.id === answer.questionId);
+      const question = questionsById.get(answer.questionId);
       if (!question) return null;
 
       return {
@@ -3901,24 +3907,30 @@ export const recordPracticeSessionInCloud = async (
         error_type_inferred: null,
       };
     })
-    .filter(Boolean);
+    .filter((attempt): attempt is NonNullable<typeof attempt> => Boolean(attempt));
+
+  return {
+    session: {
+      id: session.id,
+      mode: session.mode,
+      title: session.title,
+      startedAt: session.startedAt,
+      batchNumber: session.batchNumber,
+      batchSize: session.questions.length,
+      batchStartIndex: session.batchStartIndex,
+      nextStandardBatchStartIndex: session.nextStandardBatchStartIndex,
+    },
+    attempts,
+    curriculum,
+  };
+};
+
+const invokePracticeSessionSync = async (payload: PracticeSessionSyncPayload) => {
+  if (payload.attempts.length === 0) return { success: true, sync: { attemptsProcessed: 0 } };
 
   const accessToken = await getAccessTokenForFunctionsInvoke();
   const { data, error } = await supabase.functions.invoke('sync-practice-session', {
-    body: {
-      session: {
-        id: session.id,
-        mode: syncedMode,
-        title: session.title,
-        startedAt: session.startedAt,
-        batchNumber: session.batchNumber,
-        batchSize: session.questions.length,
-        batchStartIndex: session.batchStartIndex,
-        nextStandardBatchStartIndex: session.nextStandardBatchStartIndex,
-      },
-      attempts,
-      curriculum,
-    },
+    body: payload,
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
@@ -3926,6 +3938,44 @@ export const recordPracticeSessionInCloud = async (
 
   if (error) throw new Error(mapPracticeCloudError(error));
   return data;
+};
+
+export const recordPracticeSessionInCloud = async (
+  session: ActivePracticeSession,
+  answers: TestAnswer[],
+  curriculum = DEFAULT_CURRICULUM,
+  userId?: string | null,
+) => {
+  const payload = buildPracticeSessionSyncPayload(session, answers, curriculum);
+  const queued = userId ? enqueuePracticeSessionSync(userId, payload) : false;
+
+  const data = await invokePracticeSessionSync(payload);
+  if (queued && userId) removeQueuedPracticeSessionSync(userId, session.id);
+  return data;
+};
+
+const pendingPracticeSessionSyncs = new Map<string, Promise<{ synced: number; pending: number }>>();
+
+export const retryPendingPracticeSessionsInCloud = async (userId: string) => {
+  const running = pendingPracticeSessionSyncs.get(userId);
+  if (running) return running;
+
+  const task = (async () => {
+    let synced = 0;
+    for (const item of readQueuedPracticeSessionSyncs(userId)) {
+      try {
+        await invokePracticeSessionSync(item.payload);
+        removeQueuedPracticeSessionSync(userId, item.payload.session.id);
+        synced += 1;
+      } catch {
+        // Se conserva en local para reintentarlo en la próxima sesión o recarga.
+      }
+    }
+    return { synced, pending: readQueuedPracticeSessionSyncs(userId).length };
+  })().finally(() => pendingPracticeSessionSyncs.delete(userId));
+
+  pendingPracticeSessionSyncs.set(userId, task);
+  return task;
 };
 
 export const loadDashboardBundle = async (

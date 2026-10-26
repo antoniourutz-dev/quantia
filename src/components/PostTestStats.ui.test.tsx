@@ -63,5 +63,68 @@ describe('PostTestStats', () => {
 
     expect(onGoHome).toHaveBeenCalledTimes(1);
   });
-});
 
+  it('permite analizar los fallos uno a uno en cualquier modalidad', async () => {
+    const questions = ['q1', 'q2'].map((id, index) => ({
+      id,
+      number: index + 1,
+      text: `Pregunta fallada ${index + 1}`,
+      options: [
+        { id: 'a', text: `Incorrecta ${index + 1}` },
+        { id: 'b', text: `Correcta ${index + 1}` },
+        { id: 'c', text: 'C' },
+        { id: 'd', text: 'D' },
+      ],
+      correctAnswer: 'b',
+      explanation: `Explicación ${index + 1}`,
+      syllabus: 'specific',
+      category: 'Tema',
+      questionScope: 'specific',
+    })) as unknown as Question[];
+    const payload = {
+      score: 0,
+      answers: questions.map((question) => ({
+        questionId: question.id,
+        selectedOption: 'a',
+        correctOption: 'b',
+        isCorrect: false,
+        answeredAt: '2026-10-26T10:00:00.000Z',
+        responseTimeMs: 1000,
+        timeToFirstSelectionMs: 1000,
+        changedAnswer: false,
+      })),
+    } as FinishedTestPayload;
+    const user = userEvent.setup();
+
+    render(
+      <PostTestStats
+        payload={payload}
+        questions={questions}
+        mode="custom"
+        curriculum="osakidetza_electromedicina"
+        onRestart={() => undefined}
+        onGoBack={() => undefined}
+        onGoHome={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Analizar 2 fallos' }));
+    expect(screen.getByText('Pregunta fallada 1')).toBeInTheDocument();
+    expect(screen.queryByText('Pregunta fallada 2')).not.toBeInTheDocument();
+    expect(screen.getByText('Incorrecta 1')).toBeInTheDocument();
+    expect(screen.getByText('Correcta 1')).toBeInTheDocument();
+    expect(screen.getByText('C')).toBeInTheDocument();
+    expect(screen.getByText('D')).toBeInTheDocument();
+    expect(screen.getByText('Tu respuesta')).toBeInTheDocument();
+    expect(screen.getByText('Respuesta correcta')).toBeInTheDocument();
+    expect(screen.queryByText('Explicación 1')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Ver explicación' }));
+    expect(screen.getByText('Explicación 1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    expect(screen.getByText('Pregunta fallada 2')).toBeInTheDocument();
+    expect(screen.queryByText('Pregunta fallada 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Explicación 2')).not.toBeInTheDocument();
+  });
+});

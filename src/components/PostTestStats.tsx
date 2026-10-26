@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   XCircle,
   BarChart3,
@@ -8,6 +9,7 @@ import {
   LayoutDashboard,
   Clock,
   Zap,
+  Info,
 } from 'lucide-react';
 import type {
   ActivePracticeSession,
@@ -22,6 +24,7 @@ import { storeSessionCloseSummary } from '../lib/continuity';
 import { trackDecision, trackEffect } from '../lib/telemetry';
 import { buildSessionEndExperience } from '../lib/sessionEndExperience';
 import { getCurriculumCategoryGroupLabel } from '../lib/quantiaApi';
+import EditorialExplanation from './EditorialExplanation';
 import {
   createAnalysisLoadTrace,
   markAnalysisCtaVisible,
@@ -74,6 +77,8 @@ export default function PostTestStats({
   const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
   const [analysisHydrated, setAnalysisHydrated] = useState(true);
   const [showReview, setShowReview] = useState(false);
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [showReviewExplanation, setShowReviewExplanation] = useState(false);
 
   const sessionEnd = useMemo(
     () =>
@@ -130,8 +135,6 @@ export default function PostTestStats({
       const selected = answer?.selectedOption ?? null;
       const correct = q.correctAnswer;
       const isCorrect = selected != null ? selected === correct : false;
-      const findOptionText = (key: string | null) =>
-        key ? q.options.find((opt) => opt.id === key)?.text ?? '' : '';
 
       return {
         index: index + 1,
@@ -142,9 +145,9 @@ export default function PostTestStats({
           (isBasque ? 'Orokorra' : 'General'),
         text: q.text,
         selected,
-        selectedText: findOptionText(selected),
         correct,
-        correctText: findOptionText(correct),
+        options: q.options,
+        explanation: q.explanation,
         isCorrect,
       };
     });
@@ -154,6 +157,7 @@ export default function PostTestStats({
     if (!showOnlyIncorrect) return reviewItems;
     return reviewItems.filter((item) => !item.isCorrect);
   }, [reviewItems, showOnlyIncorrect]);
+  const currentReviewItem = reviewFiltered[reviewIndex] ?? null;
   const continuityFocus = sessionEnd.nextMove.kind === 'start_session' && mode !== 'simulacro';
 
   const speedMessage = Number(avgTimeSec) < 30
@@ -223,6 +227,24 @@ export default function PostTestStats({
     markAnalysisReviewVisible(analysisTrace);
   }, [analysisTrace, showReview]);
 
+  useEffect(() => {
+    setReviewIndex(0);
+  }, [showOnlyIncorrect, showReview]);
+
+  useEffect(() => {
+    setShowReviewExplanation(false);
+  }, [reviewIndex, showOnlyIncorrect, showReview]);
+
+  const openMistakeReview = () => {
+    setShowOnlyIncorrect(true);
+    setAnalysisHydrated(true);
+    setReviewIndex(0);
+    setShowReview(true);
+    requestAnimationFrame(() => {
+      document.getElementById('session-end-review')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-150 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
       <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
@@ -255,12 +277,7 @@ export default function PostTestStats({
                 context: { cta: sessionEnd.primaryCta, mode, nextMoveKind: sessionEnd.nextMove.kind },
               });
               if (sessionEnd.nextMove.kind === 'review_on_page') {
-                setShowOnlyIncorrect(true);
-                setAnalysisHydrated(true);
-                setShowReview(true);
-                requestAnimationFrame(() => {
-                  document.getElementById('session-end-review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                });
+                openMistakeReview();
                 return;
               }
               if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
@@ -278,6 +295,24 @@ export default function PostTestStats({
             {sessionEnd.nextMove.kind === 'review_on_page' ? <RotateCcw size={18} /> : null}
             {sessionEnd.primaryCta}
           </button>
+          {failed > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                trackEffect({
+                  surface: 'session_end',
+                  curriculum,
+                  action: 'cta_clicked',
+                  context: { cta: 'analyze_mistakes', mode, failedCount: failed },
+                });
+                openMistakeReview();
+              }}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-rose-100 bg-rose-50 py-3.5 text-[14px] font-black text-rose-700 transition-all hover:border-rose-200 hover:bg-rose-100"
+            >
+              <XCircle size={18} />
+              {isBasque ? `${failed} akatsak aztertu` : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`}
+            </button>
+          ) : null}
         </div>
 
 
@@ -353,7 +388,7 @@ export default function PostTestStats({
       </div>
       ) : null}
 
-      {mode === 'simulacro' && showReview ? (
+      {showReview ? (
         <div id="session-end-review" className="space-y-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2.5rem] sm:p-10">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
             <div>
@@ -367,7 +402,10 @@ export default function PostTestStats({
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowOnlyIncorrect(false)}
+                onClick={() => {
+                  setShowOnlyIncorrect(false);
+                  setReviewIndex(0);
+                }}
                 className={`px-5 py-3 rounded-2xl border-2 font-black text-xs uppercase tracking-widest transition-all ${
                   !showOnlyIncorrect
                     ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
@@ -377,7 +415,10 @@ export default function PostTestStats({
                 {isBasque ? 'Denak' : 'Ver todo'}
               </button>
               <button
-                onClick={() => setShowOnlyIncorrect(true)}
+                onClick={() => {
+                  setShowOnlyIncorrect(true);
+                  setReviewIndex(0);
+                }}
                 className={`px-5 py-3 rounded-2xl border-2 font-black text-xs uppercase tracking-widest transition-all ${
                   showOnlyIncorrect
                     ? 'border-rose-600 bg-rose-50 text-rose-700'
@@ -389,8 +430,8 @@ export default function PostTestStats({
             </div>
           </div>
 
-          <div className="max-h-[70vh] overflow-y-auto pr-2 space-y-4">
-            {reviewFiltered.map((item) => (
+          <div className="space-y-4">
+            {reviewFiltered.slice(reviewIndex, reviewIndex + 1).map((item) => (
               <div key={item.id} className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
                 <div className="flex items-start justify-between gap-6">
                   <div className="space-y-2">
@@ -423,33 +464,117 @@ export default function PostTestStats({
                   </div>
                 </div>
 
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-slate-100 bg-white px-5 py-4">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      {isBasque ? 'Zure erantzuna' : 'Tu respuesta'}
-                    </div>
-                    <div className="text-sm font-bold text-slate-700 leading-relaxed">
-                      {item.selected ? (
-                        <>
-                          {item.selected.toUpperCase()}. {item.selectedText}
-                        </>
-                      ) : (
-                        <span className="text-slate-400">{isBasque ? 'Erantzun gabe' : 'Sin responder'}</span>
-                      )}
-                    </div>
+                <div className="mt-6 space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    {isBasque ? 'Erantzun aukerak' : 'Opciones de respuesta'}
                   </div>
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4">
-                    <div className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-2">
-                      {isBasque ? 'Erantzun zuzena' : 'Respuesta correcta'}
+                  {item.options.map((option) => {
+                    const isSelected = option.id === item.selected;
+                    const isCorrectOption = option.id === item.correct;
+                    const optionClass = isCorrectOption
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-950'
+                      : isSelected
+                        ? 'border-rose-300 bg-rose-50 text-rose-950'
+                        : 'border-slate-200 bg-white text-slate-700';
+
+                    return (
+                      <div
+                        key={option.id}
+                        className={`flex flex-col gap-3 rounded-2xl border-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${optionClass}`}
+                      >
+                        <div className="flex min-w-0 items-start gap-3 text-sm font-bold leading-relaxed">
+                          <span className="shrink-0 font-black uppercase">{option.id}.</span>
+                          <span>{option.text}</span>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {isSelected ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-rose-700">
+                              <XCircle size={13} />
+                              {isBasque ? 'Zure erantzuna' : 'Tu respuesta'}
+                            </span>
+                          ) : null}
+                          {isCorrectOption ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-white/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                              <CheckCircle2 size={13} />
+                              {isBasque ? 'Erantzun zuzena' : 'Respuesta correcta'}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!item.selected ? (
+                    <div className="text-xs font-bold text-slate-400">
+                      {isBasque ? 'Galdera erantzun gabe utzi zenuen.' : 'Dejaste esta pregunta sin responder.'}
                     </div>
-                    <div className="text-sm font-black text-emerald-900 leading-relaxed">
-                      {item.correct.toUpperCase()}. {item.correctText}
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
+
+                {item.explanation?.trim() ? (
+                  <div className="mt-6 border-t border-slate-200 pt-5">
+                    {!showReviewExplanation ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowReviewExplanation(true)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-white px-4 py-2.5 text-xs font-black text-indigo-600 transition-all hover:bg-indigo-50"
+                      >
+                        <Info size={15} />
+                        {isBasque ? 'Azalpena ikusi' : 'Ver explicación'}
+                      </button>
+                    ) : (
+                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 sm:p-5">
+                        <div className="mb-3 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-700">
+                            <Info size={15} />
+                            {isBasque ? 'Azalpena' : 'Explicación'}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowReviewExplanation(false)}
+                            className="text-[10px] font-black uppercase tracking-widest text-slate-400 transition-colors hover:text-indigo-600"
+                          >
+                            {isBasque ? 'Itxi' : 'Cerrar'}
+                          </button>
+                        </div>
+                        <EditorialExplanation text={item.explanation} readOnly />
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             ))}
+            {!currentReviewItem ? (
+              <div className="rounded-2xl bg-emerald-50 p-5 text-center text-sm font-bold text-emerald-700">
+                {isBasque ? 'Ez dago berrikusteko akatsik.' : 'No hay fallos que revisar.'}
+              </div>
+            ) : null}
           </div>
+
+          {reviewFiltered.length > 0 ? (
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+              <button
+                type="button"
+                onClick={() => setReviewIndex((index) => Math.max(0, index - 1))}
+                disabled={reviewIndex === 0}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowLeft size={16} />
+                {isBasque ? 'Aurrekoa' : 'Anterior'}
+              </button>
+              <div className="text-center text-xs font-black uppercase tracking-widest text-slate-400">
+                {reviewIndex + 1} / {reviewFiltered.length}
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewIndex((index) => Math.min(reviewFiltered.length - 1, index + 1))}
+                disabled={reviewIndex >= reviewFiltered.length - 1}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isBasque ? 'Hurrengoa' : 'Siguiente'}
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

@@ -59,6 +59,7 @@ import {
   hydrateDashboardBundle,
   loadDashboardPrimaryBundle,
   recordPracticeSessionInCloud,
+  retryPendingPracticeSessionsInCloud,
   signOut,
   updateMyExamTarget,
   type CurriculumOption,
@@ -610,6 +611,20 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       void 0;
     }
   }, [curriculum, restrictedCurriculum, session]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    let disposed = false;
+
+    void retryPendingPracticeSessionsInCloud(session.user.id).then((result) => {
+      if (disposed || result.synced === 0) return;
+      void refreshDashboardSilently();
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [refreshDashboardSilently, session?.user?.id]);
 
   useEffect(() => {
     if (!session) return;
@@ -1932,7 +1947,12 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                 coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
               },
             });
-            await recordPracticeSessionInCloud(activeSession, payload.answers, curriculum);
+            await recordPracticeSessionInCloud(
+              activeSession,
+              payload.answers,
+              curriculum,
+              session.user.id,
+            );
             await refreshDashboardSilently();
           } catch (error) {
             console.error('Session sync failed:', error);
@@ -1947,7 +1967,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         })();
       }, 0);
     },
-    [activeSession, curriculum, refreshDashboardSilently, t],
+    [activeSession, curriculum, refreshDashboardSilently, session.user.id, t],
   );
 
   const handleBackFromTestResults = useCallback(() => {

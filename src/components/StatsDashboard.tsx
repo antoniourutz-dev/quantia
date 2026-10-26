@@ -37,6 +37,10 @@ import {
   getIntlLocale,
   useAppLocale,
 } from '../lib/locale';
+import {
+  rankQuestionPerformance,
+  type QuestionRankingSort,
+} from '../lib/questionBlockStats';
 
 interface StatsDashboardProps {
   results: TestResult[];
@@ -61,6 +65,8 @@ export default function StatsDashboard({
   const [mobileView, setMobileView] = useState<'summary' | 'detail'>('summary');
   const [blockScope, setBlockScope] = useState<'common' | 'specific'>('common');
   const [selectedBlockStart, setSelectedBlockStart] = useState<number | null>(null);
+  const [questionStatsView, setQuestionStatsView] = useState<'blocks' | 'ranking'>('blocks');
+  const [questionRankingSort, setQuestionRankingSort] = useState<QuestionRankingSort>('most_viewed');
 
   const learningV2 = bundle?.practiceState.learningDashboardV2 ?? null;
   const pressureV2 = bundle?.practiceState.pressureInsightsV2 ?? null;
@@ -76,6 +82,10 @@ export default function StatsDashboard({
       visibleQuestionBlocks[0] ??
       null,
     [selectedBlockStart, visibleQuestionBlocks],
+  );
+  const rankedQuestions = useMemo(
+    () => rankQuestionPerformance(questionBlocks, blockScope, questionRankingSort),
+    [blockScope, questionBlocks, questionRankingSort],
   );
 
   const readiness = Math.round((learningV2?.examReadinessRate ?? 0) * 100);
@@ -870,54 +880,153 @@ export default function StatsDashboard({
               {t('Cobertura real del examen', 'Azterketaren benetako estaldura')}
             </div>
             <h3 className="mt-2 text-2xl font-black text-slate-900">
-              {t('Detalle por pregunta en bloques de 10', 'Galderaz galderako xehetasuna, 10eko bloketan')}
+              {t('Estadísticas y clasificación por pregunta', 'Galderaz galderako estatistikak eta sailkapena')}
             </h3>
             <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-slate-500">
               {t(
-                'Elige la parte del examen y después una decena. Cada aparición de una pregunta cuenta como vista, aunque no llegues a responderla.',
-                'Aukeratu azterketaren zatia eta gero hamar galderako blokea. Behean galdera bakoitza zenbat aldiz erantzun duzun ikusiko duzu, asmatze eta akatsekin.',
+                'Consulta bloques de diez o clasifica todas las preguntas del temario por visualizaciones, aciertos y fallos.',
+                'Kontsultatu hamar galderako blokeak edo sailkatu gai-zerrendako galdera guztiak ikustaldien, asmatzeen eta akatsen arabera.',
               )}
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
-              {(['common', 'specific'] as const).map((scope) => (
+              {(['blocks', 'ranking'] as const).map((view) => (
                 <button
-                  key={scope}
+                  key={view}
                   type="button"
                   onClick={() => {
-                    setBlockScope(scope);
-                    setSelectedBlockStart(null);
+                    setQuestionStatsView(view);
                   }}
+                  aria-pressed={questionStatsView === view}
                   className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all ${
-                    blockScope === scope ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white'
+                    questionStatsView === view ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-white'
                   }`}
                 >
-                  {scope === 'common' ? t('Comun', 'Orokorra') : t('Especifico', 'Espezifikoa')}
+                  {view === 'blocks' ? t('Por bloques', 'Blokeka') : t('Clasificacion', 'Sailkapena')}
                 </button>
               ))}
             </div>
-            <label className="flex min-w-[220px] flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                {t('Bloque de preguntas', 'Galdera blokea')}
-              </span>
-              <select
-                value={selectedQuestionBlock?.start ?? ''}
-                onChange={(event) => setSelectedBlockStart(Number(event.target.value))}
-                disabled={visibleQuestionBlocks.length === 0}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none focus:border-indigo-400 disabled:bg-slate-100"
-              >
-                {visibleQuestionBlocks.map((block) => (
-                  <option key={`${block.scope}:${block.start}`} value={block.start}>
-                    {t('Preguntas', 'Galderak')} {block.start}–{block.end}
-                  </option>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
+                {(['common', 'specific'] as const).map((scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => {
+                      setBlockScope(scope);
+                      setSelectedBlockStart(null);
+                    }}
+                    aria-pressed={blockScope === scope}
+                    className={`rounded-xl px-4 py-2.5 text-xs font-black uppercase tracking-wider transition-all ${
+                      blockScope === scope ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-white'
+                    }`}
+                  >
+                    {scope === 'common' ? t('Comun', 'Orokorra') : t('Especifico', 'Espezifikoa')}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+              {questionStatsView === 'blocks' ? (
+                <label className="flex min-w-[220px] flex-col gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    {t('Bloque de preguntas', 'Galdera blokea')}
+                  </span>
+                  <select
+                    value={selectedQuestionBlock?.start ?? ''}
+                    onChange={(event) => setSelectedBlockStart(Number(event.target.value))}
+                    disabled={visibleQuestionBlocks.length === 0}
+                    className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none focus:border-indigo-400 disabled:bg-slate-100"
+                  >
+                    {visibleQuestionBlocks.map((block) => (
+                      <option key={`${block.scope}:${block.start}`} value={block.start}>
+                        {t('Preguntas', 'Galderak')} {block.start}–{block.end}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="flex min-w-[220px] flex-col gap-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    {t('Ordenar por', 'Ordenatu honen arabera')}
+                  </span>
+                  <select
+                    value={questionRankingSort}
+                    onChange={(event) => setQuestionRankingSort(event.target.value as QuestionRankingSort)}
+                    className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none focus:border-indigo-400"
+                  >
+                    <option value="most_viewed">{t('Mas vistas', 'Ikusienak')}</option>
+                    <option value="least_viewed">{t('Menos vistas', 'Gutxien ikusiak')}</option>
+                    <option value="most_correct">{t('Mas acertadas', 'Gehien asmatuak')}</option>
+                    <option value="most_incorrect">{t('Mas falladas', 'Gehien huts egindakoak')}</option>
+                  </select>
+                </label>
+              )}
+            </div>
           </div>
         </div>
 
-        {!selectedQuestionBlock ? (
+        {questionStatsView === 'ranking' ? (
+          rankedQuestions.length === 0 ? (
+            <div className="mt-6 rounded-3xl border border-slate-100 bg-slate-50 px-6 py-5 text-sm font-bold text-slate-600">
+              {t(
+                'No hay preguntas numeradas para clasificar en esta parte del temario.',
+                'Ez dago zenbakitutako galderarik gai-zerrendaren atal honetan sailkatzeko.',
+              )}
+            </div>
+          ) : (
+            <div className="mt-6 space-y-4">
+              <div className="flex flex-col gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-indigo-500">
+                    {t('Clasificacion del temario', 'Gai-zerrendaren sailkapena')}
+                  </div>
+                  <div className="mt-1 text-sm font-black text-indigo-950">
+                    {blockScope === 'common' ? t('Parte comun', 'Atal orokorra') : t('Parte especifica', 'Atal espezifikoa')}
+                  </div>
+                </div>
+                <div className="text-sm font-black text-indigo-700">
+                  {rankedQuestions.length} {t('preguntas', 'galdera')}
+                </div>
+              </div>
+              <div className="max-h-[620px] overflow-auto rounded-3xl border border-slate-200">
+                <div className="min-w-[1040px]">
+                  <div className="sticky top-0 z-10 grid grid-cols-[0.5fr_0.55fr_2.8fr_repeat(5,0.8fr)] gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    <span>{t('Posicion', 'Postua')}</span>
+                    <span>#</span>
+                    <span>{t('Pregunta', 'Galdera')}</span>
+                    <span>{t('Veces vista', 'Ikustaldiak')}</span>
+                    <span>{t('Intentos', 'Saiakerak')}</span>
+                    <span>{t('Aciertos', 'Asmatzeak')}</span>
+                    <span>{t('Errores', 'Akatsak')}</span>
+                    <span>{t('Precision', 'Doitasuna')}</span>
+                  </div>
+                  {rankedQuestions.map((question, index) => {
+                    const accuracy = question.accuracyRate == null ? null : Math.round(question.accuracyRate * 100);
+                    return (
+                      <div
+                        key={question.id}
+                        className="grid grid-cols-[0.5fr_0.55fr_2.8fr_repeat(5,0.8fr)] gap-3 border-b border-slate-100 px-5 py-4 text-sm last:border-b-0"
+                      >
+                        <div className="font-black text-slate-400">{index + 1}</div>
+                        <div className="font-black text-indigo-600">{question.number}</div>
+                        <div className="line-clamp-2 pr-4 font-bold leading-relaxed text-slate-700" title={question.text}>
+                          {question.text}
+                        </div>
+                        <div className="font-black text-indigo-600">{question.views}</div>
+                        <div className="font-black text-slate-700">{question.attempts}</div>
+                        <div className="font-black text-emerald-600">{question.correct}</div>
+                        <div className="font-black text-rose-600">{question.incorrect}</div>
+                        <div className={`font-black ${accuracy == null ? 'text-slate-300' : accuracy >= 80 ? 'text-emerald-600' : accuracy >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
+                          {accuracy == null ? '—' : `${accuracy}%`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )
+        ) : !selectedQuestionBlock ? (
           <div className="mt-6 rounded-3xl border border-slate-100 bg-slate-50 px-6 py-5 text-sm font-bold text-slate-600">
             {t('No hay preguntas numeradas para este bloque del examen.', 'Ez dago zenbakitutako galderarik azterketaren atal honetan.')}
           </div>

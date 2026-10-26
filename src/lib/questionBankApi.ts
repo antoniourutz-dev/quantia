@@ -56,6 +56,14 @@ const CURRICULUM_ALIAS_GROUPS = [
     aliases: ['auxiliar_administrativo', 'auxiliar-administrativo', 'auxiliar administrativo'],
   },
   {
+    key: 'osakidetza-electromedicina',
+    aliases: [
+      'osakidetza_electromedicina',
+      'osakidetza-electromedicina',
+      'electromedicina',
+    ],
+  },
+  {
     key: 'goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
   },
@@ -77,6 +85,10 @@ const SHARED_QUESTION_SOURCES: Record<
   Partial<Record<PracticeQuestionScopeFilter, Array<{ curriculum: string; scope: PracticeQuestionScopeFilter }>>>
 > = {
   'auxiliar-administrativo': {
+    all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+    common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+  },
+  'osakidetza-electromedicina': {
     all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
     common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
   },
@@ -523,4 +535,3 @@ export const getQuestionBankQuestionDetail = async (params: {
   questionBankDetailCache.set(questionId, question);
   return question;
 };
-

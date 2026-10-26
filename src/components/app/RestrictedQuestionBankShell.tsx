@@ -44,6 +44,9 @@ const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
   if (normalized === 'auxiliar-administrativo' || normalized === 'auxiliar_administrativo') {
     return locale === 'eu' ? 'Auxiliar administrativo' : 'Auxiliar administrativo';
   }
+  if (normalized === 'osakidetza-electromedicina' || normalized === 'electromedicina') {
+    return 'Electromedicina';
+  }
   return value;
 };
 

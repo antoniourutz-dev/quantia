@@ -43,6 +43,43 @@ export type QuestionPerformance = {
   accuracyRate: number | null;
 };
 
+export type QuestionRankingSort =
+  | 'most_viewed'
+  | 'least_viewed'
+  | 'most_correct'
+  | 'most_incorrect';
+
+export const rankQuestionPerformance = (
+  blocks: QuestionBlockPerformance[],
+  scope: SyllabusType,
+  sort: QuestionRankingSort,
+): QuestionPerformance[] => {
+  const questions = blocks
+    .filter((block) => block.scope === scope)
+    .flatMap((block) => block.questions);
+  const metric = (question: QuestionPerformance) => {
+    switch (sort) {
+      case 'most_correct':
+        return question.correct;
+      case 'most_incorrect':
+        return question.incorrect;
+      case 'least_viewed':
+      case 'most_viewed':
+      default:
+        return question.views;
+    }
+  };
+  const direction = sort === 'least_viewed' ? 1 : -1;
+
+  return [...questions].sort((left, right) => {
+    const metricDifference = (metric(left) - metric(right)) * direction;
+    if (metricDifference !== 0) return metricDifference;
+    if (left.views !== right.views) return right.views - left.views;
+    if (left.attempts !== right.attempts) return right.attempts - left.attempts;
+    return left.number - right.number || left.id.localeCompare(right.id);
+  });
+};
+
 const toBlockStart = (questionNumber: number) => Math.floor((questionNumber - 1) / 10) * 10 + 1;
 const blockKey = (scope: SyllabusType, start: number) => `${scope}:${start}`;
 
