@@ -22,6 +22,7 @@ import {
   type QuestionBlockAttempt,
 } from './questionBlockStats';
 import { getPendingQuestionActivity, syncQuestionActivity } from './questionActivity';
+import { mergePracticeSessionHistory, type PracticeActivitySummaryRow } from './practiceStatistics';
 import {
   enqueuePracticeSessionSync,
   readQueuedPracticeSessionSyncs,
@@ -1972,6 +1973,12 @@ const getPracticeSessions = async (curriculum: string) => {
     buildCurriculumCandidates(curriculum),
   );
   const normalizedCandidates = buildNormalizedCurriculumCandidateSet(curriculumCandidates);
+  const authSession = await getSafeSupabaseSession().catch(() => null);
+  const userId = readText(authSession?.user?.id);
+  if (userId) await syncQuestionActivity({ userId, curriculum }).catch(() => undefined);
+  const activityRowsPromise = userId
+    ? getCloudQuestionActivityRows(curriculum, userId).catch(() => [])
+    : Promise.resolve([] as Array<Record<string, unknown>>);
 
   for (const source of SESSION_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
@@ -1980,17 +1987,19 @@ const getPracticeSessions = async (curriculum: string) => {
 
     if (!error) {
       const rows = (data ?? []) as Array<Record<string, unknown>>;
-      if (rows.length === 0) return [];
+      const activityRows = (await activityRowsPromise).map(mapPracticeActivitySummaryRow);
+      if (rows.length === 0) return mergePracticeSessionHistory([], activityRows);
 
       const rowsWithCurriculumMetadata = rows.filter(rowHasCurriculumMetadata);
       if (rowsWithCurriculumMetadata.length === 0) {
-        return sortSessionSummariesByRecency(rows.map(mapSession));
+        return mergePracticeSessionHistory(rows.map(mapSession), activityRows);
       }
 
-      return sortSessionSummariesByRecency(
+      return mergePracticeSessionHistory(
         rowsWithCurriculumMetadata
           .filter((row) => rowMatchesCurriculumCandidates(row, normalizedCandidates))
           .map(mapSession),
+        activityRows,
       );
     }
 
@@ -2315,7 +2324,7 @@ const getQuestionCoverageContext = async (questions: Question[], curriculum: str
   const [attemptedRefs, cloudSeenIds, cloudActivity] = await Promise.all([
     getAttemptedQuestionRefsFromSessions(curriculum).catch(() => null),
     activityContext ? getCloudSeenQuestionIds(curriculum) : Promise.resolve(new Set<string>()),
-    activityContext ? getCloudQuestionActivityRows(curriculum).catch(() => []) : Promise.resolve([]),
+    activityContext ? getCloudQuestionActivityRows(curriculum, activityContext.userId).catch(() => []) : Promise.resolve([]),
   ]);
   const pendingActivity = activityContext ? getPendingQuestionActivity(activityContext) : [];
   const locallySeenIds = new Set(pendingActivity.map((event) => event.questionId));
@@ -4128,7 +4137,17 @@ const getGranularAttemptRowsForCurriculum = async (curriculum: string) => {
   return [];
 };
 
-const getCloudQuestionActivityRows = async (curriculum: string) => {
+const mapPracticeActivitySummaryRow = (row: Record<string, unknown>): PracticeActivitySummaryRow => ({
+  sessionId: readText(row.session_id) ?? '',
+  questionId: readText(row.question_id) ?? '',
+  mode: readText(row.mode),
+  surface: readText(row.surface),
+  viewedAt: readText(row.viewed_at) ?? '',
+  answeredAt: readText(row.answered_at),
+  isCorrect: readAttemptCorrectness(row.is_correct),
+});
+
+const getCloudQuestionActivityRows = async (curriculum: string, userId?: string) => {
   const candidates = await resolveCurriculumCandidates(curriculum).catch(() =>
     buildCurriculumCandidates(curriculum),
   );
@@ -4136,12 +4155,14 @@ const getCloudQuestionActivityRows = async (curriculum: string) => {
   const pageSize = 1000;
 
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('user_question_activity')
-      .select('event_id,session_id,question_id,question_number,question_scope,viewed_at,is_correct')
+      .select('event_id,user_id,session_id,surface,mode,question_id,question_number,question_scope,viewed_at,answered_at,is_correct')
       .in('curriculum', candidates)
       .order('viewed_at', { ascending: true })
       .range(from, from + pageSize - 1);
+    if (userId) query = query.eq('user_id', userId);
+    const { data, error } = await query;
     if (error) {
       if (isMissingRelationError(error)) return [];
       throw error;
@@ -4167,7 +4188,7 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
     ? getPendingQuestionActivity({ userId, curriculum })
     : [];
   const cloudActivity = userId
-    ? await getCloudQuestionActivityRows(curriculum).catch(() => [])
+    ? await getCloudQuestionActivityRows(curriculum, userId).catch(() => [])
     : [];
   const recordedAnsweredKeys = new Set(
     pendingLocalActivity

@@ -24,6 +24,7 @@ import { formatModeLabel } from '../types';
 import { DashboardBundle } from '../lib/quantiaApi';
 import { getCurriculumCategoryGroupLabel } from '../lib/quantiaApi';
 import type { CoachPlanV2 } from '../lib/coach';
+import { calculateWeightedAccuracy } from '../lib/practiceStatistics';
 import {
   buildCoachCopySeed,
   buildVisibleStatusLabel,
@@ -90,7 +91,9 @@ export default function StatsDashboard({
 
   const readiness = Math.round((learningV2?.examReadinessRate ?? 0) * 100);
   const readinessConfidence = learningV2?.examReadinessConfidenceFlag ?? 'low';
-  const observedAccuracy = Math.round((learningV2?.observedAccuracyRate ?? 0) * 100);
+  const historyAccuracy = useMemo(() => calculateWeightedAccuracy(results), [results]);
+  const historyQuestionCount = useMemo(() => results.reduce((sum, result) => sum + result.total, 0), [results]);
+  const observedAccuracy = Math.round(historyAccuracy ?? (learningV2?.observedAccuracyRate ?? 0) * 100);
   const weeklyQuestions = useMemo(() => {
     const recentSessions = bundle?.practiceState.recentSessions ?? [];
     const now = new Date();
@@ -118,13 +121,13 @@ export default function StatsDashboard({
     readiness,
     backlogOverdueCount: learningV2?.backlogOverdueCount ?? 0,
     weeklyQuestions,
-    observedOk: Boolean(learningV2?.observedAccuracySampleOk) || Boolean(pressureV2?.sampleOk),
+    observedOk: historyQuestionCount >= 30 || Boolean(learningV2?.observedAccuracySampleOk) || Boolean(pressureV2?.sampleOk),
     observedAccuracy,
     pressureGapPct: pressureV2?.pressureGapRaw == null ? null : Math.round(pressureV2.pressureGapRaw * 100),
   });
 
   const coverage = Math.round((learningV2?.coverageRate ?? 0) * 100);
-  const observedOk = Boolean(learningV2?.observedAccuracySampleOk);
+  const observedOk = historyQuestionCount >= 30 || Boolean(learningV2?.observedAccuracySampleOk);
 
   const recommendedCount = learningV2?.recommendedTodayCount ?? 0;
   const recommendedPracticeMode = executablePlan?.mode ?? learningV2?.recommendedMode ?? 'standard';
@@ -416,18 +419,23 @@ export default function StatsDashboard({
       month: 'short',
     });
 
-    const rows = [...daySummaryMap.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-10)
-      .map(([iso, summary]) => ({
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rows = Array.from({ length: 10 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (9 - index));
+      const iso = toIsoDate(date);
+      const summary = daySummaryMap.get(iso);
+      return {
         iso,
-        name: shortFormatter.format(parseIsoDate(iso)),
-        longLabel: longFormatter.format(parseIsoDate(iso)),
-        score: Math.round(summary.accuracy),
-        totalQuestions: summary.totalQuestions,
-        totalCorrect: summary.totalCorrect,
-        totalSessions: summary.totalSessions,
-      }));
+        name: shortFormatter.format(date),
+        longLabel: longFormatter.format(date),
+        score: summary ? Math.round(summary.accuracy) : null,
+        totalQuestions: summary?.totalQuestions ?? 0,
+        totalCorrect: summary?.totalCorrect ?? 0,
+        totalSessions: summary?.totalSessions ?? 0,
+      };
+    });
 
     const maxQuestions = rows.reduce((acc, row) => Math.max(acc, row.totalQuestions), 0);
     return rows.map((row) => ({
@@ -444,14 +452,16 @@ export default function StatsDashboard({
 
     const totalQuestions = days.reduce((acc, day) => acc + day.totalQuestions, 0);
     const activeDays = days.length;
-    const average = days.reduce((acc, day) => acc + day.score, 0) / Math.max(activeDays, 1);
+    const average = days.reduce((acc, day) => acc + day.totalCorrect, 0) / Math.max(totalQuestions, 1) * 100;
     const first = days.slice(0, Math.min(3, activeDays));
     const last = days.slice(Math.max(0, activeDays - 3));
-    const firstAvg = first.reduce((acc, day) => acc + day.score, 0) / Math.max(first.length, 1);
-    const lastAvg = last.reduce((acc, day) => acc + day.score, 0) / Math.max(last.length, 1);
+    const firstTotal = first.reduce((acc, day) => acc + day.totalQuestions, 0);
+    const lastTotal = last.reduce((acc, day) => acc + day.totalQuestions, 0);
+    const firstAvg = first.reduce((acc, day) => acc + day.totalCorrect, 0) / Math.max(firstTotal, 1) * 100;
+    const lastAvg = last.reduce((acc, day) => acc + day.totalCorrect, 0) / Math.max(lastTotal, 1) * 100;
     const delta = lastAvg - firstAvg;
 
-    const scores = days.map((d) => d.score);
+    const scores = days.map((d) => d.score ?? 0);
     const min = Math.min(...scores);
     const max = Math.max(...scores);
     const spread = max - min;
@@ -859,6 +869,7 @@ export default function StatsDashboard({
               <Area
                 type="monotone"
                 dataKey="score"
+                connectNulls={false}
                 stroke="#4f46e5"
                 strokeWidth={3}
                 fill="url(#statsTrend)"

@@ -82,6 +82,7 @@ import {
   type HomeLoadTrace,
 } from '../../lib/homeLoadMetrics';
 import { trackDecisionOnce, trackEffect } from '../../lib/telemetry';
+import { calculateActiveDayStreak } from '../../lib/practiceStatistics';
 import {
   buildPracticeEmptyStateModel,
   resolveEmptyStateReason,
@@ -2270,49 +2271,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       if (dateStr) sessionDays.add(dateStr);
     }
 
-    const sortedDays = Array.from(sessionDays).sort((a, b) => b.localeCompare(a));
-    let streak = 0;
-    if (sortedDays.length > 0) {
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-
-      // Only count streak if active today or yesterday
-      if (sortedDays[0] === todayStr || sortedDays[0] === yesterdayStr) {
-        streak = 1;
-        for (let i = 0; i < sortedDays.length - 1; i++) {
-          const current = new Date(sortedDays[i]);
-          const next = new Date(sortedDays[i + 1]);
-          const diff = (current.getTime() - next.getTime()) / (1000 * 3600 * 24);
-          if (diff <= 1.1) {
-            // 1 day difference (with small buffer)
-            streak++;
-          } else {
-            break;
-          }
-        }
-      }
-    }
-
-    try {
-      const userId = String(session?.user?.id ?? '').trim() || 'anonymous';
-      const cacheKey = `quantia.streak.v1:${userId}:${curriculum}`;
-      if (recentSessions.length > 0) {
-        window.localStorage.setItem(cacheKey, String(streak));
-      } else {
-        const cached = Number(window.localStorage.getItem(cacheKey) ?? '0');
-        if (Number.isFinite(cached) && cached > 0) {
-          streak = cached;
-        }
-      }
-    } catch {
-      void 0;
-    }
+    const streak = calculateActiveDayStreak(sessionDays);
 
     return { xp, level, streak };
-  }, [bundle, curriculum, session?.user?.id]);
+  }, [bundle]);
 
   useEffect(() => {
     if (currentView !== 'stats') return;
