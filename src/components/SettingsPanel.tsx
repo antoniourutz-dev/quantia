@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle2, AlertTriangle, Save } from 'lucide-react';
+import { Calendar, CheckCircle2, AlertTriangle, Save, ListChecks } from 'lucide-react';
 import type { PracticeExamTarget } from '../types';
 import { useAppLocale } from '../lib/locale';
+import type { CurriculumOption } from '../lib/quantia/types';
 
 interface SettingsPanelProps {
   examTarget: PracticeExamTarget | null;
   saving: boolean;
   notice: { kind: 'success' | 'error'; text: string } | null;
-  onSave: (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number }) => Promise<void>;
+  curriculumOptions: CurriculumOption[];
+  visibleCurriculumIds: string[];
+  onSave: (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number; visibleCurriculumIds: string[] }) => Promise<void>;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
   onOpenTelemetry?: () => void;
@@ -18,7 +21,7 @@ const clampInt = (value: number, min: number, max: number) => {
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
-export default function SettingsPanel({ examTarget, saving, notice, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
+export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const telemetryEnabled = useMemo(() => {
@@ -41,12 +44,17 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
   const [examDate, setExamDate] = useState<string>(initialExamDate);
   const [dailyReviewCapacity, setDailyReviewCapacity] = useState<number>(initialDailyReview);
   const [dailyNewCapacity, setDailyNewCapacity] = useState<number>(initialDailyNew);
+  const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<string[]>(visibleCurriculumIds);
 
   useEffect(() => {
     setExamDate(examTarget?.examDate ?? '');
     setDailyReviewCapacity(examTarget?.dailyReviewCapacity ?? 35);
     setDailyNewCapacity(examTarget?.dailyNewCapacity ?? 10);
   }, [examTarget]);
+
+  useEffect(() => {
+    setSelectedCurriculumIds(visibleCurriculumIds);
+  }, [visibleCurriculumIds]);
 
   const derived = useMemo(() => {
     const safeReview = clampInt(dailyReviewCapacity, 5, 200);
@@ -89,6 +97,51 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
               {notice.text}
             </div>
           ) : null}
+        </div>
+
+        <div className="mt-6 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:mt-10 sm:rounded-[2rem] sm:p-8">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-indigo-100 p-3 text-indigo-700">
+              <ListChecks size={20} />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                {isBasque ? 'Ikusgai dauden oposizioak' : 'Oposiciones visibles'}
+              </div>
+              <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                {isBasque
+                  ? 'Aukeratu oposizioen goitibeherako menuan agertzea nahi dituzunak.'
+                  : 'Elige cuáles quieres ver en el desplegable de oposiciones.'}
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {curriculumOptions.map((option) => {
+              const checked = selectedCurriculumIds.includes(option.id);
+              const disableOnlySelected = checked && selectedCurriculumIds.length === 1;
+              return (
+                <label
+                  key={option.id}
+                  className={`flex cursor-pointer items-center gap-3 rounded-2xl border bg-white px-4 py-4 transition-colors ${
+                    checked ? 'border-indigo-300 text-slate-900' : 'border-slate-100 text-slate-500'
+                  } ${disableOnlySelected ? 'cursor-not-allowed opacity-70' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={disableOnlySelected}
+                    onChange={() => {
+                      setSelectedCurriculumIds((current) =>
+                        checked ? current.filter((id) => id !== option.id) : [...current, option.id],
+                      );
+                    }}
+                    className="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-black">{option.label}</span>
+                </label>
+              );
+            })}
+          </div>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:mt-10 md:grid-cols-2 md:gap-8">
@@ -183,6 +236,7 @@ export default function SettingsPanel({ examTarget, saving, notice, onSave, isAd
                 examDate: examDate ? examDate : null,
                 dailyReviewCapacity: derived.safeReview,
                 dailyNewCapacity: derived.safeNew,
+                visibleCurriculumIds: selectedCurriculumIds,
               })
             }
             disabled={saving}

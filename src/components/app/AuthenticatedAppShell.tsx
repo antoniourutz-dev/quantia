@@ -83,6 +83,8 @@ import {
 } from '../../lib/homeLoadMetrics';
 import { trackDecisionOnce, trackEffect } from '../../lib/telemetry';
 import { calculateActiveDayStreak } from '../../lib/practiceStatistics';
+import { readVisibleCurriculumIds, writeVisibleCurriculumIds } from '../../lib/curriculumVisibility';
+import { getBalancedMixedPracticeBatch } from '../../lib/mixedPracticeBatch';
 import {
   buildPracticeEmptyStateModel,
   resolveEmptyStateReason,
@@ -204,6 +206,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     buildFallbackCurriculumOptions(curriculum),
   );
   const [curriculumOptionsLoading, setCurriculumOptionsLoading] = useState(false);
+  const [selectedVisibleCurriculumIds, setSelectedVisibleCurriculumIds] = useState<string[] | null>(() =>
+    readVisibleCurriculumIds(session.user.id),
+  );
   const [curriculumMenuOpen, setCurriculumMenuOpen] = useState(false);
   const [curriculumMenuStyle, setCurriculumMenuStyle] = useState<{
     top: number;
@@ -306,7 +311,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setCurrentView('admin-dashboard');
     }
   }, [currentView, isAdminEmail]);
-  const visibleCurriculumOptions = useMemo(() => {
+  const accessibleCurriculumOptions = useMemo(() => {
     const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
     const preferredMatches = preferredCurriculumId
       ? limitedOptions.filter((option) => normalizeCurriculumId(option.id) === normalizeCurriculumId(preferredCurriculumId))
@@ -337,6 +342,12 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
 
     return [scored[0]];
   }, [curriculumOptions, effectiveAllowedCurriculumKeys, preferredCurriculumId, restrictedCurriculum]);
+  const visibleCurriculumOptions = useMemo(() => {
+    if (!selectedVisibleCurriculumIds) return accessibleCurriculumOptions;
+    const selected = new Set(selectedVisibleCurriculumIds.map(normalizeCurriculumId));
+    const filtered = accessibleCurriculumOptions.filter((option) => selected.has(normalizeCurriculumId(option.id)));
+    return filtered.length > 0 ? filtered : accessibleCurriculumOptions;
+  }, [accessibleCurriculumOptions, selectedVisibleCurriculumIds]);
 
   useEffect(() => {
     if (currentView === 'test-active' || currentView === 'study-active') {
@@ -1472,6 +1483,18 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           }
           reviewPriority = 'most_problematic';
           resolvedTitle = t('Corregir fallos', 'Hutsegiteak zuzendu');
+        } else if (!syllabus && !isSingleScopePracticeCurriculum) {
+          questions = await getBalancedMixedPracticeBatch({
+            count: batchSize,
+            loadScope: (questionScope, requestedCount) =>
+              getRandomPracticeBatch(
+                requestedCount,
+                curriculum,
+                questionScope,
+                null,
+                mode === 'simulacro' ? 'simulacro' : 'adaptive',
+              ),
+          });
         } else if (mode === 'simulacro') {
           questions = await getRandomPracticeBatch(batchSize, curriculum, scope, null, 'simulacro');
         } else {
@@ -2098,7 +2121,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   }, [curriculumMenuOpen]);
 
   const handleSaveExamTarget = useCallback(
-    async (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number }) => {
+    async (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number; visibleCurriculumIds: string[] }) => {
       setSettingsSaving(true);
       setSettingsNotice(null);
       try {
@@ -2108,6 +2131,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           dailyReviewCapacity: next.dailyReviewCapacity,
           dailyNewCapacity: next.dailyNewCapacity,
         });
+        writeVisibleCurriculumIds(session.user.id, next.visibleCurriculumIds);
+        setSelectedVisibleCurriculumIds(next.visibleCurriculumIds);
         await refreshDashboard();
         setSettingsNotice({ kind: 'success', text: t('Ajustes guardados.', 'Doikuntzak gorde dira.') });
       } catch (error) {
@@ -2122,7 +2147,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         setSettingsSaving(false);
       }
     },
-    [curriculum, refreshDashboard, t],
+    [curriculum, refreshDashboard, session.user.id, t],
   );
 
   const handleStartStudy = useCallback(
@@ -3191,6 +3216,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               examTarget={bundle?.practiceState.examTarget ?? null}
               saving={settingsSaving}
               notice={settingsNotice}
+              curriculumOptions={accessibleCurriculumOptions}
+              visibleCurriculumIds={visibleCurriculumOptions.map((option) => option.id)}
               onSave={handleSaveExamTarget}
               isAdmin={isAdminEmail}
               onOpenAdmin={() => setCurrentView('admin-dashboard')}
