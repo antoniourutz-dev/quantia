@@ -84,6 +84,11 @@ import {
 import { trackDecisionOnce, trackEffect } from '../../lib/telemetry';
 import { calculateActiveDayStreak } from '../../lib/practiceStatistics';
 import { readVisibleCurriculumIds, writeVisibleCurriculumIds } from '../../lib/curriculumVisibility';
+import {
+  readVisiblePracticeModeIds,
+  writeVisiblePracticeModeIds,
+  type PracticeModeVisibilityId,
+} from '../../lib/practiceModeVisibility';
 import { getBalancedMixedPracticeBatch } from '../../lib/mixedPracticeBatch';
 import {
   buildPracticeEmptyStateModel,
@@ -208,6 +213,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const [curriculumOptionsLoading, setCurriculumOptionsLoading] = useState(false);
   const [selectedVisibleCurriculumIds, setSelectedVisibleCurriculumIds] = useState<string[] | null>(() =>
     readVisibleCurriculumIds(session.user.id),
+  );
+  const [visiblePracticeModeIds, setVisiblePracticeModeIds] = useState<PracticeModeVisibilityId[]>(() =>
+    readVisiblePracticeModeIds(session.user.id),
   );
   const [curriculumMenuOpen, setCurriculumMenuOpen] = useState(false);
   const [curriculumMenuStyle, setCurriculumMenuStyle] = useState<{
@@ -1919,7 +1927,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               context: {
                 mode: activeSession.mode,
                 score: payload.score,
-                total: activeSession.questions.length,
+                total: activeSession.questions.filter((question) => question.correctAnswer != null).length,
                 finishedAt: new Date().toISOString(),
                 coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
               },
@@ -2121,7 +2129,13 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   }, [curriculumMenuOpen]);
 
   const handleSaveExamTarget = useCallback(
-    async (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number; visibleCurriculumIds: string[] }) => {
+    async (next: {
+      examDate: string | null;
+      dailyReviewCapacity: number;
+      dailyNewCapacity: number;
+      visibleCurriculumIds: string[];
+      visiblePracticeModeIds: PracticeModeVisibilityId[];
+    }) => {
       setSettingsSaving(true);
       setSettingsNotice(null);
       try {
@@ -2133,6 +2147,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         });
         writeVisibleCurriculumIds(session.user.id, next.visibleCurriculumIds);
         setSelectedVisibleCurriculumIds(next.visibleCurriculumIds);
+        writeVisiblePracticeModeIds(session.user.id, next.visiblePracticeModeIds);
+        setVisiblePracticeModeIds(next.visiblePracticeModeIds);
         await refreshDashboard();
         setSettingsNotice({ kind: 'success', text: t('Ajustes guardados.', 'Doikuntzak gorde dira.') });
       } catch (error) {
@@ -3077,6 +3093,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               lawOptionsLoading={discoveredLawOptionsLoading}
               initialLaw={selectedLawFilter}
               initialState={testSelectionState}
+              visiblePracticeModeIds={visiblePracticeModeIds}
               onStart={handleStartTest}
               onStartLawTest={(law, count) =>
                 handleStartLawTest(
@@ -3218,6 +3235,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               notice={settingsNotice}
               curriculumOptions={accessibleCurriculumOptions}
               visibleCurriculumIds={visibleCurriculumOptions.map((option) => option.id)}
+              visiblePracticeModeIds={visiblePracticeModeIds}
               onSave={handleSaveExamTarget}
               isAdmin={isAdminEmail}
               onOpenAdmin={() => setCurrentView('admin-dashboard')}

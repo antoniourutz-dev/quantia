@@ -23,7 +23,7 @@ type StudyScope = PracticeQuestionScopeFilter;
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [50, 100] as const;
 
-const toAnswerLabel = (value: QuestionBankListItem['correctAnswer']) => value.toUpperCase();
+const toAnswerLabel = (value: QuestionBankListItem['correctAnswer']) => value?.toUpperCase() ?? '—';
 
 const formatScopeLabel = (scope: StudyScope, locale: 'es' | 'eu', curriculum: string) => {
   if (scope === 'all') return locale === 'eu' ? 'Denak' : 'Todos';

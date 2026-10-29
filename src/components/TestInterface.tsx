@@ -104,6 +104,10 @@ export default function TestInterface({
     () => activeAnswerDetails.filter((answer) => answer?.isCorrect).length,
     [activeAnswerDetails],
   );
+  const activeScorableCount = useMemo(
+    () => activeQuestions.filter((question) => question.correctAnswer != null).length,
+    [activeQuestions],
+  );
   const answeredCount = useMemo(
     () => activeSelectedAnswers.filter((answer) => answer !== null).length,
     [activeSelectedAnswers],
@@ -116,7 +120,7 @@ export default function TestInterface({
     if (!allowInSessionMistakeReview || isSimulacro || isMistakeReview || questions.length <= 40 || currentIndex + 1 < 20) return [];
     return answerDetails
       .slice(0, currentIndex + 1)
-      .map((answer, index) => (answer && !answer.isCorrect ? questions[index] : null))
+      .map((answer, index) => (answer && !answer.isCorrect && questions[index]?.correctAnswer != null ? questions[index] : null))
       .filter((question): question is Question => Boolean(question))
       .filter((question) => !resolvedMistakeQuestionIdSet.has(question.id));
   }, [allowInSessionMistakeReview, answerDetails, currentIndex, isMistakeReview, isSimulacro, questions, resolvedMistakeQuestionIdSet]);
@@ -124,7 +128,7 @@ export default function TestInterface({
     if (!allowInSessionMistakeReview || isSimulacro || isMistakeReview || questions.length <= 40 || currentIndex + 1 < 20) return [];
     return answerDetails
       .slice(0, currentIndex + 1)
-      .map((answer, index) => (answer && !answer.isCorrect ? questions[index] : null))
+      .map((answer, index) => (answer && !answer.isCorrect && questions[index]?.correctAnswer != null ? questions[index] : null))
       .filter((question): question is Question => Boolean(question));
   }, [allowInSessionMistakeReview, answerDetails, currentIndex, isMistakeReview, isSimulacro, questions]);
   const canStartMistakeReview = accumulatedMistakeQuestions.length > 0 && !closingSession;
@@ -133,7 +137,9 @@ export default function TestInterface({
   const finishPayload = useMemo(
     () => ({
       score: mainScore,
-      answers: answerDetails.filter((answer): answer is TestAnswer => Boolean(answer)),
+      answers: answerDetails.filter(
+        (answer): answer is TestAnswer => Boolean(answer?.correctOption),
+      ),
     }),
     [answerDetails, mainScore],
   );
@@ -171,7 +177,7 @@ export default function TestInterface({
   }, [currentQuestion?.id]);
 
   useEffect(() => {
-    if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion) return;
+    if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion?.correctAnswer) return;
     const phase = isMistakeReview ? 'mistake-review' : 'test';
     const occurrenceKey = `${phase}:${currentQuestion.id}`;
     const occurrence = (viewOccurrencesRef.current.get(occurrenceKey) ?? 0) + 1;
@@ -233,7 +239,7 @@ export default function TestInterface({
       timeToFirstSelectionMs: previousDetail?.timeToFirstSelectionMs ?? responseTimeMs,
       changedAnswer: previousDetail ? previousDetail.selectedOption !== optionId : false,
     };
-    if (activityUserId && activityCurriculum && currentViewEventIdRef.current) {
+    if (currentQuestion.correctAnswer && activityUserId && activityCurriculum && currentViewEventIdRef.current) {
       recordQuestionAnswer({
         userId: activityUserId,
         curriculum: activityCurriculum,
@@ -428,7 +434,7 @@ export default function TestInterface({
                 ) : (
                   <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold text-slate-600">
                     <Trophy size={14} className="text-emerald-600" />
-                    <span>{score}/{activeQuestions.length}</span>
+                    <span>{score}/{activeScorableCount}</span>
                     {isMistakeReview ? (
                       <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                         {mistakeReview?.kind === 'all'
@@ -608,6 +614,12 @@ export default function TestInterface({
               ) : null}
             </div>
 
+            {currentQuestion.correctAnswer == null ? (
+              <div className="mx-4 mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 sm:mx-0">
+                Esta pregunta no tiene una respuesta asignada. Puedes marcar cualquier opción: se mostrará como incorrecta y no contará en las estadísticas.
+              </div>
+            ) : null}
+
             <div className="flex flex-col flex-1 divide-y divide-slate-100 bg-slate-50/30 sm:rounded-2xl sm:border sm:border-slate-100 overflow-hidden">
               {currentQuestion.options.map((option, optionIndex) => {
                 const isSelected = selectedAnswer === option.id;
@@ -736,7 +748,7 @@ export default function TestInterface({
                         <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                           Respuesta oficial
                         </div>
-                        <div className="mt-1 text-slate-900">{currentQuestion.correctAnswer.toUpperCase()}</div>
+                        <div className="mt-1 text-slate-900">{currentQuestion.correctAnswer?.toUpperCase() ?? 'Sin respuesta asignada'}</div>
                         <div className="mt-3 text-xs leading-relaxed text-slate-500">
                           Fuente: {officialMetadata.sourceTitle}
                           {officialMetadata.licenseLabel ? ` · Licencia: ${officialMetadata.licenseLabel}` : ''}

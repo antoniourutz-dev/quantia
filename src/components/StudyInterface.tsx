@@ -64,7 +64,7 @@ export default function StudyInterface({
   }, [currentIndex, currentQuestion]);
 
   useEffect(() => {
-    if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion) return;
+    if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion?.correctAnswer) return;
     const occurrence = (viewOccurrencesRef.current.get(currentQuestion.id) ?? 0) + 1;
     viewOccurrencesRef.current.set(currentQuestion.id, occurrence);
     const eventId = `${activitySessionId}:study:${currentQuestion.id}:${occurrence}`;
@@ -148,7 +148,7 @@ export default function StudyInterface({
     nextSelected[currentIndex] = optionId;
     setSelectedAnswers(nextSelected);
 
-    if (activityUserId && activityCurriculum && currentViewEventIdRef.current) {
+    if (currentQuestion.correctAnswer && activityUserId && activityCurriculum && currentViewEventIdRef.current) {
       recordQuestionAnswer({
         userId: activityUserId,
         curriculum: activityCurriculum,
@@ -248,6 +248,12 @@ export default function StudyInterface({
             />
           </div>
         </div>
+
+        {currentQuestion.correctAnswer == null ? (
+          <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            Esta pregunta no tiene una respuesta asignada. Puedes marcar cualquier opción: se mostrará como incorrecta y no contará en las estadísticas.
+          </div>
+        ) : null}
 
         <div className="flex flex-col flex-1 divide-y divide-slate-100 bg-slate-50/30 sm:rounded-2xl sm:border sm:border-slate-100 overflow-hidden mt-2">
           {currentQuestion.options.map((option, optionIndex) => {

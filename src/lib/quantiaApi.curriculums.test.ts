@@ -31,3 +31,19 @@ describe('Electromedicina curriculum', () => {
     expect(getSharedCurriculumSources('osakidetza_electromedicina', 'specific')).toEqual([]);
   });
 });
+
+describe('Mantenimiento curriculum', () => {
+  it('is available in the fallback opposition catalog', () => {
+    expect(buildFallbackCurriculumOptions()).toContainEqual({
+      id: 'osakidetza_mantenimiento_instalaciones',
+      label: 'Mantenimiento e Instalaciones',
+    });
+  });
+
+  it('uses the 200 common questions from Técnico Superior Administración y Gestión', () => {
+    const source = { curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' };
+    expect(getSharedCurriculumSources('osakidetza_mantenimiento_instalaciones', 'all')).toEqual([source]);
+    expect(getSharedCurriculumSources('osakidetza_mantenimiento_instalaciones', 'common')).toEqual([source]);
+    expect(getSharedCurriculumSources('osakidetza_mantenimiento_instalaciones', 'specific')).toEqual([]);
+  });
+});

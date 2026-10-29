@@ -14,6 +14,11 @@ import {
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
 import type { CustomPracticeConfig, CustomPracticeContentScope } from '../domain/customPractice/customPracticeTypes';
 import { getCurriculumTopicOptions } from '../lib/quantiaApi';
+import {
+  PRACTICE_MODE_IDS,
+  normalizePracticeModeIds,
+  type PracticeModeVisibilityId,
+} from '../lib/practiceModeVisibility';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
@@ -49,6 +54,7 @@ interface TestSelectionProps {
   initialSyllabus: SyllabusType | null;
   initialState?: TestSelectionStateSnapshot | null;
   onStateChange?: (state: TestSelectionStateSnapshot) => void;
+  visiblePracticeModeIds?: PracticeModeVisibilityId[];
   generalLaws?: GeneralLaw[];
   userId?: string | null;
   activeGeneralLawId?: string | null;
@@ -89,6 +95,7 @@ export default function TestSelection({
   initialSyllabus,
   initialState = null,
   onStateChange,
+  visiblePracticeModeIds = [...PRACTICE_MODE_IDS],
   generalLaws = [],
   userId = null,
   activeGeneralLawId = null,
@@ -149,6 +156,14 @@ export default function TestSelection({
   );
   const [customShowMarks, setCustomShowMarks] = useState(initialState?.customShowMarks ?? false);
   const [customShowNotes, setCustomShowNotes] = useState(initialState?.customShowNotes ?? false);
+  const normalizedVisiblePracticeModeIds = useMemo(() => {
+    const normalized = normalizePracticeModeIds(visiblePracticeModeIds);
+    return normalized.length > 0 ? normalized : [...PRACTICE_MODE_IDS];
+  }, [visiblePracticeModeIds]);
+  const visiblePracticeModeSet = useMemo(
+    () => new Set<PracticeModeVisibilityId>(normalizedVisiblePracticeModeIds),
+    [normalizedVisiblePracticeModeIds],
+  );
   const usesLawSelection = useMemo(() => isLawSelectionCurriculum(curriculum), [curriculum]);
   const usesSingleScope = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
   const modeNeedsConfig =
@@ -208,6 +223,11 @@ export default function TestSelection({
   );
   const activeGeneralLawLabel =
     activeGeneralLaw?.shortTitle ?? activeGeneralLaw?.title ?? selectedLaw;
+
+  useEffect(() => {
+    if (visiblePracticeModeSet.has(selectionMode)) return;
+    setSelectionMode(normalizedVisiblePracticeModeIds[0]);
+  }, [normalizedVisiblePracticeModeIds, selectionMode, visiblePracticeModeSet]);
   const selectedBlockCount = selectedGeneralLawBlockIds.length;
   const selectedArticleCount = selectedGeneralLawArticleIds.length;
   const publishedBlockCount = generalLawBlocks.length;
@@ -644,7 +664,7 @@ export default function TestSelection({
         </h2>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 xl:grid-cols-5">
-          <button
+          {visiblePracticeModeSet.has('standard') ? <button
             onClick={() => setSelectionMode('standard')}
             className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'standard'
@@ -683,9 +703,9 @@ export default function TestSelection({
                     : 'Elige por bloque y ponte a ello'}
               </p>
             </div>
-          </button>
+          </button> : null}
 
-          <button
+          {visiblePracticeModeSet.has('quick') ? <button
             onClick={() => setSelectionMode('quick')}
             className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'quick'
@@ -702,9 +722,9 @@ export default function TestSelection({
                 {isBasque ? 'Berriz sartzeko 5 galdera' : '5 preguntas para volver a entrar'}
               </p>
             </div>
-          </button>
+          </button> : null}
 
-          <button
+          {visiblePracticeModeSet.has('errors') ? <button
             onClick={() => setSelectionMode('errors')}
             className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'errors'
@@ -721,9 +741,9 @@ export default function TestSelection({
                 {isBasque ? 'Zoaz gehien kostatzen zaizunera' : 'Ve justo a lo que mas se te resiste'}
               </p>
             </div>
-          </button>
+          </button> : null}
 
-          <button
+          {visiblePracticeModeSet.has('simulacro') ? <button
             onClick={() => setSelectionMode('simulacro')}
             className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:p-8 ${
               selectionMode === 'simulacro'
@@ -744,9 +764,9 @@ export default function TestSelection({
                 {isBasque ? 'Erantzunak amaieran ikusiko dituzu' : 'Sin ver las respuestas hasta el final'}
               </p>
             </div>
-          </button>
+          </button> : null}
 
-          <button
+          {visiblePracticeModeSet.has('custom') ? <button
             onClick={() => {
               setSelectionMode('custom');
               setCustomError(null);
@@ -770,7 +790,7 @@ export default function TestSelection({
                   : 'Elige alcance, tema y ayudas'}
               </p>
             </div>
-          </button>
+          </button> : null}
         </div>
       </div>
 

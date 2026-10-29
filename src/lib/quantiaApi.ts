@@ -91,7 +91,7 @@ const questionBankDetailCache = new Map<string, Question>();
 type QuestionBankCacheRow = {
   id: string;
   number: number | null;
-  correctAnswer: OptionKey;
+  correctAnswer: OptionKey | null;
   syllabus: SyllabusType;
   text: string;
   category: string | null;
@@ -104,6 +104,7 @@ const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: DEFAULT_CURRICULUM, label: 'Administrativo' },
   { id: 'auxiliar_administrativo', label: 'Auxiliar administrativo' },
   { id: 'osakidetza_electromedicina', label: 'Electromedicina' },
+  { id: 'osakidetza_mantenimiento_instalaciones', label: 'Mantenimiento e Instalaciones' },
   {
     id: 'tecnico_superior_administracion_y_gestion',
     label: 'Técnico/a Superior Administración y Gestión',
@@ -239,6 +240,15 @@ const CURRICULUM_ALIAS_GROUPS = [
     ],
   },
   {
+    key: 'osakidetza-mantenimiento-instalaciones',
+    label: 'Mantenimiento e Instalaciones',
+    aliases: [
+      'osakidetza_mantenimiento_instalaciones',
+      'osakidetza-mantenimiento-instalaciones',
+      'mantenimiento e instalaciones',
+    ],
+  },
+  {
     key: 'goi-teknikaria',
     label: 'Goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
@@ -273,6 +283,10 @@ const CURRICULUM_SHARED_QUESTION_SOURCES: Record<
   'osakidetza-electromedicina': {
     all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
     common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+  },
+  'osakidetza-mantenimiento-instalaciones': {
+    all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+    common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
 };
 
@@ -620,7 +634,7 @@ const buildQuestionBankDedupeKey = (row: {
   number: number | null;
   category: string | null;
   text: string;
-  correctAnswer: OptionKey;
+  correctAnswer: OptionKey | null;
 }) =>
   [
     row.number ?? '',
@@ -636,7 +650,7 @@ const buildQuestionContentDedupKey = (row: {
   correctAnswer: OptionKey | null;
 }) => {
   const normalizedText = normalizeQuestionBankText(String(row.text ?? ''));
-  if (!normalizedText || !row.correctAnswer) return null;
+  if (!normalizedText) return null;
 
   return [
     row.number ?? '',
@@ -668,7 +682,7 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
     'question',
   ]);
 
-  if (!id || !correctAnswer || !text) return null;
+  if (!id || !text) return null;
 
   const number = readOptionalNumber(
     row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
@@ -3954,7 +3968,7 @@ export const buildPracticeSessionSyncPayload = (
   const attempts = answers
     .map((answer) => {
       const question = questionsById.get(answer.questionId);
-      if (!question) return null;
+      if (!question || question.correctAnswer == null) return null;
 
       return {
         question_id: question.id,

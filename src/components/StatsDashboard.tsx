@@ -967,8 +967,8 @@ export default function StatsDashboard({
                   >
                     <option value="most_viewed">{t('Mas vistas', 'Ikusienak')}</option>
                     <option value="least_viewed">{t('Menos vistas', 'Gutxien ikusiak')}</option>
-                    <option value="most_correct">{t('Mas acertadas', 'Gehien asmatuak')}</option>
-                    <option value="most_incorrect">{t('Mas falladas', 'Gehien huts egindakoak')}</option>
+                    <option value="most_correct">{t('Mayor % de acierto', 'Asmatze-ehuneko handiena')}</option>
+                    <option value="most_incorrect">{t('Mayor % de fallo', 'Hutsegite-ehuneko handiena')}</option>
                   </select>
                 </label>
               )}

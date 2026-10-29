@@ -196,7 +196,6 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
   if (!statement || !options) return null;
 
   const correctOption = extractCorrectOption(row, options);
-  if (!correctOption) return null;
 
   const questionScope =
     normalizeQuestionScope(row.question_scope) ??

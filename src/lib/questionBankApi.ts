@@ -25,7 +25,7 @@ type PostgrestLikeError = {
 type QuestionBankCacheRow = {
   id: string;
   number: number | null;
-  correctAnswer: OptionKey;
+  correctAnswer: OptionKey | null;
   syllabus: SyllabusType;
   text: string;
   category: string | null;
@@ -64,6 +64,14 @@ const CURRICULUM_ALIAS_GROUPS = [
     ],
   },
   {
+    key: 'osakidetza-mantenimiento-instalaciones',
+    aliases: [
+      'osakidetza_mantenimiento_instalaciones',
+      'osakidetza-mantenimiento-instalaciones',
+      'mantenimiento e instalaciones',
+    ],
+  },
+  {
     key: 'goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
   },
@@ -91,6 +99,10 @@ const SHARED_QUESTION_SOURCES: Record<
   'osakidetza-electromedicina': {
     all: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
     common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
+  },
+  'osakidetza-mantenimiento-instalaciones': {
+    all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+    common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
 };
 
@@ -270,7 +282,7 @@ const buildQuestionBankDedupeKey = (row: {
   number: number | null;
   category: string | null;
   text: string;
-  correctAnswer: OptionKey;
+  correctAnswer: OptionKey | null;
 }) =>
   [
     row.number ?? '',
@@ -301,7 +313,7 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
     'question',
   ]);
 
-  if (!id || !correctAnswer || !text) return null;
+  if (!id || !text) return null;
 
   const number = readOptionalNumber(
     row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,

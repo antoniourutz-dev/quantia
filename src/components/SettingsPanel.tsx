@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle2, AlertTriangle, Save, ListChecks } from 'lucide-react';
+import { Calendar, CheckCircle2, AlertTriangle, Save, ListChecks, SlidersHorizontal } from 'lucide-react';
 import type { PracticeExamTarget } from '../types';
 import { useAppLocale } from '../lib/locale';
 import type { CurriculumOption } from '../lib/quantia/types';
+import { PRACTICE_MODE_IDS, type PracticeModeVisibilityId } from '../lib/practiceModeVisibility';
 
 interface SettingsPanelProps {
   examTarget: PracticeExamTarget | null;
@@ -10,7 +11,14 @@ interface SettingsPanelProps {
   notice: { kind: 'success' | 'error'; text: string } | null;
   curriculumOptions: CurriculumOption[];
   visibleCurriculumIds: string[];
-  onSave: (next: { examDate: string | null; dailyReviewCapacity: number; dailyNewCapacity: number; visibleCurriculumIds: string[] }) => Promise<void>;
+  visiblePracticeModeIds: PracticeModeVisibilityId[];
+  onSave: (next: {
+    examDate: string | null;
+    dailyReviewCapacity: number;
+    dailyNewCapacity: number;
+    visibleCurriculumIds: string[];
+    visiblePracticeModeIds: PracticeModeVisibilityId[];
+  }) => Promise<void>;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
   onOpenTelemetry?: () => void;
@@ -21,7 +29,7 @@ const clampInt = (value: number, min: number, max: number) => {
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
-export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
+export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, visiblePracticeModeIds, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const telemetryEnabled = useMemo(() => {
@@ -45,6 +53,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
   const [dailyReviewCapacity, setDailyReviewCapacity] = useState<number>(initialDailyReview);
   const [dailyNewCapacity, setDailyNewCapacity] = useState<number>(initialDailyNew);
   const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<string[]>(visibleCurriculumIds);
+  const [selectedPracticeModeIds, setSelectedPracticeModeIds] = useState<PracticeModeVisibilityId[]>(visiblePracticeModeIds);
 
   useEffect(() => {
     setExamDate(examTarget?.examDate ?? '');
@@ -55,6 +64,39 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
   useEffect(() => {
     setSelectedCurriculumIds(visibleCurriculumIds);
   }, [visibleCurriculumIds]);
+
+  useEffect(() => {
+    setSelectedPracticeModeIds(visiblePracticeModeIds);
+  }, [visiblePracticeModeIds]);
+
+  const practiceModeOptions: Array<{ id: PracticeModeVisibilityId; label: string; description: string }> = [
+    {
+      id: 'standard',
+      label: isBasque ? 'Temario bidezko testa' : 'Test por temario',
+      description: isBasque ? 'Aukeratu landu nahi duzun blokea.' : 'Elige el bloque que quieres trabajar.',
+    },
+    {
+      id: 'quick',
+      label: isBasque ? 'Bloke laburra' : 'Bloque corto',
+      description: isBasque ? 'Bost galderako saio azkarra.' : 'Una sesión rápida de cinco preguntas.',
+    },
+    {
+      id: 'errors',
+      label: isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos',
+      description: isBasque ? 'Gehien kostatzen direnak errepasatu.' : 'Repasa las preguntas que más cuestan.',
+    },
+    {
+      id: 'simulacro',
+      label: isBasque ? 'Simulakroa' : 'Simulacro',
+      description: isBasque ? 'Erantzunak amaieran ikusi.' : 'Responde sin ver el resultado hasta el final.',
+    },
+    {
+      id: 'custom',
+      label: isBasque ? 'Zure neurrira' : 'A tu medida',
+      description: isBasque ? 'Aukeratu edukia, gaia eta laguntzak.' : 'Elige contenido, tema y ayudas.',
+    },
+  ];
+  const allPracticeModesSelected = selectedPracticeModeIds.length === PRACTICE_MODE_IDS.length;
 
   const derived = useMemo(() => {
     const safeReview = clampInt(dailyReviewCapacity, 5, 200);
@@ -138,6 +180,76 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
                     className="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   <span className="text-sm font-black">{option.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:mt-10 sm:rounded-[2rem] sm:p-8">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-violet-100 p-3 text-violet-700">
+              <SlidersHorizontal size={20} />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                {isBasque ? 'Praktikatzeko moduak' : 'Formas de practicar'}
+              </div>
+              <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                {isBasque
+                  ? 'Aukeratu praktikatzeko pantailan agertzea nahi dituzun aukerak.'
+                  : 'Elige las opciones que quieres ver en la pantalla de práctica.'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedPracticeModeIds([...PRACTICE_MODE_IDS])}
+            className={`mt-5 flex w-full items-center justify-between rounded-2xl border bg-white px-4 py-4 text-left transition-colors ${
+              allPracticeModesSelected ? 'border-violet-300 text-slate-900' : 'border-slate-100 text-slate-500'
+            }`}
+          >
+            <span>
+              <span className="block text-sm font-black">{isBasque ? 'Dena ikusi' : 'Ver todo'}</span>
+              <span className="mt-1 block text-xs font-medium">
+                {isBasque ? 'Praktikatzeko modu guztiak erakusten ditu.' : 'Muestra todas las formas de practicar.'}
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className={`h-5 w-5 rounded-full border-2 ${
+                allPracticeModesSelected ? 'border-violet-600 bg-violet-600 ring-4 ring-violet-100' : 'border-slate-300'
+              }`}
+            />
+          </button>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {practiceModeOptions.map((option) => {
+              const checked = selectedPracticeModeIds.includes(option.id);
+              const disableOnlySelected = checked && selectedPracticeModeIds.length === 1;
+              return (
+                <label
+                  key={option.id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border bg-white px-4 py-4 transition-colors ${
+                    checked ? 'border-violet-300 text-slate-900' : 'border-slate-100 text-slate-500'
+                  } ${disableOnlySelected ? 'cursor-not-allowed opacity-70' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={disableOnlySelected}
+                    onChange={() => {
+                      setSelectedPracticeModeIds((current) =>
+                        checked ? current.filter((id) => id !== option.id) : [...current, option.id],
+                      );
+                    }}
+                    className="mt-0.5 h-5 w-5 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-black">{option.label}</span>
+                    <span className="mt-1 block text-xs font-medium leading-relaxed text-slate-500">{option.description}</span>
+                  </span>
                 </label>
               );
             })}
@@ -237,6 +349,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
                 dailyReviewCapacity: derived.safeReview,
                 dailyNewCapacity: derived.safeNew,
                 visibleCurriculumIds: selectedCurriculumIds,
+                visiblePracticeModeIds: selectedPracticeModeIds,
               })
             }
             disabled={saving}

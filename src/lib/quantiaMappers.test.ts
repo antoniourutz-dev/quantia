@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapPracticeMode, readNumber, readText } from './quantiaMappers';
+import { mapPracticeMode, mapQuestion, readNumber, readText } from './quantiaMappers';
 
 describe('readText', () => {
   it('trims and returns null for empty', () => {
@@ -25,5 +25,20 @@ describe('mapPracticeMode', () => {
 
   it('defaults unknown to standard', () => {
     expect(mapPracticeMode('unknown')).toBe('standard');
+  });
+});
+
+describe('mapQuestion', () => {
+  it('keeps a question without an assigned answer as unscored', () => {
+    expect(mapQuestion({
+      id: 1,
+      pregunta: 'Pregunta sin clave',
+      opcion_a: 'A',
+      opcion_b: 'B',
+      opcion_c: 'C',
+      opcion_d: 'D',
+      respuesta_correcta: null,
+      grupo: 'especifico',
+    })).toMatchObject({ id: '1', correctAnswer: null, syllabus: 'specific' });
   });
 });

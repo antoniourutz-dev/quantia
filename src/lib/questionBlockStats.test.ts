@@ -62,6 +62,47 @@ describe('buildQuestionBlockPerformance', () => {
       .toEqual(['s1']);
   });
 
+  it('ordena aciertos y fallos por porcentaje, no por el recuento absoluto', () => {
+    const blocks = buildQuestionBlockPerformance(
+      [
+        { id: 'many-correct', number: 1, scope: 'common', text: 'Ocho de diez' },
+        { id: 'perfect', number: 2, scope: 'common', text: 'Dos de dos' },
+        { id: 'many-errors', number: 3, scope: 'common', text: 'Cuatro de diez' },
+        { id: 'always-wrong', number: 4, scope: 'common', text: 'Cero de uno' },
+        { id: 'unattempted', number: 5, scope: 'common', text: 'Sin intentos' },
+      ],
+      [
+        ...Array.from({ length: 10 }, (_, index) => ({
+          eventId: `many-correct-${index}`,
+          questionId: 'many-correct',
+          questionNumber: null,
+          scope: null,
+          isCorrect: index < 8,
+        })),
+        ...Array.from({ length: 2 }, (_, index) => ({
+          eventId: `perfect-${index}`,
+          questionId: 'perfect',
+          questionNumber: null,
+          scope: null,
+          isCorrect: true,
+        })),
+        ...Array.from({ length: 10 }, (_, index) => ({
+          eventId: `many-errors-${index}`,
+          questionId: 'many-errors',
+          questionNumber: null,
+          scope: null,
+          isCorrect: index < 4,
+        })),
+        { eventId: 'always-wrong-0', questionId: 'always-wrong', questionNumber: null, scope: null, isCorrect: false },
+      ],
+    );
+
+    expect(rankQuestionPerformance(blocks, 'common', 'most_correct').map((question) => question.id))
+      .toEqual(['perfect', 'many-correct', 'many-errors', 'always-wrong', 'unattempted']);
+    expect(rankQuestionPerformance(blocks, 'common', 'most_incorrect').map((question) => question.id))
+      .toEqual(['always-wrong', 'many-errors', 'many-correct', 'perfect', 'unattempted']);
+  });
+
   it('selecciona solo preguntas vistas y falladas, priorizando las que mas se fallan', () => {
     const blocks = buildQuestionBlockPerformance(
       [

@@ -60,7 +60,7 @@ export interface Question {
   number: number | null;
   text: string;
   options: Option[];
-  correctAnswer: OptionKey;
+  correctAnswer: OptionKey | null;
   explanation: string;
   syllabus: SyllabusType;
   category: string | null;
@@ -179,7 +179,7 @@ export interface AdminUserDetail extends AdminUserListItem {
 export interface QuestionBankListItem {
   id: string;
   number: number | null;
-  correctAnswer: OptionKey;
+  correctAnswer: OptionKey | null;
   syllabus: SyllabusType;
 }
 
@@ -193,7 +193,7 @@ export interface QuestionBankPage {
 export interface TestAnswer {
   questionId: string;
   selectedOption: OptionKey | null;
-  correctOption: OptionKey;
+  correctOption: OptionKey | null;
   isCorrect: boolean;
   answeredAt: string;
   responseTimeMs: number | null;

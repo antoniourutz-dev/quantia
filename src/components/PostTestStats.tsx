@@ -67,8 +67,12 @@ export default function PostTestStats({
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const { score, answers } = payload;
-  const total = Math.max(questions.length, 1);
-  const percentage = Math.round((score / total) * 100);
+  const scorableQuestions = useMemo(
+    () => questions.filter((question) => question.correctAnswer != null),
+    [questions],
+  );
+  const total = scorableQuestions.length;
+  const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   const failed = total - score;
   const avgTimeMs = answers.length > 0
     ? answers.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answers.length
@@ -85,13 +89,13 @@ export default function PostTestStats({
       buildSessionEndExperience({
         locale,
         payload,
-        questionsCount: questions.length,
+        questionsCount: total,
         mode,
         curriculum,
         username,
         coachContext,
       }),
-    [coachContext, curriculum, locale, mode, payload, questions.length, username],
+    [coachContext, curriculum, locale, mode, payload, total, username],
   );
 
   const reviewCopy = buildReviewSurfaceCopy({
@@ -105,7 +109,7 @@ export default function PostTestStats({
   const lawData = useMemo(() => {
     if (!analysisHydrated) return [];
 
-    const lawStats = questions.reduce((acc, q) => {
+    const lawStats = scorableQuestions.reduce((acc, q) => {
       const law =
         getCurriculumCategoryGroupLabel(curriculum, q.category)?.trim() ||
         (q.category ?? '').trim() ||
@@ -125,12 +129,12 @@ export default function PostTestStats({
         total: stats.total,
       }))
       .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
-  }, [analysisHydrated, answerMap, curriculum, isBasque, questions]);
+  }, [analysisHydrated, answerMap, curriculum, isBasque, scorableQuestions]);
   const lawsSeen = useMemo(() => lawData.map((item) => item.fullName).filter(Boolean), [lawData]);
   const [showOnlyIncorrect, setShowOnlyIncorrect] = useState(false);
 
   const reviewItems = useMemo(() => {
-    return questions.map((q, index) => {
+    return scorableQuestions.map((q, index) => {
       const answer = answerMap.get(q.id) ?? null;
       const selected = answer?.selectedOption ?? null;
       const correct = q.correctAnswer;
@@ -151,7 +155,7 @@ export default function PostTestStats({
         isCorrect,
       };
     });
-  }, [answerMap, curriculum, isBasque, questions]);
+  }, [answerMap, curriculum, isBasque, scorableQuestions]);
 
   const reviewFiltered = useMemo(() => {
     if (!showOnlyIncorrect) return reviewItems;
@@ -181,7 +185,7 @@ export default function PostTestStats({
       context: {
         mode,
         score,
-        total: questions.length,
+        total,
         percentage,
         closeState: sessionEnd.dominantState,
         nextMoveKind: sessionEnd.nextMove.kind,
@@ -197,7 +201,7 @@ export default function PostTestStats({
       thesis: sessionEnd.headline,
       nextCta: sessionEnd.primaryCta,
       score,
-      total: questions.length,
+      total,
     });
   }, [
     analysisTrace,
@@ -206,7 +210,7 @@ export default function PostTestStats({
     curriculum,
     mode,
     percentage,
-    questions.length,
+    total,
     score,
     sessionEnd.dominantState,
     sessionEnd.headline,

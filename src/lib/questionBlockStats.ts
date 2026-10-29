@@ -57,12 +57,37 @@ export const rankQuestionPerformance = (
   const questions = blocks
     .filter((block) => block.scope === scope)
     .flatMap((block) => block.questions);
+
+  const compareStableFallback = (left: QuestionPerformance, right: QuestionPerformance) => {
+    if (left.views !== right.views) return right.views - left.views;
+    if (left.attempts !== right.attempts) return right.attempts - left.attempts;
+    return left.number - right.number || left.id.localeCompare(right.id);
+  };
+
+  if (sort === 'most_correct' || sort === 'most_incorrect') {
+    return [...questions].sort((left, right) => {
+      const leftHasAttempts = left.accuracyRate != null;
+      const rightHasAttempts = right.accuracyRate != null;
+      if (leftHasAttempts !== rightHasAttempts) return leftHasAttempts ? -1 : 1;
+
+      if (leftHasAttempts && rightHasAttempts) {
+        const accuracyDifference = (left.accuracyRate ?? 0) - (right.accuracyRate ?? 0);
+        if (accuracyDifference !== 0) {
+          return sort === 'most_correct' ? -accuracyDifference : accuracyDifference;
+        }
+        if (left.attempts !== right.attempts) return right.attempts - left.attempts;
+        const countDifference = sort === 'most_correct'
+          ? right.correct - left.correct
+          : right.incorrect - left.incorrect;
+        if (countDifference !== 0) return countDifference;
+      }
+
+      return compareStableFallback(left, right);
+    });
+  }
+
   const metric = (question: QuestionPerformance) => {
     switch (sort) {
-      case 'most_correct':
-        return question.correct;
-      case 'most_incorrect':
-        return question.incorrect;
       case 'least_viewed':
       case 'most_viewed':
       default:
@@ -74,9 +99,7 @@ export const rankQuestionPerformance = (
   return [...questions].sort((left, right) => {
     const metricDifference = (metric(left) - metric(right)) * direction;
     if (metricDifference !== 0) return metricDifference;
-    if (left.views !== right.views) return right.views - left.views;
-    if (left.attempts !== right.attempts) return right.attempts - left.attempts;
-    return left.number - right.number || left.id.localeCompare(right.id);
+    return compareStableFallback(left, right);
   });
 };
 

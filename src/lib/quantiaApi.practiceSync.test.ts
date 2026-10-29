@@ -69,4 +69,28 @@ describe('buildPracticeSessionSyncPayload', () => {
       }),
     ]);
   });
+
+  it('excludes questions without an assigned answer from the statistical payload', () => {
+    const unscoredQuestion = { ...question, id: 'q-unscored', correctAnswer: null };
+    const session: ActivePracticeSession = {
+      id: 'session-unscored',
+      mode: 'custom',
+      title: 'Test',
+      startedAt: '2026-10-29T09:00:00.000Z',
+      questions: [unscoredQuestion],
+      batchNumber: 1,
+      totalBatches: 1,
+      batchStartIndex: null,
+      nextStandardBatchStartIndex: null,
+    };
+
+    const payload = buildPracticeSessionSyncPayload(session, [{
+      ...answer,
+      questionId: 'q-unscored',
+      correctOption: null,
+      isCorrect: false,
+    }], 'osakidetza_mantenimiento_instalaciones');
+
+    expect(payload.attempts).toEqual([]);
+  });
 });
