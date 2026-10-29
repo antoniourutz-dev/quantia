@@ -93,4 +93,47 @@ describe('buildPracticeSessionSyncPayload', () => {
 
     expect(payload.attempts).toEqual([]);
   });
+
+  it('keeps review attempts scoped to the active opposition for shared questions', () => {
+    const sharedQuestion = {
+      ...question,
+      id: 'shared-common-question',
+      syllabus: 'common' as const,
+      questionScope: 'common' as const,
+    };
+    const session: ActivePracticeSession = {
+      id: 'review-session',
+      mode: 'review',
+      title: 'Corregir fallos',
+      startedAt: '2026-10-29T10:00:00.000Z',
+      questions: [sharedQuestion],
+      batchNumber: 1,
+      totalBatches: 1,
+      batchStartIndex: null,
+      nextStandardBatchStartIndex: null,
+    };
+    const reviewAnswer = { ...answer, questionId: sharedQuestion.id };
+
+    const maintenancePayload = buildPracticeSessionSyncPayload(
+      session,
+      [reviewAnswer],
+      'osakidetza_mantenimiento_instalaciones',
+    );
+    const administrationPayload = buildPracticeSessionSyncPayload(
+      { ...session, id: 'review-session-administration' },
+      [reviewAnswer],
+      'osakidetza_tecnico_medio_administracion_gestion',
+    );
+
+    expect(maintenancePayload).toEqual(expect.objectContaining({
+      curriculum: 'osakidetza_mantenimiento_instalaciones',
+      session: expect.objectContaining({ mode: 'review' }),
+      attempts: [expect.objectContaining({ question_id: sharedQuestion.id, is_correct: false })],
+    }));
+    expect(administrationPayload).toEqual(expect.objectContaining({
+      curriculum: 'osakidetza_tecnico_medio_administracion_gestion',
+      session: expect.objectContaining({ mode: 'review' }),
+      attempts: [expect.objectContaining({ question_id: sharedQuestion.id, is_correct: false })],
+    }));
+  });
 });

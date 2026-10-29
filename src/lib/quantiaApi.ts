@@ -20,6 +20,7 @@ import {
   buildQuestionBlockPerformance,
   selectMostFailedQuestionIds,
   type QuestionBlockAttempt,
+  type QuestionBlockPerformance,
 } from './questionBlockStats';
 import { getPendingQuestionActivity, syncQuestionActivity } from './questionActivity';
 import { mergePracticeSessionHistory, type PracticeActivitySummaryRow } from './practiceStatistics';
@@ -105,6 +106,10 @@ const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: 'auxiliar_administrativo', label: 'Auxiliar administrativo' },
   { id: 'osakidetza_electromedicina', label: 'Electromedicina' },
   { id: 'osakidetza_mantenimiento_instalaciones', label: 'Mantenimiento e Instalaciones' },
+  {
+    id: 'osakidetza_tecnico_medio_administracion_gestion',
+    label: 'Técnico/a Medio Administración y Gestión',
+  },
   {
     id: 'tecnico_superior_administracion_y_gestion',
     label: 'Técnico/a Superior Administración y Gestión',
@@ -249,6 +254,19 @@ const CURRICULUM_ALIAS_GROUPS = [
     ],
   },
   {
+    key: 'osakidetza-tecnico-medio-administracion-gestion',
+    label: 'Técnico/a Medio Administración y Gestión',
+    aliases: [
+      'osakidetza_tecnico_medio_administracion_gestion',
+      'osakidetza-tecnico-medio-administracion-gestion',
+      'osakidetza-tecnico-medio-administracion-y-gestion',
+      'tecnico medio administracion y gestion',
+      'técnico medio administración y gestión',
+      'tecnico/a medio administracion y gestion',
+      'técnico/a medio administración y gestión',
+    ],
+  },
+  {
     key: 'goi-teknikaria',
     label: 'Goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
@@ -285,6 +303,10 @@ const CURRICULUM_SHARED_QUESTION_SOURCES: Record<
     common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
   },
   'osakidetza-mantenimiento-instalaciones': {
+    all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+    common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+  },
+  'osakidetza-tecnico-medio-administracion-gestion': {
     all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
     common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
@@ -4321,7 +4343,9 @@ export const hydrateDashboardBundle = async (
   ]);
 
   const skipSharedCommonOverride = options?.skipSharedCommonOverride ?? false;
-  const sharedCommonOverride = skipSharedCommonOverride ? null : await computeSharedCommonOverride(curriculum);
+  const sharedCommonOverride = skipSharedCommonOverride
+    ? null
+    : await computeSharedCommonOverride(curriculum, questionBlocks);
 
   const patchedLearningDashboardV2 =
     learningDashboardV2 && sharedCommonOverride
@@ -4337,8 +4361,8 @@ export const hydrateDashboardBundle = async (
               attempts: sharedCommonOverride.attempts,
               questionCount: sharedCommonOverride.total,
               unseenCount: sharedCommonOverride.unseen,
-              correctAttempts: 0,
-              accuracyRate: 0,
+              correctAttempts: sharedCommonOverride.correctAttempts,
+              accuracyRate: sharedCommonOverride.accuracyRate,
             },
           ],
         }
@@ -4385,17 +4409,22 @@ export const hydrateDashboardBundle = async (
   };
 };
 
-type SharedCommonOverride = { total: number; unseen: number; attempts: number };
-const sharedCommonOverrideCache = new Map<string, Promise<SharedCommonOverride | null>>();
+type SharedCommonOverride = {
+  total: number;
+  unseen: number;
+  attempts: number;
+  correctAttempts: number;
+  accuracyRate: number;
+};
 
-export const computeSharedCommonOverride = async (curriculum: string): Promise<SharedCommonOverride | null> => {
+export const computeSharedCommonOverride = async (
+  curriculum: string,
+  questionBlocks?: QuestionBlockPerformance[],
+): Promise<SharedCommonOverride | null> => {
   const normalized = String(curriculum ?? '').trim() || DEFAULT_CURRICULUM;
   if (!hasSharedQuestionSources(normalized, 'common')) return null;
 
-  const cached = sharedCommonOverrideCache.get(normalized);
-  if (cached) return cached;
-
-  const task = (async () => {
+  return (async () => {
     const commonSnapshot = await getQuestionSnapshotFromTables({
       curriculum: normalized,
       maxQuestions: 4000,
@@ -4410,7 +4439,10 @@ export const computeSharedCommonOverride = async (curriculum: string): Promise<S
       if (fallbackId) commonQuestionKeysById.set(fallbackId, canonicalKey);
       commonQuestionKeys.add(canonicalKey);
     }
-    const attemptedRefs = await getAttemptedQuestionRefsFromSessions(normalized).catch(() => null);
+    const [attemptedRefs, resolvedQuestionBlocks] = await Promise.all([
+      getAttemptedQuestionRefsFromSessions(normalized).catch(() => null),
+      questionBlocks ? Promise.resolve(questionBlocks) : getQuestionBlockStats(normalized).catch(() => []),
+    ]);
     if (commonQuestionKeys.size === 0 || !attemptedRefs) return null;
 
     const seenSharedCommon = new Set<string>();
@@ -4428,6 +4460,10 @@ export const computeSharedCommonOverride = async (curriculum: string): Promise<S
     const totalCommon = commonQuestionKeys.size;
     const safeSeen = Math.max(0, Math.min(totalCommon, seenCommon));
     const unseen = Math.max(0, totalCommon - safeSeen);
+    const commonBlocks = resolvedQuestionBlocks.filter((block) => block.scope === 'common');
+    const attempts = commonBlocks.reduce((total, block) => total + block.attempts, 0);
+    const correctAttempts = commonBlocks.reduce((total, block) => total + block.correct, 0);
+    const accuracyRate = attempts > 0 ? correctAttempts / attempts : 0;
 
     if (isCommonProgressDebugEnabled()) {
       console.info('[commonProgress]', {
@@ -4438,17 +4474,14 @@ export const computeSharedCommonOverride = async (curriculum: string): Promise<S
         commonQuestionKeys: commonQuestionKeys.size,
         attemptedIds: attemptedRefs.ids.size,
         attemptedDedupeKeys: attemptedRefs.dedupeKeys.size,
+        answeredAttempts: attempts,
+        correctAttempts,
+        accuracyRate,
       });
     }
 
-    return { total: totalCommon, unseen, attempts: safeSeen };
-  })().catch((error) => {
-    sharedCommonOverrideCache.delete(normalized);
-    throw error;
-  });
-
-  sharedCommonOverrideCache.set(normalized, task);
-  return task;
+    return { total: totalCommon, unseen, attempts, correctAttempts, accuracyRate };
+  })();
 };
 
 export const signOut = async () => {

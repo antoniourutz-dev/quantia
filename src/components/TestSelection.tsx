@@ -649,8 +649,8 @@ export default function TestSelection({
 
       <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
         {isBasque
-          ? 'Aurretik ikusi eta huts egin dituzun galderak bakarrik agertuko dira, gehien huts egindakoetatik hasita.'
-          : 'Solo aparecerán preguntas que ya hayas visto y fallado, empezando por las que más veces has fallado.'}
+          ? 'Aurretik ikusi eta huts egin dituzun galderak bakarrik agertuko dira, hutsegite-tasa handienetik hasita.'
+          : 'Solo aparecerán preguntas que ya hayas visto y fallado, empezando por las que tienen mayor tasa de fallo.'}
       </div>
     </div>
   );

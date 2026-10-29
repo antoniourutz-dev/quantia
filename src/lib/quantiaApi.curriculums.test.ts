@@ -47,3 +47,27 @@ describe('Mantenimiento curriculum', () => {
     expect(getSharedCurriculumSources('osakidetza_mantenimiento_instalaciones', 'specific')).toEqual([]);
   });
 });
+
+describe('Técnico Medio Administración y Gestión curriculum', () => {
+  it('is available in the fallback opposition catalog', () => {
+    expect(buildFallbackCurriculumOptions()).toContainEqual({
+      id: 'osakidetza_tecnico_medio_administracion_gestion',
+      label: 'Técnico/a Medio Administración y Gestión',
+    });
+  });
+
+  it.each([
+    'osakidetza_tecnico_medio_administracion_gestion',
+    'osakidetza-tecnico-medio-administracion-y-gestion',
+    'técnico medio administración y gestión',
+  ])('uses the expected display label for %s', (curriculum) => {
+    expect(formatCurriculumLabel(curriculum)).toBe('Técnico/a Medio Administración y Gestión');
+  });
+
+  it('uses the same 200 common questions as Mantenimiento', () => {
+    const source = { curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' };
+    expect(getSharedCurriculumSources('osakidetza_tecnico_medio_administracion_gestion', 'all')).toEqual([source]);
+    expect(getSharedCurriculumSources('osakidetza_tecnico_medio_administracion_gestion', 'common')).toEqual([source]);
+    expect(getSharedCurriculumSources('osakidetza_tecnico_medio_administracion_gestion', 'specific')).toEqual([]);
+  });
+});

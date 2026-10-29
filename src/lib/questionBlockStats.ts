@@ -111,12 +111,13 @@ export const selectMostFailedQuestionIds = (
   const questions = blocks
     .filter((block) => scope === 'all' || block.scope === scope)
     .flatMap((block) => block.questions)
-    .filter((question) => question.views > 0 && question.incorrect > 0)
+    .filter((question) => question.attempts > 0 && question.incorrect > 0)
     .sort((left, right) => {
+      const leftFailureRate = left.incorrect / left.attempts;
+      const rightFailureRate = right.incorrect / right.attempts;
+      if (leftFailureRate !== rightFailureRate) return rightFailureRate - leftFailureRate;
+      if (left.attempts !== right.attempts) return right.attempts - left.attempts;
       if (left.incorrect !== right.incorrect) return right.incorrect - left.incorrect;
-      const leftAccuracy = left.accuracyRate ?? 1;
-      const rightAccuracy = right.accuracyRate ?? 1;
-      if (leftAccuracy !== rightAccuracy) return leftAccuracy - rightAccuracy;
       if (left.views !== right.views) return right.views - left.views;
       return left.number - right.number || left.id.localeCompare(right.id);
     });

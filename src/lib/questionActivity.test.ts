@@ -91,4 +91,68 @@ describe('questionActivity', () => {
       }),
     ]);
   });
+
+  it('separa la actividad de una misma pregunta compartida por oposicion', async () => {
+    const maintenance = {
+      userId: context.userId,
+      curriculum: 'osakidetza_mantenimiento_instalaciones',
+    };
+    const administration = {
+      userId: context.userId,
+      curriculum: 'osakidetza_tecnico_medio_administracion_gestion',
+    };
+
+    recordQuestionView({
+      ...maintenance,
+      eventId: 'maintenance-session:test:question-1:1',
+      sessionId: 'maintenance-session',
+      surface: 'test',
+      mode: 'standard',
+      question: { ...question, syllabus: 'common', questionScope: 'common' },
+    });
+    recordQuestionAnswer({
+      ...maintenance,
+      eventId: 'maintenance-session:test:question-1:1',
+      isCorrect: false,
+    });
+
+    recordQuestionView({
+      ...administration,
+      eventId: 'administration-session:test:question-1:1',
+      sessionId: 'administration-session',
+      surface: 'test',
+      mode: 'standard',
+      question: { ...question, syllabus: 'common', questionScope: 'common' },
+    });
+    recordQuestionAnswer({
+      ...administration,
+      eventId: 'administration-session:test:question-1:1',
+      isCorrect: true,
+    });
+
+    expect(getPendingQuestionActivity(maintenance)).toEqual([
+      expect.objectContaining({ questionId: 'question-1', isCorrect: false }),
+    ]);
+    expect(getPendingQuestionActivity(administration)).toEqual([
+      expect.objectContaining({ questionId: 'question-1', isCorrect: true }),
+    ]);
+
+    await syncQuestionActivity(maintenance);
+    await syncQuestionActivity(administration);
+
+    expect(upsertMock.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({
+        curriculum: 'osakidetza_mantenimiento_instalaciones',
+        question_id: 'question-1',
+        is_correct: false,
+      }),
+    ]);
+    expect(upsertMock.mock.calls[1]?.[0]).toEqual([
+      expect.objectContaining({
+        curriculum: 'osakidetza_tecnico_medio_administracion_gestion',
+        question_id: 'question-1',
+        is_correct: true,
+      }),
+    ]);
+  });
 });

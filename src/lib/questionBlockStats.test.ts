@@ -125,4 +125,43 @@ describe('buildQuestionBlockPerformance', () => {
     expect(selectMostFailedQuestionIds(blocks, 'common', 1)).toEqual(['c1']);
     expect(selectMostFailedQuestionIds(blocks, 'specific', 10)).toEqual(['s1']);
   });
+
+  it('prioriza la tasa de fallo sobre el numero absoluto de fallos', () => {
+    const blocks = buildQuestionBlockPerformance(
+      [
+        { id: 'many-errors-low-rate', number: 1, scope: 'common', text: 'Cinco fallos de veinte' },
+        { id: 'few-errors-high-rate', number: 2, scope: 'common', text: 'Dos fallos de dos' },
+        { id: 'one-error-high-rate', number: 3, scope: 'common', text: 'Un fallo de uno' },
+      ],
+      [
+        ...Array.from({ length: 20 }, (_, index) => ({
+          eventId: `many-${index}`,
+          questionId: 'many-errors-low-rate',
+          questionNumber: null,
+          scope: null,
+          isCorrect: index >= 5,
+        })),
+        ...Array.from({ length: 2 }, (_, index) => ({
+          eventId: `few-${index}`,
+          questionId: 'few-errors-high-rate',
+          questionNumber: null,
+          scope: null,
+          isCorrect: false,
+        })),
+        {
+          eventId: 'one-0',
+          questionId: 'one-error-high-rate',
+          questionNumber: null,
+          scope: null,
+          isCorrect: false,
+        },
+      ],
+    );
+
+    expect(selectMostFailedQuestionIds(blocks, 'common', 10)).toEqual([
+      'few-errors-high-rate',
+      'one-error-high-rate',
+      'many-errors-low-rate',
+    ]);
+  });
 });

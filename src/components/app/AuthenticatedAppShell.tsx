@@ -505,7 +505,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
 
             requestIdle(() => {
               void (async () => {
-                const sharedOverride = await computeSharedCommonOverride(curriculum).catch(() => null);
+                const sharedOverride = await computeSharedCommonOverride(
+                  curriculum,
+                  nextBundle.questionBlocks,
+                ).catch(() => null);
                 if (!sharedOverride) return;
                 if (dashboardLoadCycleRef.current !== loadCycle) return;
                 setBundle((prev) => {
@@ -527,8 +530,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                             attempts: sharedOverride.attempts,
                             questionCount: sharedOverride.total,
                             unseenCount: sharedOverride.unseen,
-                            correctAttempts: 0,
-                            accuracyRate: 0,
+                            correctAttempts: sharedOverride.correctAttempts,
+                            accuracyRate: sharedOverride.accuracyRate,
                           },
                         ],
                       },
@@ -594,7 +597,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       }, 400);
       requestIdle(() => {
         void (async () => {
-          const sharedOverride = await computeSharedCommonOverride(curriculum).catch(() => null);
+          const sharedOverride = await computeSharedCommonOverride(
+            curriculum,
+            nextBundle.questionBlocks,
+          ).catch(() => null);
           if (!sharedOverride) return;
           setBundle((prev) => {
             if (!prev?.practiceState.learningDashboardV2) return prev;
@@ -615,8 +621,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                       attempts: sharedOverride.attempts,
                       questionCount: sharedOverride.total,
                       unseenCount: sharedOverride.unseen,
-                      correctAttempts: 0,
-                      accuracyRate: 0,
+                      correctAttempts: sharedOverride.correctAttempts,
+                      accuracyRate: sharedOverride.accuracyRate,
                     },
                   ],
                 },
