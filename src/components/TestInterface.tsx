@@ -38,6 +38,8 @@ interface TestInterfaceProps {
   activityContext?: { userId: string; curriculum: string; sessionId: string } | null;
 }
 
+type FocusTextSize = 'compact' | 'normal' | 'large';
+
 export default function TestInterface({
   questions,
   mode,
@@ -63,6 +65,7 @@ export default function TestInterface({
   const [showExplanation, setShowExplanation] = useState(false);
   const [manualExplanationOpen, setManualExplanationOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [focusTextSize, setFocusTextSize] = useState<FocusTextSize>('compact');
   const [timeLeft, setTimeLeft] = useState(() => (mode === 'simulacro' ? questions.length * 90 : questions.length * 60));
   const [questionStartAt, setQuestionStartAt] = useState(() => Date.now());
   const [finishRequested, setFinishRequested] = useState(false);
@@ -95,6 +98,20 @@ export default function TestInterface({
   const activityUserId = activityContext?.userId ?? null;
   const activityCurriculum = activityContext?.curriculum ?? null;
   const activitySessionId = activityContext?.sessionId ?? null;
+  const questionTextSizeClass = isFocusMode
+    ? focusTextSize === 'large'
+      ? 'text-lg sm:text-xl'
+      : focusTextSize === 'normal'
+        ? 'text-base sm:text-lg'
+        : 'text-[15px] sm:text-lg'
+    : 'text-[15px] sm:text-lg';
+  const answerTextSizeClass = isFocusMode
+    ? focusTextSize === 'large'
+      ? 'text-lg sm:text-xl'
+      : focusTextSize === 'normal'
+        ? 'text-base sm:text-lg'
+        : 'text-[15px] sm:text-base'
+    : 'text-base sm:text-lg';
 
   const mainScore = useMemo(
     () => answerDetails.filter((answer) => answer?.isCorrect).length,
@@ -551,7 +568,7 @@ export default function TestInterface({
                 )}
               </div>
 
-              <h2 className="text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
+              <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
                 {showMarks ? (
                   <HighlightableText
                     text={currentQuestion.text}
@@ -662,7 +679,7 @@ export default function TestInterface({
                         {option.id.toUpperCase()}
                       </span>
                       <span
-                        className={`font-bold leading-snug transition-colors duration-300 ${isFocusMode ? 'text-[15px] sm:text-base' : 'text-base sm:text-lg'} ${
+                        className={`font-bold leading-snug transition-colors duration-300 ${answerTextSizeClass} ${
                           isSelected || (!isSimulacro && isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                         }`}
                       >
@@ -777,19 +794,60 @@ export default function TestInterface({
             ) : null}
 
             {isFocusMode ? (
-              <button
-                type="button"
-                onClick={() => setIsFocusMode(false)}
-                disabled={closingSession}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all ${
-                  closingSession
-                    ? 'cursor-not-allowed text-slate-300'
-                    : 'text-slate-400 hover:bg-white hover:text-slate-600'
-                }`}
-              >
-                <XCircle size={15} />
-                <span>{isBasque ? 'Irten Focus modutik' : 'Salir de Focus'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFocusMode(false)}
+                  disabled={closingSession}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all ${
+                    closingSession
+                      ? 'cursor-not-allowed text-slate-300'
+                      : 'text-slate-400 hover:bg-white hover:text-slate-600'
+                  }`}
+                >
+                  <XCircle size={15} />
+                  <span>{isBasque ? 'Irten Focus modutik' : 'Salir de Focus'}</span>
+                </button>
+                <div
+                  role="group"
+                  aria-label={isBasque ? 'Testuaren tamaina' : 'Tamaño del texto'}
+                  className="flex items-center rounded-xl border border-slate-200 bg-white/70 p-1"
+                >
+                  {([
+                    { id: 'compact', label: 'A', className: 'text-[11px]' },
+                    { id: 'normal', label: 'A', className: 'text-sm' },
+                    { id: 'large', label: 'A', className: 'text-lg' },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setFocusTextSize(option.id)}
+                      aria-pressed={focusTextSize === option.id}
+                      aria-label={
+                        option.id === 'compact'
+                          ? isBasque ? 'Testu trinkoa' : 'Texto compacto'
+                          : option.id === 'normal'
+                            ? isBasque ? 'Testu normala' : 'Texto normal'
+                            : isBasque ? 'Testu handia' : 'Texto grande'
+                      }
+                      title={
+                        option.id === 'compact'
+                          ? isBasque ? 'Trinkoa' : 'Compacto'
+                          : option.id === 'normal'
+                            ? isBasque ? 'Normala' : 'Normal'
+                            : isBasque ? 'Handia' : 'Grande'
+                      }
+                      className={`flex h-7 w-8 items-center justify-center rounded-lg font-black transition-colors ${option.className} ${
+                        focusTextSize === option.id
+                          ? 'bg-indigo-100 text-indigo-700'
+                          : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : null}
 
             <button
