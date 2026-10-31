@@ -65,7 +65,7 @@ export default function TestInterface({
   const [showExplanation, setShowExplanation] = useState(false);
   const [manualExplanationOpen, setManualExplanationOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
-  const [focusTextSize, setFocusTextSize] = useState<FocusTextSize>('compact');
+  const [focusTextSize, setFocusTextSize] = useState<FocusTextSize>('normal');
   const [timeLeft, setTimeLeft] = useState(() => (mode === 'simulacro' ? questions.length * 90 : questions.length * 60));
   const [questionStartAt, setQuestionStartAt] = useState(() => Date.now());
   const [finishRequested, setFinishRequested] = useState(false);
@@ -546,7 +546,11 @@ export default function TestInterface({
                     </div>
                   ) : null}
                   <span className="block truncate text-[10px] font-black uppercase tracking-widest text-slate-400 max-w-[220px] sm:max-w-xs">
-                    {currentIndex + 1} · {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
+                    {isFocusMode
+                      ? `${answeredCount} / ${activeQuestions.length}`
+                      : currentIndex + 1}
+                    {' · '}
+                    {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
                   </span>
                   {officialMetadata ? (
                     <span className="mt-1 block truncate text-xs font-bold text-slate-500">

@@ -2351,6 +2351,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const activeQuestions = activeSession?.questions ?? [];
   const activeStudyQuestions = activeStudySession?.questions ?? [];
   const isTesting = currentView === 'test-active' || currentView === 'study-active';
+  const isTestSelectionView = currentView === 'test-selection';
   const isAdminView =
     currentView === 'admin-dashboard' ||
     currentView === 'admin-students' ||
@@ -2814,7 +2815,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             : `px-4 sm:px-6 lg:px-12 xl:px-16 pb-10 lg:pb-16 ${
                 showMobileTopBar
                   ? 'pt-[calc(5.15rem+env(safe-area-inset-top))]'
-                  : 'pt-5 sm:pt-8 lg:pt-12 [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10'
+                  : isTestSelectionView
+                    ? 'pt-5 sm:pt-7 lg:pt-8 [@media(max-height:800px)]:lg:pt-5'
+                    : 'pt-5 sm:pt-8 lg:pt-12 [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10'
               }`
         } ${
           showMobileBottomNav
@@ -2825,7 +2828,11 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         }`}
       >
         {!isTesting && (
-          <header className="hidden lg:flex mb-10 lg:mb-16 flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000">
+          <header
+            className={`hidden lg:flex flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000 ${
+              isTestSelectionView ? 'mb-5 [@media(max-height:800px)]:mb-3' : 'mb-10 lg:mb-16'
+            }`}
+          >
             <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
               <button
                 type="button"
@@ -2843,7 +2850,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                 {currentView === 'test-results' && t('Analisis de sesion', 'Saioaren analisia')}
                 {currentView === 'settings' && t('Ajustes', 'Doikuntzak')}
               </h1>
-              <p className="text-slate-500 mt-2 text-base sm:text-lg font-medium">
+              <p className={`text-slate-500 mt-2 text-base sm:text-lg font-medium ${isTestSelectionView ? 'hidden' : ''}`}>
                 {currentView === 'dashboard' &&
                   t(
                     'Tu centro de mando para avanzar en esta oposicion.',
