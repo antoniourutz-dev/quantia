@@ -417,7 +417,7 @@ export default function TestInterface({
   }
 
   return (
-    <div className={`mx-auto max-w-6xl space-y-2.5 animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all pb-24 ${isFocusMode ? 'py-4 sm:py-8' : ''}`}>
+    <div className={`mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all ${isFocusMode ? '-mt-4 space-y-1 pb-8 sm:-mt-8' : 'space-y-2.5 pb-24'}`}>
       {!isFocusMode && (
         <div className="animate-in slide-in-from-top-4 duration-500 px-2 sm:px-0">
           <div className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm sm:p-4 mt-2 sm:mt-0">
@@ -527,10 +527,10 @@ export default function TestInterface({
         </div>
       )}
 
-      <div className={`mx-2 sm:mx-0 flex flex-col bg-white transition-all duration-500 rounded-3xl sm:rounded-[2.25rem] border border-slate-100 shadow-sm sm:p-6 overflow-hidden sm:gap-4 ${isFocusMode ? 'p-8 shadow-2xl scale-[1.02]' : 'pb-4 sm:pb-6'}`}>
+      <div className={`mx-2 flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all duration-500 sm:mx-0 sm:rounded-[2.25rem] ${isFocusMode ? 'gap-2 p-4 shadow-xl sm:p-5' : 'pb-4 sm:gap-4 sm:p-6 sm:pb-6'}`}>
         {closingSession ? null : (
           <>
-            <div className={`px-4 sm:px-0 pb-4 pt-4 ${isFocusMode ? '' : 'sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 sm:border-transparent transition-all shadow-sm sm:shadow-none'}`}>
+            <div className={`px-4 sm:px-0 ${isFocusMode ? 'pb-2 pt-0' : 'sticky top-0 z-30 border-b border-slate-100 bg-white/95 pb-4 pt-4 shadow-sm backdrop-blur-xl transition-all sm:border-transparent sm:shadow-none'}`}>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   {officialMetadata ? (
@@ -625,7 +625,9 @@ export default function TestInterface({
                 const isSelected = selectedAnswer === option.id;
                 const isAnswerCorrect = option.id === currentQuestion.correctAnswer;
 
-                let itemClass = 'relative flex w-full items-center justify-between overflow-hidden p-4 text-left transition-all duration-300 group sm:p-5 ';
+                let itemClass = `relative flex w-full items-center justify-between overflow-hidden text-left transition-all duration-300 group ${
+                  isFocusMode ? 'p-3 sm:p-3.5' : 'p-4 sm:p-5'
+                } `;
 
                 if (selectedAnswer === null) {
                   itemClass += 'hover:bg-white hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-0.5 cursor-pointer border-transparent';
@@ -658,9 +660,9 @@ export default function TestInterface({
                       />
                     )}
 
-                    <div className="relative z-10 flex items-center gap-4 sm:gap-5">
+                    <div className={`relative z-10 flex items-center ${isFocusMode ? 'gap-3' : 'gap-4 sm:gap-5'}`}>
                       <span
-                        className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-sm font-black transition-all duration-500 ${
+                        className={`flex flex-shrink-0 items-center justify-center rounded-xl text-sm font-black transition-all duration-500 ${isFocusMode ? 'h-8 w-8' : 'h-9 w-9'} ${
                           isSimulacro && isSelected
                             ? 'bg-indigo-600 text-white scale-110 shadow-lg shadow-indigo-200'
                             : isSelected
@@ -677,7 +679,7 @@ export default function TestInterface({
                         {option.id.toUpperCase()}
                       </span>
                       <span
-                        className={`text-base font-bold leading-snug transition-colors duration-300 sm:text-lg ${
+                        className={`font-bold leading-snug transition-colors duration-300 ${isFocusMode ? 'text-[15px] sm:text-base' : 'text-base sm:text-lg'} ${
                           isSelected || (!isSimulacro && isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                         }`}
                       >
@@ -713,7 +715,7 @@ export default function TestInterface({
               })}
             </div>
 
-            {showExplanation && !isSimulacro && (
+            {showExplanation && !isSimulacro && !isFocusMode && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-500 px-4 sm:px-0 py-4 sm:py-0 sm:mt-4">
                 {!manualExplanationOpen ? (
                   <button
@@ -775,19 +777,21 @@ export default function TestInterface({
         </div>
       ) : (
         <>
-          <div className="hidden sm:flex items-center justify-between gap-4 px-4 sm:px-0 pt-2 mb-safe">
-            <button
-              onClick={prevQuestion}
-              disabled={closingSession || currentIndex === 0}
-              className={`flex items-center gap-2 rounded-2xl px-6 py-4 font-bold transition-all ${
-                closingSession || currentIndex === 0
-                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
-                  : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-100 shadow-sm'
-              }`}
-            >
-              <ChevronLeft size={20} />
-              <span>{isBasque ? 'Aurrekoa' : 'Anterior'}</span>
-            </button>
+          <div className={`hidden items-center gap-4 px-4 pt-2 mb-safe sm:flex sm:px-0 ${isFocusMode ? 'justify-end' : 'justify-between'}`}>
+            {!isFocusMode ? (
+              <button
+                onClick={prevQuestion}
+                disabled={closingSession || currentIndex === 0}
+                className={`flex items-center gap-2 rounded-2xl px-6 py-4 font-bold transition-all ${
+                  closingSession || currentIndex === 0
+                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-100 shadow-sm'
+                }`}
+              >
+                <ChevronLeft size={20} />
+                <span>{isBasque ? 'Aurrekoa' : 'Anterior'}</span>
+              </button>
+            ) : null}
 
             <button
               onClick={nextQuestion}
@@ -826,7 +830,7 @@ export default function TestInterface({
           {!closingSession && selectedAnswer !== null && (
             <div className="fixed bottom-4 left-4 right-4 z-50 animate-in slide-in-from-bottom-8 fade-in duration-300 sm:hidden">
               <div className="flex items-center gap-2 rounded-2xl bg-slate-900/95 p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.3)] backdrop-blur-xl ring-1 ring-white/10">
-                {currentIndex > 0 && (
+                {currentIndex > 0 && !isFocusMode && (
                   <button
                     onClick={prevQuestion}
                     className="flex shrink-0 items-center justify-center rounded-xl p-3.5 text-slate-300 transition-all hover:bg-white/10 hover:text-white"
