@@ -510,23 +510,6 @@ export default function TestInterface({
         </div>
       )}
 
-      {isFocusMode && (
-        <div className="fixed right-4 top-[calc(0.75rem+env(safe-area-inset-top))] z-50 sm:right-8 sm:top-8">
-          <button
-            onClick={() => setIsFocusMode(false)}
-            disabled={closingSession}
-            className={`flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-bold shadow-xl transition-all sm:px-6 sm:py-3 ${
-              closingSession
-                ? 'bg-white/70 backdrop-blur-md text-slate-300 border-white cursor-not-allowed'
-                : 'bg-white/80 backdrop-blur-md text-slate-600 border-white hover:bg-white'
-            }`}
-          >
-            <XCircle size={18} />
-            {isBasque ? 'Irten Focus modutik' : 'Salir de Focus'}
-          </button>
-        </div>
-      )}
-
       <div className={`mx-2 flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all duration-500 sm:mx-0 sm:rounded-[2.25rem] ${isFocusMode ? 'gap-2 p-4 shadow-xl sm:p-5' : 'pb-4 sm:gap-4 sm:p-6 sm:pb-6'}`}>
         {closingSession ? null : (
           <>
@@ -777,7 +760,7 @@ export default function TestInterface({
         </div>
       ) : (
         <>
-          <div className={`hidden items-center gap-4 px-4 pt-2 mb-safe sm:flex sm:px-0 ${isFocusMode ? 'justify-end' : 'justify-between'}`}>
+          <div className="hidden items-center justify-between gap-4 px-4 pt-2 mb-safe sm:flex sm:px-0">
             {!isFocusMode ? (
               <button
                 onClick={prevQuestion}
@@ -790,6 +773,22 @@ export default function TestInterface({
               >
                 <ChevronLeft size={20} />
                 <span>{isBasque ? 'Aurrekoa' : 'Anterior'}</span>
+              </button>
+            ) : null}
+
+            {isFocusMode ? (
+              <button
+                type="button"
+                onClick={() => setIsFocusMode(false)}
+                disabled={closingSession}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all ${
+                  closingSession
+                    ? 'cursor-not-allowed text-slate-300'
+                    : 'text-slate-400 hover:bg-white hover:text-slate-600'
+                }`}
+              >
+                <XCircle size={15} />
+                <span>{isBasque ? 'Irten Focus modutik' : 'Salir de Focus'}</span>
               </button>
             ) : null}
 
