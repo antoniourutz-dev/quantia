@@ -32,4 +32,19 @@ describe('getBalancedMixedPracticeBatch', () => {
     expect(result.some((item) => item.syllabus === 'specific')).toBe(true);
     expect(result.filter((item) => item.syllabus === 'common')).toHaveLength(9);
   });
+
+  it('mantiene un inicio determinista sin perder la mezcla cuando se solicita en orden', async () => {
+    const pools = {
+      common: Array.from({ length: 10 }, (_, index) => question(`c${index}`, 'common')),
+      specific: Array.from({ length: 10 }, (_, index) => question(`s${index}`, 'specific')),
+    };
+
+    const result = await getBalancedMixedPracticeBatch({
+      count: 6,
+      randomizeStart: false,
+      loadScope: async (scope, count) => pools[scope].slice(0, count),
+    });
+
+    expect(result.map((item) => item.id)).toEqual(['c0', 's0', 'c1', 's1', 'c2', 's2']);
+  });
 });

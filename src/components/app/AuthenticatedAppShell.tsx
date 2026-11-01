@@ -1820,13 +1820,28 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setSelectedSyllabus(plan.syllabus ?? null);
 
       try {
-        const questions = await getCustomPracticeBatch({
-          curriculum: plan.curriculum,
-          limit: plan.sessionLength,
-          syllabus: plan.syllabus,
-          topicId: plan.topicId,
-          randomize: plan.randomize,
-        });
+        const loadCustomScope = (syllabus: SyllabusType, limit: number) =>
+          getCustomPracticeBatch({
+            curriculum: plan.curriculum,
+            limit,
+            syllabus,
+            topicId: plan.topicId,
+            randomize: plan.randomize,
+          });
+        const questions =
+          config.contentScope === 'common_and_specific'
+            ? await getBalancedMixedPracticeBatch({
+                count: plan.sessionLength,
+                randomizeStart: plan.randomize,
+                loadScope: loadCustomScope,
+              })
+            : await getCustomPracticeBatch({
+                curriculum: plan.curriculum,
+                limit: plan.sessionLength,
+                syllabus: plan.syllabus,
+                topicId: plan.topicId,
+                randomize: plan.randomize,
+              });
 
         if (questions.length === 0) {
           const request = {

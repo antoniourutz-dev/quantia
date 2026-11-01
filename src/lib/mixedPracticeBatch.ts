@@ -11,9 +11,14 @@ const appendUnique = (target: Question[], questions: Question[]) => {
   }
 };
 
-const interleave = (common: Question[], specific: Question[], count: number) => {
+const interleave = (
+  common: Question[],
+  specific: Question[],
+  count: number,
+  randomizeStart: boolean,
+) => {
   const result: Question[] = [];
-  const first = Math.random() < 0.5 ? common : specific;
+  const first = randomizeStart && Math.random() < 0.5 ? specific : common;
   const second = first === common ? specific : common;
   const maxLength = Math.max(first.length, second.length);
   for (let index = 0; index < maxLength && result.length < count; index += 1) {
@@ -26,6 +31,7 @@ const interleave = (common: Question[], specific: Question[], count: number) => 
 export const getBalancedMixedPracticeBatch = async (params: {
   count: number;
   loadScope: ScopeLoader;
+  randomizeStart?: boolean;
 }): Promise<Question[]> => {
   const count = Math.max(0, Math.trunc(params.count));
   if (count === 0) return [];
@@ -48,5 +54,5 @@ export const getBalancedMixedPracticeBatch = async (params: {
     appendUnique(common, await params.loadScope('common', missingSpecific + common.length));
   }
 
-  return interleave(common, specific, count);
+  return interleave(common, specific, count, params.randomizeStart !== false);
 };
