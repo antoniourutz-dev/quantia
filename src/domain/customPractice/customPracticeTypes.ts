@@ -20,6 +20,7 @@ export type CustomPracticeConfig = {
   contentScope: CustomPracticeContentScope;
   topicMode: CustomPracticeTopicMode;
   sessionLength: number;
+  order: 'sequence' | 'random';
   supportMode: CustomPracticeSupportMode;
 };
 
@@ -30,6 +31,7 @@ export type CustomPracticeExecutableSessionPlan = {
   syllabus: SyllabusType | null;
   topicId: string | null;
   sessionLength: number;
+  randomize: boolean;
   supportMode: CustomPracticeSupportMode;
 };
 

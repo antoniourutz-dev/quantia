@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal } from 'lucide-react';
+import { BookOpen, CheckCircle2, ChevronDown, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal } from 'lucide-react';
 import {
   SyllabusType,
   formatSyllabusLabel,
@@ -12,7 +12,11 @@ import {
   type Question,
 } from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
-import type { CustomPracticeConfig, CustomPracticeContentScope } from '../domain/customPractice/customPracticeTypes';
+import type {
+  CustomPracticeConfig,
+  CustomPracticeContentScope,
+  CustomPracticeSupportMode,
+} from '../domain/customPractice/customPracticeTypes';
 import { getCurriculumTopicOptions } from '../lib/quantiaApi';
 import {
   PRACTICE_MODE_IDS,
@@ -55,6 +59,7 @@ interface TestSelectionProps {
   initialState?: TestSelectionStateSnapshot | null;
   onStateChange?: (state: TestSelectionStateSnapshot) => void;
   visiblePracticeModeIds?: PracticeModeVisibilityId[];
+  customSupportMode?: CustomPracticeSupportMode;
   generalLaws?: GeneralLaw[];
   userId?: string | null;
   activeGeneralLawId?: string | null;
@@ -96,6 +101,7 @@ export default function TestSelection({
   initialState = null,
   onStateChange,
   visiblePracticeModeIds = [...PRACTICE_MODE_IDS],
+  customSupportMode = { showMarks: false, showNotes: false },
   generalLaws = [],
   userId = null,
   activeGeneralLawId = null,
@@ -140,11 +146,15 @@ export default function TestSelection({
   const [customTo, setCustomTo] = useState<string>(initialState?.customTo ?? '');
   const [customOrder, setCustomOrder] = useState<'sequence' | 'random'>(initialState?.customOrder ?? 'sequence');
   const [customError, setCustomError] = useState<string | null>(null);
+  const [customRangeOpen, setCustomRangeOpen] = useState(
+    Boolean(initialState?.customFrom?.trim() || initialState?.customTo?.trim()),
+  );
   const [standardRangeEnabled, setStandardRangeEnabled] = useState(false);
   const [standardRangeError, setStandardRangeError] = useState<string | null>(null);
-  const [customContentScope, setCustomContentScope] = useState<CustomPracticeContentScope>(
-    initialState?.customContentScope ?? 'all_opposition',
-  );
+  const [customContentScope, setCustomContentScope] = useState<CustomPracticeContentScope>(() => {
+    const initialScope = initialState?.customContentScope;
+    return !initialScope || initialScope === 'all_opposition' ? 'common_and_specific' : initialScope;
+  });
   const [customTopicMode, setCustomTopicMode] = useState<'all' | 'single'>(initialState?.customTopicMode ?? 'all');
   const [customTopic, setCustomTopic] = useState(initialState?.customTopic ?? '');
   const [customTopics, setCustomTopics] = useState<string[]>([]);
@@ -154,8 +164,8 @@ export default function TestSelection({
   const [customSessionLengthInput, setCustomSessionLengthInput] = useState(
     [20, 50, 100].includes(initialCustomSessionLength) ? '' : String(initialCustomSessionLength),
   );
-  const [customShowMarks, setCustomShowMarks] = useState(initialState?.customShowMarks ?? false);
-  const [customShowNotes, setCustomShowNotes] = useState(initialState?.customShowNotes ?? false);
+  const [customShowMarks] = useState(customSupportMode.showMarks);
+  const [customShowNotes] = useState(customSupportMode.showNotes);
   const normalizedVisiblePracticeModeIds = useMemo(() => {
     const normalized = normalizePracticeModeIds(visiblePracticeModeIds);
     return normalized.length > 0 ? normalized : [...PRACTICE_MODE_IDS];
@@ -452,6 +462,7 @@ export default function TestSelection({
             ? { type: 'single_topic', topicId: customTopic.trim() }
             : { type: 'all_topics' },
         sessionLength: requestedLength,
+        order: customOrder,
         supportMode: { showMarks: customShowMarks, showNotes: customShowNotes },
       };
       onStartCustomPractice(config);
@@ -510,8 +521,39 @@ export default function TestSelection({
           ? `Eskuzko kopurua: 1–${MAX_CUSTOM_SESSION_QUESTIONS}`
           : `Manual: 1–${MAX_CUSTOM_SESSION_QUESTIONS}`}
       </div>
+
+      <div className="space-y-2 border-t border-slate-200 pt-3">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+          {isBasque ? 'Ordena' : 'Orden'}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setCustomOrder('sequence')}
+            className={`rounded-2xl border-2 px-4 py-3 font-black text-sm transition-all ${
+              customOrder === 'sequence'
+                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                : 'border-slate-100 bg-white text-slate-600'
+            }`}
+          >
+            {isBasque ? 'Ordenean' : 'En orden'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCustomOrder('random')}
+            className={`rounded-2xl border-2 px-4 py-3 font-black text-sm transition-all ${
+              customOrder === 'random'
+                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                : 'border-slate-100 bg-white text-slate-600'
+            }`}
+          >
+            {isBasque ? 'Ausaz' : 'Aleatorio'}
+          </button>
+        </div>
+      </div>
     </div>
   );
+
 
   const renderGeneralLawBlockSelector = () => {
     if (!usesLawSelection) return null;
@@ -995,18 +1037,26 @@ export default function TestSelection({
           ) : null}
 
           {selectionMode === 'custom' ? (
-            <div className="space-y-6">
+            <div className="flex flex-col gap-6">
               {customError ? (
                 <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700">
                   {customError}
                 </div>
               ) : null}
 
-              <div className="space-y-3">
+              <div className="order-4 space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                    {isBasque ? 'Rango (aukerakoa)' : 'Rango (opcional)'}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCustomRangeOpen((open) => !open)}
+                    aria-expanded={customRangeOpen}
+                    className="flex flex-1 items-center justify-between gap-3 text-left"
+                  >
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                      {isBasque ? 'Tartea (aukerakoa)' : 'Rango (opcional)'}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${customRangeOpen ? 'rotate-180' : ''}`} />
+                  </button>
                   {(customFrom.trim() || customTo.trim()) ? (
                     <button
                       type="button"
@@ -1022,7 +1072,7 @@ export default function TestSelection({
                   ) : null}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {customRangeOpen ? <div className="grid grid-cols-2 gap-3">
                   <div className="relative">
                     <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
@@ -1046,51 +1096,19 @@ export default function TestSelection({
                         setCustomError(null);
                       }}
                       className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
-                      placeholder={isBasque ? `Hasta (vacío=${customSessionLength})` : `Hasta (vacío=${customSessionLength})`}
+                      placeholder={isBasque ? 'Amaiera (auk.)' : 'Hasta (opcional)'}
                     />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCustomOrder('sequence')}
-                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                      customOrder === 'sequence'
-                        ? 'border-slate-800 bg-slate-50 text-slate-900'
-                        : 'border-slate-100 bg-white text-slate-600'
-                    }`}
-                  >
-                    {isBasque ? 'Ordenean' : 'En orden'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomOrder('random')}
-                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                      customOrder === 'random'
-                        ? 'border-slate-800 bg-slate-50 text-slate-900'
-                        : 'border-slate-100 bg-white text-slate-600'
-                    }`}
-                  >
-                    {isBasque ? 'Ausaz' : 'Aleatorio'}
-                  </button>
-                </div>
-
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[12px] font-bold text-slate-600">
-                  {isBasque
-                    ? 'Tartea betetzen baduzu, test hau zenbaki-tarte horretatik sortuko da. Bestela, beheko konfigurazioa erabiliko da.'
-                    : 'Si rellenas el rango, este test se construirá desde ese rango numérico. Si no, se usará la configuración de abajo.'}
-                </div>
+                </div> : null}
               </div>
 
               {!usesSingleScope ? (
-                <div className="space-y-3">
+                <div className="order-1 space-y-3">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
                     {isBasque ? 'Zer ikasi' : 'Qué quieres estudiar'}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {([
-                      { id: 'all_opposition', label: formatCustomContentScopeLabel('all_opposition') },
                       { id: 'common_only', label: formatCustomContentScopeLabel('common_only') },
                       { id: 'specific_only', label: formatCustomContentScopeLabel('specific_only') },
                       { id: 'common_and_specific', label: formatCustomContentScopeLabel('common_and_specific') },
@@ -1111,14 +1129,14 @@ export default function TestSelection({
                   </div>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-bold text-slate-600">
+                <div className="order-1 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-bold text-slate-600">
                   {isBasque
                     ? 'Curriculum honek ez du arrunta/espezifikoa bereizten. Test osoa erabiliko da.'
                     : 'Este currículo no separa común/específico. Se usará todo el contenido.'}
                 </div>
               )}
 
-              <div className="space-y-3">
+              <div className="order-2 space-y-3">
                 <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
                   {isBasque ? 'Gaia' : 'Tema'}
                 </div>
@@ -1173,37 +1191,7 @@ export default function TestSelection({
                 ) : null}
               </div>
 
-              {renderCustomSessionLengthSelector()}
-
-              <div className="space-y-3">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                  {isBasque ? 'Laguntza testean' : 'Apoyo durante el test'}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCustomShowMarks((v) => !v)}
-                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                      customShowMarks
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-100 bg-white text-slate-600'
-                    }`}
-                  >
-                    {isBasque ? 'Markak' : 'Marcas'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomShowNotes((v) => !v)}
-                    className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                      customShowNotes
-                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-100 bg-white text-slate-600'
-                    }`}
-                  >
-                    {isBasque ? 'Oharrak' : 'Notas'}
-                  </button>
-                </div>
-              </div>
+              {renderCustomSessionLengthSelector('order-3')}
             </div>
           ) : null}
         </div>
@@ -1516,18 +1504,26 @@ export default function TestSelection({
 
       {selectionMode === 'custom' ? (
         <div className="hidden lg:block">
-        <div className="bg-white p-6 sm:p-8 lg:p-4 rounded-[2.5rem] lg:rounded-[1.75rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8 lg:grid lg:grid-cols-6 lg:items-stretch lg:gap-3 lg:space-y-0">
+        <div className="bg-white p-6 sm:p-8 lg:p-4 rounded-[2.5rem] lg:rounded-[1.75rem] shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-4 duration-500 space-y-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
           {customError ? (
-            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700 lg:col-span-6 lg:py-3">
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-700 lg:col-span-2 lg:py-3">
               {customError}
             </div>
           ) : null}
 
-          <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 lg:col-span-2">
+          <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 lg:order-4 lg:col-span-2">
             <div className="flex items-center justify-between">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                {isBasque ? 'Tartea eta ordena' : 'Rango y orden'}
-              </div>
+              <button
+                type="button"
+                onClick={() => setCustomRangeOpen((open) => !open)}
+                aria-expanded={customRangeOpen}
+                className="flex flex-1 items-center justify-between gap-3 text-left"
+              >
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                  {isBasque ? 'Tartea (aukerakoa)' : 'Rango (opcional)'}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${customRangeOpen ? 'rotate-180' : ''}`} />
+              </button>
               {(customFrom.trim() || customTo.trim()) ? (
                 <button
                   type="button"
@@ -1543,7 +1539,7 @@ export default function TestSelection({
               ) : null}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            {customRangeOpen ? <div className="grid grid-cols-2 gap-3 pt-1">
               <div className="relative">
                 <Hash className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -1570,43 +1566,17 @@ export default function TestSelection({
                   placeholder={isBasque ? 'Amaiera (auk.)' : 'Hasta (opcional)'}
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setCustomOrder('sequence')}
-                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                  customOrder === 'sequence'
-                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                    : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {isBasque ? 'Ordenean' : 'En orden'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCustomOrder('random')}
-                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                  customOrder === 'random'
-                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                    : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {isBasque ? 'Ausaz' : 'Aleatorio'}
-              </button>
-            </div>
+            </div> : null}
 
           </div>
 
           {!usesSingleScope ? (
-            <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 lg:col-span-2">
+            <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 lg:order-1">
               <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
                 {isBasque ? 'Edukia' : 'Contenido'}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {([
-                  { id: 'all_opposition', label: formatCustomContentScopeLabel('all_opposition') },
                   { id: 'common_only', label: formatCustomContentScopeLabel('common_only') },
                   { id: 'specific_only', label: formatCustomContentScopeLabel('specific_only') },
                   { id: 'common_and_specific', label: formatCustomContentScopeLabel('common_and_specific') },
@@ -1627,14 +1597,14 @@ export default function TestSelection({
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 px-5 py-4 text-sm font-bold text-slate-600 lg:col-span-2">
+            <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 px-5 py-4 text-sm font-bold text-slate-600 lg:order-1">
               {isBasque
                 ? 'Curriculum honek ez du arrunta/espezifikoa bereizten. Test osoa erabiliko da.'
                 : 'Este currículo no separa común/específico. Se usará todo el contenido.'}
             </div>
           )}
 
-          <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 lg:col-span-2">
+          <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 lg:order-2">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
               {isBasque ? 'Gaia' : 'Tema'}
             </div>
@@ -1688,38 +1658,8 @@ export default function TestSelection({
           </div>
 
           {renderCustomSessionLengthSelector(
-            'rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 lg:col-span-3',
+            'rounded-2xl border border-slate-200/80 bg-slate-50/70 p-4 lg:order-3 lg:col-span-2',
           )}
-
-          <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3 lg:col-span-3">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {isBasque ? 'Laguntzak' : 'Ayudas'}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setCustomShowMarks((v) => !v)}
-                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                  customShowMarks
-                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                    : 'border-slate-100 bg-white text-slate-600'
-                }`}
-              >
-                {isBasque ? 'Markak' : 'Marcas'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCustomShowNotes((v) => !v)}
-                className={`rounded-2xl border-2 px-4 py-4 font-black text-sm transition-all ${
-                  customShowNotes
-                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                    : 'border-slate-100 bg-white text-slate-600'
-                }`}
-              >
-                {isBasque ? 'Oharrak' : 'Notas'}
-              </button>
-            </div>
-          </div>
         </div>
         </div>
       ) : null}

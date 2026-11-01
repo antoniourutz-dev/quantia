@@ -89,6 +89,10 @@ import {
   writeVisiblePracticeModeIds,
   type PracticeModeVisibilityId,
 } from '../../lib/practiceModeVisibility';
+import {
+  readCustomPracticeSupport,
+  writeCustomPracticeSupport,
+} from '../../lib/customPracticePreferences';
 import { getBalancedMixedPracticeBatch } from '../../lib/mixedPracticeBatch';
 import {
   buildPracticeEmptyStateModel,
@@ -216,6 +220,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   );
   const [visiblePracticeModeIds, setVisiblePracticeModeIds] = useState<PracticeModeVisibilityId[]>(() =>
     readVisiblePracticeModeIds(session.user.id),
+  );
+  const [customPracticeSupport, setCustomPracticeSupport] = useState(() =>
+    readCustomPracticeSupport(session.user.id),
   );
   const [curriculumMenuOpen, setCurriculumMenuOpen] = useState(false);
   const [curriculumMenuStyle, setCurriculumMenuStyle] = useState<{
@@ -1818,7 +1825,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           limit: plan.sessionLength,
           syllabus: plan.syllabus,
           topicId: plan.topicId,
-          randomize: true,
+          randomize: plan.randomize,
         });
 
         if (questions.length === 0) {
@@ -2141,6 +2148,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       dailyNewCapacity: number;
       visibleCurriculumIds: string[];
       visiblePracticeModeIds: PracticeModeVisibilityId[];
+      customSupportMode: { showMarks: boolean; showNotes: boolean };
     }) => {
       setSettingsSaving(true);
       setSettingsNotice(null);
@@ -2155,6 +2163,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         setSelectedVisibleCurriculumIds(next.visibleCurriculumIds);
         writeVisiblePracticeModeIds(session.user.id, next.visiblePracticeModeIds);
         setVisiblePracticeModeIds(next.visiblePracticeModeIds);
+        writeCustomPracticeSupport(session.user.id, next.customSupportMode);
+        setCustomPracticeSupport(next.customSupportMode);
         await refreshDashboard();
         setSettingsNotice({ kind: 'success', text: t('Ajustes guardados.', 'Doikuntzak gorde dira.') });
       } catch (error) {
@@ -3107,6 +3117,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               initialLaw={selectedLawFilter}
               initialState={testSelectionState}
               visiblePracticeModeIds={visiblePracticeModeIds}
+              customSupportMode={customPracticeSupport}
               onStart={handleStartTest}
               onStartLawTest={(law, count) =>
                 handleStartLawTest(
@@ -3249,6 +3260,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               curriculumOptions={accessibleCurriculumOptions}
               visibleCurriculumIds={visibleCurriculumOptions.map((option) => option.id)}
               visiblePracticeModeIds={visiblePracticeModeIds}
+              customSupportMode={customPracticeSupport}
               onSave={handleSaveExamTarget}
               isAdmin={isAdminEmail}
               onOpenAdmin={() => setCurrentView('admin-dashboard')}

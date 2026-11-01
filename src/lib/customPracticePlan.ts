@@ -25,6 +25,7 @@ export const buildExecutableSessionPlanFromCustomPractice = (
     syllabus,
     topicId,
     sessionLength,
+    randomize: config.order === 'random',
     supportMode: config.supportMode,
   };
 };

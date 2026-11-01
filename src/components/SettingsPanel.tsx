@@ -4,6 +4,7 @@ import type { PracticeExamTarget } from '../types';
 import { useAppLocale } from '../lib/locale';
 import type { CurriculumOption } from '../lib/quantia/types';
 import { PRACTICE_MODE_IDS, type PracticeModeVisibilityId } from '../lib/practiceModeVisibility';
+import type { CustomPracticeSupportMode } from '../domain/customPractice/customPracticeTypes';
 
 interface SettingsPanelProps {
   examTarget: PracticeExamTarget | null;
@@ -12,12 +13,14 @@ interface SettingsPanelProps {
   curriculumOptions: CurriculumOption[];
   visibleCurriculumIds: string[];
   visiblePracticeModeIds: PracticeModeVisibilityId[];
+  customSupportMode: CustomPracticeSupportMode;
   onSave: (next: {
     examDate: string | null;
     dailyReviewCapacity: number;
     dailyNewCapacity: number;
     visibleCurriculumIds: string[];
     visiblePracticeModeIds: PracticeModeVisibilityId[];
+    customSupportMode: CustomPracticeSupportMode;
   }) => Promise<void>;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
@@ -29,7 +32,7 @@ const clampInt = (value: number, min: number, max: number) => {
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
-export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, visiblePracticeModeIds, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
+export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, visiblePracticeModeIds, customSupportMode, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const telemetryEnabled = useMemo(() => {
@@ -54,6 +57,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
   const [dailyNewCapacity, setDailyNewCapacity] = useState<number>(initialDailyNew);
   const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<string[]>(visibleCurriculumIds);
   const [selectedPracticeModeIds, setSelectedPracticeModeIds] = useState<PracticeModeVisibilityId[]>(visiblePracticeModeIds);
+  const [selectedCustomSupport, setSelectedCustomSupport] = useState<CustomPracticeSupportMode>(customSupportMode);
 
   useEffect(() => {
     setExamDate(examTarget?.examDate ?? '');
@@ -68,6 +72,10 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
   useEffect(() => {
     setSelectedPracticeModeIds(visiblePracticeModeIds);
   }, [visiblePracticeModeIds]);
+
+  useEffect(() => {
+    setSelectedCustomSupport(customSupportMode);
+  }, [customSupportMode]);
 
   const practiceModeOptions: Array<{ id: PracticeModeVisibilityId; label: string; description: string }> = [
     {
@@ -93,7 +101,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
     {
       id: 'custom',
       label: isBasque ? 'Zure neurrira' : 'A tu medida',
-      description: isBasque ? 'Aukeratu edukia, gaia eta laguntzak.' : 'Elige contenido, tema y ayudas.',
+      description: isBasque ? 'Aukeratu edukia, gaia eta luzera.' : 'Elige contenido, tema y longitud.',
     },
   ];
   const allPracticeModesSelected = selectedPracticeModeIds.length === PRACTICE_MODE_IDS.length;
@@ -256,6 +264,53 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
           </div>
         </div>
 
+        <div className="mt-6 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:mt-10 sm:rounded-[2rem] sm:p-8">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-violet-100 p-3 text-violet-700">
+              <CheckCircle2 size={20} />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                {isBasque ? 'Testeko laguntzak' : 'Ayudas en el test'}
+              </div>
+              <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                {isBasque
+                  ? 'Zure neurrira egindako test guztietan erabiliko dira.'
+                  : 'Se aplicarán a todos los test creados en A tu medida.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedCustomSupport((current) => ({ ...current, showMarks: !current.showMarks }))
+              }
+              className={`rounded-2xl border-2 px-4 py-4 text-sm font-black transition-all ${
+                selectedCustomSupport.showMarks
+                  ? 'border-violet-600 bg-violet-50 text-violet-700'
+                  : 'border-slate-100 bg-white text-slate-600'
+              }`}
+            >
+              {isBasque ? 'Markak' : 'Marcas'}
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setSelectedCustomSupport((current) => ({ ...current, showNotes: !current.showNotes }))
+              }
+              className={`rounded-2xl border-2 px-4 py-4 text-sm font-black transition-all ${
+                selectedCustomSupport.showNotes
+                  ? 'border-violet-600 bg-violet-50 text-violet-700'
+                  : 'border-slate-100 bg-white text-slate-600'
+              }`}
+            >
+              {isBasque ? 'Oharrak' : 'Notas'}
+            </button>
+          </div>
+        </div>
+
         <div className="mt-6 grid grid-cols-1 gap-4 sm:mt-10 md:grid-cols-2 md:gap-8">
           <div className="space-y-5 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:rounded-[2rem] sm:p-8 sm:space-y-6">
             <div>
@@ -350,6 +405,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
                 dailyNewCapacity: derived.safeNew,
                 visibleCurriculumIds: selectedCurriculumIds,
                 visiblePracticeModeIds: selectedPracticeModeIds,
+                customSupportMode: selectedCustomSupport,
               })
             }
             disabled={saving}
