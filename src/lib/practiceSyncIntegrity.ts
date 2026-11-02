@@ -6,7 +6,7 @@
 export type SessionSaveStatus = 'saving' | 'saved' | 'pending' | 'unprotected' | 'not_recorded';
 
 export const assertPracticeSyncAcknowledgement = (value: unknown, attemptedCount: number): void => {
-  const failed = () => {
+  const failed = (): never => {
     throw new Error('No se pudo confirmar que todas las respuestas se hayan guardado.');
   };
   if (!Number.isSafeInteger(attemptedCount) || attemptedCount < 1) failed();
