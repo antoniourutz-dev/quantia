@@ -78,11 +78,17 @@ export default function PostTestStats({
   );
   const total = scorableQuestions.length;
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+  const answered = answers.filter((attempt) => attempt.selectedOption != null).length;
+  const unanswered = Math.max(0, total - answered);
+  const incorrect = answers.filter((attempt) => attempt.selectedOption != null && !attempt.isCorrect).length;
   const failed = total - score;
-  const avgTimeMs = answers.length > 0
-    ? answers.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answers.length
-    : 0;
-  const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
+  const timedAnswers = answers.filter((attempt) =>
+    attempt.selectedOption != null && typeof attempt.responseTimeMs === 'number'
+    && Number.isFinite(attempt.responseTimeMs) && attempt.responseTimeMs >= 0,
+  );
+  const avgTimeSec = timedAnswers.length
+    ? (timedAnswers.reduce((sum, attempt) => sum + (attempt.responseTimeMs ?? 0), 0) / timedAnswers.length / 1000).toFixed(1)
+    : '—';
   const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
   const [analysisHydrated, setAnalysisHydrated] = useState(true);
   const [showReview, setShowReview] = useState(false);
@@ -169,7 +175,11 @@ export default function PostTestStats({
   const currentReviewItem = reviewFiltered[reviewIndex] ?? null;
   const continuityFocus = sessionEnd.nextMove.kind === 'start_session' && mode !== 'simulacro';
 
-  const speedMessage = Number(avgTimeSec) < 30
+  const speedMessage = timedAnswers.length === 0
+    ? isBasque
+      ? 'Ez dago denbora-daturik; emaitza ez da erritmoaren arabera baloratuko.'
+      : 'Sin datos de tiempo; no podemos valorar el ritmo de esta sesión.'
+    : Number(avgTimeSec) < 30
     ? isBasque
       ? 'Erritmo ona izan duzu. Merezi du horri eustea.'
       : 'Has ido con buen ritmo. Merece la pena mantenerlo.'
@@ -304,7 +314,8 @@ export default function PostTestStats({
              <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{isBasque ? 'Emaitza' : 'Resultado'}</div>
                 <div className="text-[13px] font-bold text-slate-600 leading-none">
-                  {score} {isBasque ? 'zuzen' : 'bien'} · {failed} {isBasque ? 'huts' : 'mal'}
+                  {score} {isBasque ? 'zuzen' : 'aciertos'} · {incorrect} {isBasque ? 'oker' : 'errores'}
+                  {unanswered > 0 ? (isBasque ? ` · ${unanswered} erantzun gabe` : ` · ${unanswered} sin responder`) : null}
                 </div>
              </div>
           </div>
@@ -354,7 +365,9 @@ export default function PostTestStats({
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-rose-100 bg-rose-50 py-3.5 text-[14px] font-black text-rose-700 transition-all hover:border-rose-200 hover:bg-rose-100"
             >
               <XCircle size={18} />
-              {isBasque ? `${failed} akatsak aztertu` : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`}
+              {unanswered > 0
+                ? isBasque ? `${failed} galdera berrikusi` : `Revisar ${failed} errores y omisiones`
+                : isBasque ? `${failed} akatsak aztertu` : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`}
             </button>
           ) : null}
         </div>
@@ -378,9 +391,14 @@ export default function PostTestStats({
              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
                <XCircle size={12} /> {isBasque ? 'Hutsak' : 'Fallos'}
              </span>
-             <span className="text-[13px] font-bold text-rose-600">{failed}</span>
+             <span className="text-[13px] font-bold text-rose-600">{incorrect}</span>
            </div>
         </div>
+        {unanswered > 0 ? (
+          <p className="mt-3 text-xs font-semibold text-slate-500">
+            {isBasque ? `${unanswered} galdera erantzun gabe; ez dira hutsegite kontzeptual gisa zenbatu.` : `${unanswered} preguntas sin responder; no se contabilizan como errores de conocimiento.`}
+          </p>
+        ) : null}
       </div>
 
       {!continuityFocus && analysisHydrated ? (

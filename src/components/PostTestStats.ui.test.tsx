@@ -162,4 +162,27 @@ describe('PostTestStats', () => {
     expect(screen.getByRole('button', { name: 'Reintentar guardado' })).toBeInTheDocument();
   });
 
+  it('distingue preguntas no contestadas de errores y no inventa tiempo de respuesta', () => {
+    const questions = [1, 2].map((n) => ({
+      id: `q${n}`, number: n, text: `Pregunta omitida ${n}`,
+      options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }],
+      correctAnswer: 'b', explanation: 'Explicación', syllabus: 'specific', category: null, questionScope: null,
+    })) as Question[];
+    render(
+      <PostTestStats
+        payload={{ score: 0, answers: [] }}
+        questions={questions}
+        mode="simulacro"
+        curriculum="osakidetza_electromedicina"
+        onRestart={() => undefined}
+        onGoBack={() => undefined}
+        onGoHome={() => undefined}
+      />,
+    );
+    expect(screen.getByText(/2 sin responder/i)).toBeInTheDocument();
+    expect(screen.getByText(/no se contabilizan como errores de conocimiento/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Revisar 2 errores y omisiones/i })).toBeInTheDocument();
+    expect(screen.getAllByText('—s')).not.toHaveLength(0);
+  });
+
 });
