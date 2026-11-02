@@ -19,6 +19,8 @@ export const assertPracticeSyncAcknowledgement = (value: unknown, attemptedCount
   const received = report.attemptsInPayload;
   const processed = report.attemptsProcessed;
   const duplicates = report.attemptsDuplicateIgnored;
-  if (!validCount(received) || !validCount(processed) || !validCount(duplicates)) failed();
+  if (!validCount(received) || !validCount(processed) || !validCount(duplicates)) {
+    throw new Error('No se pudo confirmar que todas las respuestas se hayan guardado.');
+  }
   if (received < 1 || received > attemptedCount || processed + duplicates !== received) failed();
 };
