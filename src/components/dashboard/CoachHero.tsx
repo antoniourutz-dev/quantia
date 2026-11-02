@@ -25,14 +25,14 @@ export default function CoachHero({
 
   return (
     <section
-      className={`relative overflow-hidden bg-[#0a0a1a] rounded-[3rem] text-white shadow-2xl group border border-white/5 ${
-        compact ? 'p-6 sm:p-8' : 'p-8 md:p-16'
+      className={`relative isolate overflow-hidden rounded-2xl bg-[#0a0a1a] text-white shadow-lg group border border-white/10 sm:rounded-[2rem] motion-reduce:transition-none ${
+        compact ? 'p-5 sm:p-7' : 'p-6 sm:p-8 md:p-12'
       }`}
     >
-      <div className="absolute top-0 right-0 -mt-20 -mr-20 w-[500px] h-[500px] bg-indigo-600 rounded-full blur-[120px] opacity-20 group-hover:opacity-30 transition-opacity duration-1000"></div>
-      <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-[400px] h-[400px] bg-emerald-600 rounded-full blur-[100px] opacity-10 group-hover:opacity-20 transition-opacity duration-1000"></div>
+      <div className="absolute top-0 right-0 -mt-20 -mr-20 w-[500px] h-[500px] bg-indigo-600 rounded-full blur-[120px] opacity-20 group-hover:opacity-30 transition-opacity duration-300 motion-reduce:transition-none"></div>
+      <div className="absolute bottom-0 left-0 -mb-20 -ml-20 w-[400px] h-[400px] bg-emerald-600 rounded-full blur-[100px] opacity-10 group-hover:opacity-20 transition-opacity duration-300 motion-reduce:transition-none"></div>
 
-      <div className={`absolute top-10 right-10 opacity-20 animate-float-slow ${compact ? 'hidden sm:block' : ''}`}>
+      <div aria-hidden="true" className={`absolute top-10 right-10 opacity-20 animate-float-slow motion-reduce:animate-none ${compact ? 'hidden sm:block' : ''}`}>
         <Stars size={40} className="text-indigo-300" />
       </div>
 
@@ -44,7 +44,7 @@ export default function CoachHero({
 
         <h1
           data-home-lcp-title="true"
-          className={`${compact ? 'text-[2rem] sm:text-4xl' : 'text-4xl md:text-6xl'} font-black ${compact ? 'mb-4' : 'mb-8'} leading-[1.05] tracking-tight`}
+          className={`${compact ? 'text-2xl sm:text-4xl' : 'text-3xl sm:text-4xl lg:text-5xl'} font-black ${compact ? 'mb-4' : 'mb-6'} break-words leading-[1.12] tracking-tight`}
         >
           {titleParts.map((part, index) => (
             <span
@@ -56,7 +56,7 @@ export default function CoachHero({
           ))}
         </h1>
 
-        <p className={`${compact ? 'text-sm sm:text-lg' : 'text-xl'} text-indigo-100/70 ${compact ? 'mb-6' : 'mb-12'} leading-relaxed font-medium max-w-2xl`}>
+        <p className={`${compact ? 'text-sm sm:text-base' : 'text-base sm:text-lg'} text-indigo-100/85 ${compact ? 'mb-5' : 'mb-7'} leading-relaxed font-medium max-w-2xl`}>
           {description}
         </p>
 
@@ -64,8 +64,8 @@ export default function CoachHero({
           <button
             onClick={onAction}
             disabled={disabled}
-            className={`inline-flex items-center gap-3 rounded-2xl font-black transition-all duration-500 group shadow-[0_0_40px_-5px_rgba(255,255,255,0.3)] ${
-              compact ? 'w-full justify-center px-6 py-4 text-base sm:w-auto' : 'px-10 py-5 text-lg'
+            className={`inline-flex min-h-12 items-center gap-3 rounded-xl font-bold transition-transform duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 motion-reduce:transition-none ${
+              compact ? 'w-full justify-center px-5 py-3 text-base sm:w-auto' : 'w-full justify-center px-6 py-3.5 text-base sm:w-auto sm:px-8'
             } ${
               disabled
                 ? 'bg-white/20 text-white/70 cursor-not-allowed shadow-none'
@@ -73,7 +73,7 @@ export default function CoachHero({
             }`}
           >
             {ctaLabel}
-            <ArrowRight size={22} className={disabled ? '' : 'group-hover:translate-x-2 transition-transform duration-500'} />
+            <ArrowRight size={22} className={disabled ? '' : 'group-hover:translate-x-1 transition-transform duration-200 motion-reduce:transform-none motion-reduce:transition-none'} />
           </button>
         </div>
       </div>
