@@ -182,7 +182,7 @@ describe('PostTestStats', () => {
     expect(screen.getByText(/2 sin responder/i)).toBeInTheDocument();
     expect(screen.getByText(/no se contabilizan como errores de conocimiento/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Revisar 2 errores y omisiones/i })).toBeInTheDocument();
-    expect(screen.getAllByText('—s')).not.toHaveLength(0);
+    expect(screen.getAllByText('—')).not.toHaveLength(0);
   });
 
 });
