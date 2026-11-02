@@ -77,4 +77,13 @@ describe('practice session sync queue', () => {
     expect(readQueuedPracticeSessionSyncs('user-1').map((item) => item.payload.session.id)).toEqual(['first']);
     expect(readQueuedPracticeSessionSyncs('user-2').map((item) => item.payload.session.id)).toEqual(['second']);
   });
+  it('no destruye sesiones antiguas si el almacenamiento está dañado', () => {
+    const key = 'quantia.practice-session-sync.v1:user-1';
+    const corrupted = '{"session":"sin cerrar"';
+    window.localStorage.setItem(key, corrupted);
+    expect(enqueuePracticeSessionSync('user-1', payload('new-session'))).toBe(false);
+    expect(removeQueuedPracticeSessionSync('user-1', 'older-session')).toBe(false);
+    expect(window.localStorage.getItem(key)).toBe(corrupted);
+  });
+
 });

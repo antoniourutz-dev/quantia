@@ -127,4 +127,39 @@ describe('PostTestStats', () => {
     expect(screen.queryByText('Pregunta fallada 1')).not.toBeInTheDocument();
     expect(screen.queryByText('Explicación 2')).not.toBeInTheDocument();
   });
+  it('muestra el estado real del guardado sin confundir resultado con persistencia', async () => {
+    const questions = [{
+      id: 'q1', number: 1, text: 'Pregunta',
+      options: [{ id: 'a', text: 'A' }, { id: 'b', text: 'B' }],
+      correctAnswer: 'a', explanation: 'Explicación',
+      syllabus: 'common', category: null, questionScope: null,
+    }] as Question[];
+    const payload: FinishedTestPayload = {
+      score: 1,
+      answers: [{
+        questionId: 'q1', selectedOption: 'a', correctOption: 'a', isCorrect: true,
+        answeredAt: '2026-10-26T10:00:00.000Z', responseTimeMs: 900,
+        timeToFirstSelectionMs: 900, changedAnswer: false,
+      }],
+    };
+    const onRetrySync = vi.fn();
+    const props = {
+      payload, questions, mode: 'standard' as PracticeMode, curriculum: 'administrativo',
+      onRestart: vi.fn(), onGoBack: vi.fn(), onGoHome: vi.fn(), onRetrySync,
+    };
+    const user = userEvent.setup();
+    const view = render(<PostTestStats {...props} syncStatus="pending" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Pendiente de guardar en la nube');
+    await user.click(screen.getByRole('button', { name: 'Reintentar guardado' }));
+    expect(onRetrySync).toHaveBeenCalledTimes(1);
+
+    view.rerender(<PostTestStats {...props} syncStatus="saved" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Respuestas guardadas en tu cuenta.');
+    expect(screen.queryByRole('button', { name: 'Reintentar guardado' })).not.toBeInTheDocument();
+
+    view.rerender(<PostTestStats {...props} syncStatus="unprotected" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('no hay una copia local válida');
+    expect(screen.getByRole('button', { name: 'Reintentar guardado' })).toBeInTheDocument();
+  });
+
 });

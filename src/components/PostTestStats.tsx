@@ -11,6 +11,7 @@ import {
   Zap,
   Info,
 } from 'lucide-react';
+import type { SessionSaveStatus } from '../lib/practiceSyncIntegrity';
 import type {
   ActivePracticeSession,
   FinishedTestPayload,
@@ -35,6 +36,8 @@ import {
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
+  syncStatus?: SessionSaveStatus | null;
+  onRetrySync?: () => void;
   questions: Question[];
   mode: PracticeMode;
   curriculum: string;
@@ -53,6 +56,8 @@ interface PostTestStatsProps {
 
 export default function PostTestStats({
   payload,
+  syncStatus = null,
+  onRetrySync,
   questions,
   mode,
   curriculum,
@@ -249,8 +254,43 @@ export default function PostTestStats({
     });
   };
 
+  const syncText = syncStatus === 'saving'
+    ? (isBasque ? 'Erantzunak gordetzen...' : 'Guardando respuestas...')
+    : syncStatus === 'saved'
+      ? (isBasque ? 'Erantzunak zure kontuan gordeta.' : 'Respuestas guardadas en tu cuenta.')
+      : syncStatus === 'pending'
+        ? (isBasque ? 'Hodeiko gordetzea egiteko dago; kopia lokala gordeta dago.' : 'Pendiente de guardar en la nube. Conservamos una copia local para reintentar.')
+        : syncStatus === 'unprotected'
+          ? (isBasque ? 'Ezin izan dugu gordetzea egiaztatu, eta ez dago tokiko kopia segururik. Ez itxi pantaila; saiatu berriro.' : 'No pudimos confirmar el guardado y no hay una copia local válida. No cierres esta pantalla; vuelve a intentarlo.')
+          : syncStatus === 'not_recorded'
+            ? (isBasque ? 'Ez dago ebaluatzeko erantzunik; ez da aurrerapenik erregistratu.' : 'No hay respuestas evaluables; no se ha registrado progreso.')
+            : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-150 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
+      {syncText ? (
+        <div
+          role={syncStatus === 'unprotected' ? 'alert' : 'status'}
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-medium ${
+            syncStatus === 'unprotected'
+              ? 'border-rose-200 bg-rose-50 text-rose-800'
+              : syncStatus === 'pending'
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-slate-200 bg-white text-slate-700'
+          }`}
+        >
+          <span>{syncText}</span>
+          {(syncStatus === 'pending' || syncStatus === 'unprotected') && onRetrySync ? (
+            <button
+              type="button"
+              onClick={onRetrySync}
+              className="rounded-lg border border-current px-3 py-2 text-xs font-bold hover:bg-white/70"
+            >
+              {isBasque ? 'Berriro gorde' : 'Reintentar guardado'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
         
         {/* TOP ROW: Continuity & Metrics Compact */}
