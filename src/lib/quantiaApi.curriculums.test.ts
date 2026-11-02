@@ -71,3 +71,29 @@ describe('Técnico Medio Administración y Gestión curriculum', () => {
     expect(getSharedCurriculumSources('osakidetza_tecnico_medio_administracion_gestion', 'specific')).toEqual([]);
   });
 });
+
+describe('Técnico Superior de Mantenimiento curriculum', () => {
+  const curriculum = 'osakidetza_tecnico_superior_mantenimiento_instalaciones';
+  const source = { curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' };
+
+  it('is available in the fallback opposition catalog', () => {
+    expect(buildFallbackCurriculumOptions()).toContainEqual({
+      id: curriculum,
+      label: 'Técnico Superior de Mantenimiento',
+    });
+  });
+
+  it.each([
+    curriculum,
+    'osakidetza-tecnico-superior-mantenimiento-instalaciones',
+    'técnico/a superior mantenimiento e instalaciones',
+  ])('uses the expected display label for %s', (value) => {
+    expect(formatCurriculumLabel(value)).toBe('Técnico Superior de Mantenimiento');
+  });
+
+  it('uses the 500 specific questions plus the 200 shared common questions', () => {
+    expect(getSharedCurriculumSources(curriculum, 'all')).toEqual([source]);
+    expect(getSharedCurriculumSources(curriculum, 'common')).toEqual([source]);
+    expect(getSharedCurriculumSources(curriculum, 'specific')).toEqual([]);
+  });
+});

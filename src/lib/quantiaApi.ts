@@ -107,6 +107,10 @@ const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
   { id: 'osakidetza_electromedicina', label: 'Electromedicina' },
   { id: 'osakidetza_mantenimiento_instalaciones', label: 'Mantenimiento e Instalaciones' },
   {
+    id: 'osakidetza_tecnico_superior_mantenimiento_instalaciones',
+    label: 'Técnico Superior de Mantenimiento',
+  },
+  {
     id: 'osakidetza_tecnico_medio_administracion_gestion',
     label: 'Técnico/a Medio Administración y Gestión',
   },
@@ -254,6 +258,18 @@ const CURRICULUM_ALIAS_GROUPS = [
     ],
   },
   {
+    key: 'osakidetza-tecnico-superior-mantenimiento-instalaciones',
+    label: 'Técnico Superior de Mantenimiento',
+    aliases: [
+      'osakidetza_tecnico_superior_mantenimiento_instalaciones',
+      'osakidetza-tecnico-superior-mantenimiento-instalaciones',
+      'tecnico superior mantenimiento instalaciones',
+      'técnico superior mantenimiento instalaciones',
+      'tecnico/a superior mantenimiento e instalaciones',
+      'técnico/a superior mantenimiento e instalaciones',
+    ],
+  },
+  {
     key: 'osakidetza-tecnico-medio-administracion-gestion',
     label: 'Técnico/a Medio Administración y Gestión',
     aliases: [
@@ -303,6 +319,10 @@ const CURRICULUM_SHARED_QUESTION_SOURCES: Record<
     common: [{ curriculum: DEFAULT_CURRICULUM, scope: 'common' }],
   },
   'osakidetza-mantenimiento-instalaciones': {
+    all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+    common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+  },
+  'osakidetza-tecnico-superior-mantenimiento-instalaciones': {
     all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
     common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
