@@ -1,3 +1,4 @@
+import type { EditorExitGuard } from '../admin/useEditorSafety';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
@@ -201,6 +202,7 @@ type AuthenticatedAppShellProps = {
 };
 
 export default function AuthenticatedAppShell({ session }: AuthenticatedAppShellProps) {
+  const editorExitGuard = useRef<EditorExitGuard['current']>(null);
   const [curriculum, setCurriculum] = useState<string>(() => {
     try {
       return (
@@ -234,7 +236,12 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     maxHeight: number;
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [currentView, commitCurrentView] = useState<View>('dashboard');
+  const setCurrentView = useCallback((next: View) => {
+    const action = () => commitCurrentView(next);
+    if (editorExitGuard.current) editorExitGuard.current(action);
+    else action();
+  }, []);
   const [testSelectionState, setTestSelectionState] = useState<TestSelectionStateSnapshot | null>(null);
   const [testReturnTarget, setTestReturnTarget] = useState<TestReturnTarget | null>(null);
   const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType | null>(null);
@@ -2043,6 +2050,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   }, [testReturnTarget, isAdminEmail]);
 
   const handleLogout = useCallback(async () => {
+    if (editorExitGuard.current) {
+      editorExitGuard.current(() => { void signOut(); });
+      return;
+    }
     await signOut();
     setBundle(null);
     setTestReturnTarget(null);
@@ -3272,6 +3283,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           isAdminEmail ? (
             <Suspense fallback={screenLoader}>
               <AdminQuestions
+                exitGuard={editorExitGuard}
                 curriculumOptions={curriculumOptions}
                 defaultCurriculum={curriculum}
                 onClose={() => setCurrentView('admin-dashboard')}

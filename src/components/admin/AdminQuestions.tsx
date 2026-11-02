@@ -1,3 +1,4 @@
+import { useEditorSafety, type EditorExitGuard } from './useEditorSafety';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Database, Loader2, Pencil, Plus, Save, Search, X } from 'lucide-react';
 import type { AdminQuestionDetail, AdminQuestionListItem, OptionKey, PracticeQuestionScopeFilter, SyllabusType } from '../../types';
@@ -107,10 +108,12 @@ export default function AdminQuestions({
   curriculumOptions,
   defaultCurriculum,
   onClose,
+  exitGuard,
 }: {
   curriculumOptions: CurriculumOption[];
   defaultCurriculum: string;
   onClose: () => void;
+  exitGuard?: EditorExitGuard;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -135,10 +138,15 @@ export default function AdminQuestions({
   const [navLoading, setNavLoading] = useState<'prev' | 'next' | null>(null);
   const [editorMode, setEditorMode] = useState<EditorMode>('create');
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultCurriculum));
+  const [baseline, setBaseline] = useState(() => emptyDraft(defaultCurriculum));
+  const savingRef = useRef(false);
+  const operationRef = useRef(false);
+  const detailRef = useRef(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   const [saving, setSaving] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const { request, confirmation } = useEditorSafety(dirty, saving || detailLoading || navLoading !== null, exitGuard, isBasque);
   const refreshSeqRef = useRef(0);
-  const lastFilterCurriculumRef = useRef<string>(defaultCurriculum);
   const [executedKey, setExecutedKey] = useState<string | null>(null);
   const filtersKey = useMemo(
     () =>
@@ -167,34 +175,28 @@ export default function AdminQuestions({
   );
 
   useEffect(() => {
-    const previous = lastFilterCurriculumRef.current;
-    lastFilterCurriculumRef.current = filterCurriculum;
     if (editorMode !== 'create') return;
-    if (!filterCurriculum) return;
-    setDraft((prev) => ({
-      ...prev,
-      curriculum: prev.curriculum === previous || !prev.curriculum ? filterCurriculum : prev.curriculum,
-    }));
-  }, [filterCurriculum]);
-
-  useEffect(() => {
+    let cancelled = false;
     const handle = window.setTimeout(() => {
       void (async () => {
         const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const oppositionId = draft.oppositionId.trim();
         if (!oppositionId || !uuidOk.test(oppositionId)) return;
         if (draft.curriculum.trim() && draft.curriculumKey.trim()) return;
-        const resolved = await adminResolveOppositionConfigByOppositionId(oppositionId);
+        let resolved;
+        try { resolved = await adminResolveOppositionConfigByOppositionId(oppositionId); }
+        catch { return; }
+        if (cancelled || savingRef.current) return;
         if (resolved.curriculum && !draft.curriculum.trim()) {
-          setDraft((prev) => ({ ...prev, curriculum: resolved.curriculum ?? prev.curriculum }));
+          setDraft((prev) => ({ ...prev, curriculum: prev.curriculum || resolved.curriculum || '' }));
         }
         if (resolved.curriculumKey && !draft.curriculumKey.trim()) {
-          setDraft((prev) => ({ ...prev, curriculumKey: resolved.curriculumKey ?? prev.curriculumKey }));
+          setDraft((prev) => ({ ...prev, curriculumKey: prev.curriculumKey || resolved.curriculumKey || '' }));
         }
       })();
     }, 200);
-    return () => window.clearTimeout(handle);
-  }, [draft.oppositionId]);
+    return () => { cancelled = true; window.clearTimeout(handle); };
+  }, [draft.oppositionId, editorMode, selectedId]);
 
   const curriculumSelectOptions = useMemo(() => {
     const unique = new Map<string, CurriculumOption>();
@@ -204,10 +206,10 @@ export default function AdminQuestions({
     return Array.from(unique.values()).sort((a, b) => a.label.localeCompare(b.label, 'es'));
   }, [curriculumOptions]);
 
-  const refresh = async (nextPage = page) => {
+  const refresh = async (nextPage = page, preserveNotice = false) => {
     const seq = (refreshSeqRef.current += 1);
     setLoading(true);
-    setNotice(null);
+    if (!preserveNotice) setNotice(null);
     try {
       const result = await adminListQuestions({
         curriculum: filterCurriculum.trim() || null,
@@ -241,15 +243,15 @@ export default function AdminQuestions({
   useEffect(() => {
     if (!executedKey) return;
     if (executedKey === filtersKey) return;
+    refreshSeqRef.current += 1;
+    setLoading(false);
     setExecutedKey(null);
-    setSelectedId(null);
     setItems([]);
     setHasNextPage(false);
     setPage(1);
   }, [executedKey, filtersKey]);
 
   const handleSearch = async () => {
-    setSelectedId(null);
     setExecutedKey(filtersKey);
     await refresh(1);
   };
@@ -257,24 +259,31 @@ export default function AdminQuestions({
   const startCreate = () => {
     setEditorMode('create');
     setSelectedId(null);
-    setDraft(emptyDraft(filterCurriculum.trim() || defaultCurriculum));
+    const fresh = emptyDraft(filterCurriculum.trim() || defaultCurriculum);
+    setDraft(fresh);
+    setBaseline(fresh);
     setNotice(null);
   };
 
   const openQuestion = async (id: string) => {
-    setSelectedId(id);
-    setEditorMode('edit');
+    if (savingRef.current || detailRef.current) return;
+    detailRef.current = true;
     setDetailLoading(true);
     setNotice(null);
     try {
       const loaded = await adminGetQuestionDetail(id);
-      setDraft(toDraftFromDetail(loaded));
+      setSelectedId(id);
+      setEditorMode('edit');
+      const fresh = toDraftFromDetail(loaded);
+      setDraft(fresh);
+      setBaseline(fresh);
     } catch (error) {
       setNotice({
         kind: 'error',
         text: error instanceof Error ? error.message : t('No se ha podido cargar la pregunta.', 'Ezin izan da galdera kargatu.'),
       });
     } finally {
+      detailRef.current = false;
       setDetailLoading(false);
     }
   };
@@ -283,9 +292,10 @@ export default function AdminQuestions({
 
   const navigate = async (direction: 'prev' | 'next') => {
     if (!canNavigate) return;
-    if (navLoading) return;
+    if (operationRef.current || savingRef.current) return;
+    operationRef.current = true;
     const fromNumber = Number(draft.number.trim());
-    if (!Number.isFinite(fromNumber)) return;
+    if (!Number.isFinite(fromNumber)) { operationRef.current = false; return; }
     setNavLoading(direction);
     setNotice(null);
     try {
@@ -311,6 +321,7 @@ export default function AdminQuestions({
         text: error instanceof Error ? error.message : t('No se ha podido navegar.', 'Ezin izan da nabigatu.'),
       });
     } finally {
+      operationRef.current = false;
       setNavLoading(null);
     }
   };
@@ -339,12 +350,14 @@ export default function AdminQuestions({
   };
 
   const save = async () => {
+    if (savingRef.current || detailRef.current || operationRef.current) return;
     const validation = validateDraft(draft);
     if (validation) {
       setNotice({ kind: 'error', text: validation });
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     setNotice(null);
     try {
@@ -385,14 +398,16 @@ export default function AdminQuestions({
           ? await adminCreateQuestion(payload)
           : selectedId
             ? await adminUpdateQuestion(selectedId, payload)
-            : await adminCreateQuestion(payload);
+            : (() => { throw new Error(t('Selecciona una pregunta antes de guardar.', 'Hautatu galdera gorde aurretik.')); })();
 
       setSelectedId(result.id);
       setEditorMode('edit');
-      setDraft(toDraftFromDetail(result));
+      const fresh = toDraftFromDetail(result);
+      setDraft(fresh);
+      setBaseline(fresh);
       setNotice({ kind: 'success', text: t('Guardado.', 'Gordeta.') });
       if (executedKey) {
-        await refresh(page);
+        await refresh(page, true);
       }
     } catch (error) {
       setNotice({
@@ -400,12 +415,15 @@ export default function AdminQuestions({
         text: error instanceof Error ? error.message : t('No se ha podido guardar.', 'Ezin izan da gorde.'),
       });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {confirmation}
+      <p role="status" className="rounded-2xl bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-900">{saving ? t('Guardando… Espera antes de salir.', 'Gordetzen… Itxaron irten aurretik.') : dirty ? t('Cambios sin guardar · no hay autoguardado', 'Gorde gabeko aldaketak · ez dago gordetze automatikorik') : t('Sin cambios pendientes', 'Ez dago aldaketarik zain')}</p>
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-slate-400">
@@ -421,7 +439,7 @@ export default function AdminQuestions({
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => request(onClose)}
             className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -429,7 +447,7 @@ export default function AdminQuestions({
           </button>
           <button
             type="button"
-            onClick={startCreate}
+            onClick={() => request(startCreate)}
             className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all"
           >
             <Plus size={16} />
@@ -445,7 +463,7 @@ export default function AdminQuestions({
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
-                value={search}
+                aria-label={t('Buscar', 'Bilatu')} value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-11 py-4 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
                 placeholder={t('Texto o número...', 'Testua edo zenbakia...')}
@@ -456,7 +474,7 @@ export default function AdminQuestions({
           <div className="md:col-span-3">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Oposición', 'Oposizioa')}</div>
             <select
-              value={filterCurriculum}
+              aria-label={t('Filtrar curriculum', 'Filtrar curriculum')} value={filterCurriculum}
               onChange={(e) => setFilterCurriculum(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
             >
@@ -472,7 +490,7 @@ export default function AdminQuestions({
           <div className="md:col-span-3">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">opposition_id</div>
             <input
-              value={filterOppositionId}
+              aria-label={t('Filtrar oposición', 'Filtrar oposición')} value={filterOppositionId}
               onChange={(e) => setFilterOppositionId(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-xs font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               placeholder="UUID (opcional)"
@@ -482,7 +500,7 @@ export default function AdminQuestions({
           <div className="md:col-span-2">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Temario', 'Gai-zerrenda')}</div>
             <select
-              value={filterScope}
+              aria-label={t('Filtrar temario', 'Filtrar temario')} value={filterScope}
               onChange={(e) => setFilterScope(e.target.value as PracticeQuestionScopeFilter)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
             >
@@ -495,7 +513,7 @@ export default function AdminQuestions({
           <div className="md:col-span-2">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">curriculum_key</div>
             <input
-              value={filterCurriculumKey}
+              aria-label={t('Filtrar clave de curriculum', 'Filtrar clave de curriculum')} value={filterCurriculumKey}
               onChange={(e) => setFilterCurriculumKey(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               placeholder={t('Opcional', 'Aukerakoa')}
@@ -505,7 +523,7 @@ export default function AdminQuestions({
           <div className="md:col-span-2">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Idioma', 'Hizkuntza')}</div>
             <select
-              value={filterLanguageCode}
+              aria-label={t('Filtrar idioma', 'Filtrar idioma')} value={filterLanguageCode}
               onChange={(e) => setFilterLanguageCode(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
             >
@@ -518,7 +536,7 @@ export default function AdminQuestions({
           <div className="md:col-span-2">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Tema/bloque', 'Gaia/blokea')}</div>
             <input
-              value={topic}
+              aria-label={t('Tema/bloque', 'Gaia/blokea')} value={topic}
               onChange={(e) => setTopic(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               placeholder={t('Opcional', 'Aukerakoa')}
@@ -528,7 +546,7 @@ export default function AdminQuestions({
           <div className="md:col-span-2">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-2">{t('Ley ref.', 'Lege ref.')}</div>
             <input
-              value={lawReference}
+              aria-label={t('Ley ref.', 'Ley ref.')} value={lawReference}
               onChange={(e) => setLawReference(e.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               placeholder={t('Opcional', 'Aukerakoa')}
@@ -548,6 +566,7 @@ export default function AdminQuestions({
 
         {notice ? (
           <div
+            role={notice.kind === 'error' ? 'alert' : 'status'}
             className={`rounded-2xl border px-5 py-4 text-sm font-bold ${
               notice.kind === 'success'
                 ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
@@ -556,15 +575,7 @@ export default function AdminQuestions({
           >
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="min-w-0">{notice.text}</div>
-              {notice.kind === 'error' ? (
-                <button
-                  type="button"
-                  onClick={handleSearch}
-                  className="shrink-0 rounded-2xl bg-white/80 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-slate-700 border border-slate-200"
-                >
-                  {t('Reintentar', 'Berriro saiatu')}
-                </button>
-              ) : null}
+
             </div>
           </div>
         ) : null}
@@ -597,7 +608,7 @@ export default function AdminQuestions({
                 {t('Next', 'Hurrengoa')}
               </button>
               <select
-                value={pageSize}
+                aria-label={t('Resultados por página', 'Resultados por página')} value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
                 className="h-10 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700"
               >
@@ -615,7 +626,7 @@ export default function AdminQuestions({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => void openQuestion(item.id)}
+                onClick={() => { if (item.id !== selectedId) request(() => { void openQuestion(item.id); }); }}
                 className={`w-full text-left px-6 py-5 hover:bg-slate-50 transition-all ${
                   selectedId === item.id ? 'bg-indigo-50/60' : 'bg-white'
                 }`}
@@ -669,7 +680,7 @@ export default function AdminQuestions({
                 <>
                   <button
                     type="button"
-                    onClick={() => void navigate('prev')}
+                    onClick={() => request(() => { void navigate('prev'); })}
                     disabled={!canNavigate || navLoading !== null}
                     className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
                     title={t('Anterior', 'Aurrekoa')}
@@ -678,7 +689,7 @@ export default function AdminQuestions({
                   </button>
                   <button
                     type="button"
-                    onClick={() => void navigate('next')}
+                    onClick={() => request(() => { void navigate('next'); })}
                     disabled={!canNavigate || navLoading !== null}
                     className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
                     title={t('Siguiente', 'Hurrengoa')}
@@ -687,7 +698,7 @@ export default function AdminQuestions({
                   </button>
                   <button
                     type="button"
-                    onClick={startCreate}
+                    onClick={() => request(startCreate)}
                     className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
                     title={t('Nueva', 'Berria')}
                   >
@@ -697,12 +708,7 @@ export default function AdminQuestions({
               ) : (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedId(null);
-                    setDraft(emptyDraft(filterCurriculum.trim() || defaultCurriculum));
-                    setEditorMode('create');
-                    setNotice(null);
-                  }}
+                  onClick={() => request(startCreate)}
                   className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600"
                   title={t('Limpiar', 'Garbitu')}
                 >
@@ -719,12 +725,12 @@ export default function AdminQuestions({
             </div>
           ) : null}
 
-          <div className="mt-6 space-y-5">
-            <div className="grid grid-cols-2 gap-3">
+          <fieldset disabled={saving || detailLoading || navLoading !== null} className="mt-6 min-w-0 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('opposition_id', 'opposition_id')}</div>
                 <input
-                  value={draft.oppositionId}
+                  aria-label={t('Oposición (UUID)', 'Oposición (UUID)')} value={draft.oppositionId}
                   onChange={(e) => setDraft((prev) => ({ ...prev, oppositionId: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
@@ -733,7 +739,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Curriculum', 'Curriculuma')}</div>
                 <select
-                  value={draft.curriculum}
+                  aria-label={t('Curriculum', 'Curriculum')} value={draft.curriculum}
                   onChange={(e) => setDraft((prev) => ({ ...prev, curriculum: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 >
@@ -746,11 +752,11 @@ export default function AdminQuestions({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('curriculum_key', 'curriculum_key')}</div>
                 <input
-                  value={draft.curriculumKey}
+                  aria-label={t('Clave de curriculum', 'Clave de curriculum')} value={draft.curriculumKey}
                   onChange={(e) => setDraft((prev) => ({ ...prev, curriculumKey: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                   placeholder={t('Opcional', 'Aukerakoa')}
@@ -759,7 +765,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Temario', 'Gai-zerrenda')}</div>
                 <select
-                  value={draft.syllabus}
+                  aria-label={t('Temario', 'Temario')} value={draft.syllabus}
                   onChange={(e) => setDraft((prev) => ({ ...prev, syllabus: e.target.value as SyllabusType }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 >
@@ -769,11 +775,11 @@ export default function AdminQuestions({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Idioma', 'Hizkuntza')}</div>
                 <select
-                  value={draft.languageCode}
+                  aria-label={t('Idioma', 'Hizkuntza')} value={draft.languageCode}
                   onChange={(e) => setDraft((prev) => ({ ...prev, languageCode: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 >
@@ -784,7 +790,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Dificultad', 'Zailtasuna')}</div>
                 <input
-                  value={draft.difficulty}
+                  aria-label={t('Dificultad', 'Zailtasuna')} value={draft.difficulty}
                   onChange={(e) => setDraft((prev) => ({ ...prev, difficulty: normalizeNumberInput(e.target.value) }))}
                   inputMode="numeric"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
@@ -793,11 +799,11 @@ export default function AdminQuestions({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Número', 'Zenbakia')}</div>
                 <input
-                  value={draft.number}
+                  aria-label={t('Número', 'Zenbakia')} value={draft.number}
                   onChange={(e) => setDraft((prev) => ({ ...prev, number: normalizeNumberInput(e.target.value) }))}
                   inputMode="numeric"
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
@@ -807,7 +813,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Correcta', 'Zuzena')}</div>
                 <select
-                  value={draft.correctAnswer}
+                  aria-label={t('Respuesta correcta', 'Erantzun zuzena')} value={draft.correctAnswer}
                   onChange={(e) => setDraft((prev) => ({ ...prev, correctAnswer: e.target.value as OptionKey }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 >
@@ -822,7 +828,7 @@ export default function AdminQuestions({
             <div className="space-y-2">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Pregunta', 'Galdera')}</div>
               <textarea
-                value={draft.text}
+                aria-label={t('Pregunta', 'Galdera')} value={draft.text}
                 onChange={(e) => setDraft((prev) => ({ ...prev, text: e.target.value }))}
                 className="w-full min-h-[92px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               />
@@ -840,9 +846,9 @@ export default function AdminQuestions({
                     {opt.key}
                   </div>
                   <input
-                    value={opt.value}
+                    aria-label={t('Opción ', 'Aukera ') + opt.key} value={opt.value}
                     onChange={(e) => opt.setter(e.target.value)}
-                    className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
+                    className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                     placeholder={t('Texto opción', 'Aukeraren testua')}
                   />
                 </div>
@@ -852,7 +858,7 @@ export default function AdminQuestions({
             <div className="space-y-2">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Explicación', 'Azalpena')}</div>
               <textarea
-                value={draft.explanation}
+                aria-label={t('Explicación', 'Azalpena')} value={draft.explanation}
                 onChange={(e) => setDraft((prev) => ({ ...prev, explanation: e.target.value }))}
                 className="w-full min-h-[92px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               />
@@ -861,7 +867,7 @@ export default function AdminQuestions({
             <div className="space-y-2">
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Explicación editorial', 'Azalpen editoriala')}</div>
               <textarea
-                value={draft.editorialExplanation}
+                aria-label={t('Explicación editorial', 'Azalpen editoriala')} value={draft.editorialExplanation}
                 onChange={(e) => setDraft((prev) => ({ ...prev, editorialExplanation: e.target.value }))}
                 className="w-full min-h-[72px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
               />
@@ -871,7 +877,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Tema/bloque', 'Gaia/blokea')}</div>
                 <input
-                  value={draft.topic}
+                  aria-label={t('Tema/bloque', 'Gaia/blokea')} value={draft.topic}
                   onChange={(e) => setDraft((prev) => ({ ...prev, topic: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 />
@@ -879,7 +885,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('subject_key', 'subject_key')}</div>
                 <input
-                  value={draft.subjectKey}
+                  aria-label={t('subjectKey', 'subjectKey')} value={draft.subjectKey}
                   onChange={(e) => setDraft((prev) => ({ ...prev, subjectKey: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                   placeholder={t('Opcional', 'Aukerakoa')}
@@ -888,7 +894,7 @@ export default function AdminQuestions({
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Ley ref.', 'Lege ref.')}</div>
                 <input
-                  value={draft.lawReference}
+                  aria-label={t('Ley ref.', 'Ley ref.')} value={draft.lawReference}
                   onChange={(e) => setDraft((prev) => ({ ...prev, lawReference: e.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
                 />
@@ -909,7 +915,7 @@ export default function AdminQuestions({
                   <div className="space-y-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">question_scope_key</div>
                     <input
-                      value={draft.questionScopeKey}
+                      aria-label={t('questionScopeKey', 'questionScopeKey')} value={draft.questionScopeKey}
                       onChange={(e) => setDraft((prev) => ({ ...prev, questionScopeKey: e.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
                       placeholder={t('Opcional', 'Aukerakoa')}
@@ -918,7 +924,7 @@ export default function AdminQuestions({
                   <div className="space-y-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">dominant_trap_type</div>
                     <input
-                      value={draft.dominantTrapType}
+                      aria-label={t('dominantTrapType', 'dominantTrapType')} value={draft.dominantTrapType}
                       onChange={(e) => setDraft((prev) => ({ ...prev, dominantTrapType: e.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
                       placeholder={t('Opcional', 'Aukerakoa')}
@@ -930,7 +936,7 @@ export default function AdminQuestions({
                   <div className="space-y-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">subject_id</div>
                     <input
-                      value={draft.subjectId}
+                      aria-label={t('subjectId', 'subjectId')} value={draft.subjectId}
                       onChange={(e) => setDraft((prev) => ({ ...prev, subjectId: e.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-800 outline-none focus:border-indigo-400"
                       placeholder="UUID"
@@ -939,7 +945,7 @@ export default function AdminQuestions({
                   <div className="space-y-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">scope_id</div>
                     <input
-                      value={draft.scopeId}
+                      aria-label={t('scopeId', 'scopeId')} value={draft.scopeId}
                       onChange={(e) => setDraft((prev) => ({ ...prev, scopeId: e.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-800 outline-none focus:border-indigo-400"
                       placeholder="UUID"
@@ -951,7 +957,7 @@ export default function AdminQuestions({
                   <div className="space-y-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">general_law_id</div>
                     <input
-                      value={draft.generalLawId}
+                      aria-label={t('generalLawId', 'generalLawId')} value={draft.generalLawId}
                       onChange={(e) => setDraft((prev) => ({ ...prev, generalLawId: e.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-800 outline-none focus:border-indigo-400"
                       placeholder="UUID"
@@ -960,7 +966,7 @@ export default function AdminQuestions({
                   <div className="space-y-2">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">general_law_block_id</div>
                     <input
-                      value={draft.generalLawBlockId}
+                      aria-label={t('generalLawBlockId', 'generalLawBlockId')} value={draft.generalLawBlockId}
                       onChange={(e) => setDraft((prev) => ({ ...prev, generalLawBlockId: e.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-800 outline-none focus:border-indigo-400"
                       placeholder="UUID"
@@ -971,7 +977,7 @@ export default function AdminQuestions({
                 <div className="space-y-2">
                   <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">general_law_question_type</div>
                   <input
-                    value={draft.generalLawQuestionType}
+                    aria-label={t('generalLawQuestionType', 'generalLawQuestionType')} value={draft.generalLawQuestionType}
                     onChange={(e) => setDraft((prev) => ({ ...prev, generalLawQuestionType: e.target.value }))}
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-400"
                     placeholder={t('Opcional', 'Aukerakoa')}
@@ -989,7 +995,7 @@ export default function AdminQuestions({
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save size={18} />}
               {saving ? t('Guardando...', 'Gordetzen...') : t('Guardar', 'Gorde')}
             </button>
-          </div>
+          </fieldset>
         </div>
       </div>
   );
