@@ -123,7 +123,7 @@ begin
   order by seed.rn
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_anti_trap_batch(p_curriculum text, p_limit integer, p_question_scope text) from public, anon;
 grant execute on function app.get_anti_trap_batch(p_curriculum text, p_limit integer, p_question_scope text) to authenticated, service_role;
@@ -228,7 +228,7 @@ begin
   order by excess_risk desc nulls last, attempts desc, category asc
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_category_risk_dashboard(p_curriculum text, p_limit integer, p_question_scope text) from public, anon;
 grant execute on function app.get_category_risk_dashboard(p_curriculum text, p_limit integer, p_question_scope text) to authenticated, service_role;
@@ -258,7 +258,7 @@ begin
   order by random()
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_law_practice_batch(p_law text, p_curriculum text, p_batch_size integer) from public, anon;
 grant execute on function app.get_law_practice_batch(p_law text, p_curriculum text, p_batch_size integer) to authenticated, service_role;
@@ -444,7 +444,7 @@ begin
   order by fs.ordering
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_mixed_practice_batch(p_curriculum text, p_batch_size integer, p_question_scope text) from public, anon;
 grant execute on function app.get_mixed_practice_batch(p_curriculum text, p_batch_size integer, p_question_scope text) to authenticated, service_role;
@@ -471,7 +471,7 @@ begin
     and app.question_matches_scope(to_jsonb(p), p_question_scope)
     and app.pregunta_row_matches_practice_curriculum(p, v_curriculum);
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_practice_catalog_summary(p_curriculum text, p_question_scope text) from public, anon;
 grant execute on function app.get_practice_catalog_summary(p_curriculum text, p_question_scope text) to authenticated, service_role;
@@ -502,7 +502,7 @@ begin
   order by md5(to_jsonb(p)::text || ':' || v_seed)
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_random_practice_batch(p_curriculum text, p_batch_size integer, p_question_scope text) from public, anon;
 grant execute on function app.get_random_practice_batch(p_curriculum text, p_batch_size integer, p_question_scope text) to authenticated, service_role;
@@ -715,7 +715,7 @@ begin
     composed.risk_breakdown
   from composed;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_readiness_dashboard(p_curriculum text, p_user_id uuid) from public, anon;
 grant execute on function app.get_readiness_dashboard(p_curriculum text, p_user_id uuid) to authenticated, service_role;
@@ -1076,7 +1076,7 @@ begin
     ) as topic_breakdown
   from composed;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_readiness_dashboard_v2(p_curriculum text, p_user_id uuid) from public, anon;
 grant execute on function app.get_readiness_dashboard_v2(p_curriculum text, p_user_id uuid) to authenticated, service_role;
@@ -1160,7 +1160,7 @@ begin
   order by d.rn
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_simulacro_batch(p_curriculum text, p_limit integer, p_question_scope text) from public, anon;
 grant execute on function app.get_simulacro_batch(p_curriculum text, p_limit integer, p_question_scope text) to authenticated, service_role;
@@ -1198,7 +1198,7 @@ begin
   offset v_start
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_standard_practice_batch(p_curriculum text, p_batch_start_index integer, p_batch_size integer, p_question_scope text) from public, anon;
 grant execute on function app.get_standard_practice_batch(p_curriculum text, p_batch_start_index integer, p_batch_size integer, p_question_scope text) to authenticated, service_role;
@@ -1228,7 +1228,7 @@ begin
   order by random()
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_topic_practice_batch(p_topic text, p_curriculum text, p_batch_size integer) from public, anon;
 grant execute on function app.get_topic_practice_batch(p_topic text, p_curriculum text, p_batch_size integer) to authenticated, service_role;
@@ -1278,7 +1278,7 @@ begin
   order by incorrect_attempts desc, attempts desc, category asc
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_weak_category_summary(p_curriculum text, p_limit integer, p_question_scope text) from public, anon;
 grant execute on function app.get_weak_category_summary(p_curriculum text, p_limit integer, p_question_scope text) to authenticated, service_role;
@@ -1329,7 +1329,7 @@ begin
     qs.last_seen_at desc nulls last
   limit v_limit;
 end;
-$function$
+$function$;
 
 revoke execute on function app.get_weak_practice_batch(p_curriculum text, p_limit integer, p_question_scope text) from public, anon;
 grant execute on function app.get_weak_practice_batch(p_curriculum text, p_limit integer, p_question_scope text) to authenticated, service_role;
