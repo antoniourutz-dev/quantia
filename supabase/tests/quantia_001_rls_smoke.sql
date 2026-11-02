@@ -128,15 +128,15 @@ select 'QUANTIA AUDIT 001: RLS role smoke tests passed' as result;
 
 -- Run the exact second migration in an isolated DB, then exercise actual RPCs.
 create role service_role nologin;
-create function app.is_admin() returns boolean language sql stable as $
+create function app.is_admin() returns boolean language sql stable as $$
  select coalesce(current_setting('request.jwt.claim.app_role',true),'') = 'admin';
-$;
+$$;
 create function app.question_matches_scope(payload jsonb, p_question_scope text)
-returns boolean language sql immutable as $ select true; $;
+returns boolean language sql immutable as $$ select true; $$;
 create function app.pregunta_row_matches_practice_curriculum(p public.preguntas, v_curriculum text)
-returns boolean language sql stable as $
+returns boolean language sql stable as $$
  select coalesce((p).curriculum_key,(p).curriculum,'') = v_curriculum;
-$;
+$$;
 -- The migration baselines other analytics objects, some with dependencies not
 -- instantiated in this minimal fixture. Skip body validation at CREATE time
 -- but test standard/catalog authorization and curriculum filters at runtime.
@@ -147,7 +147,7 @@ set check_function_bodies = on;
 set role authenticated;
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
 set request.jwt.claim.app_role = '';
-do $
+do $$
 begin
   if (select count(*) from app.get_standard_practice_batch('administrativo',0,20,'all')) <> 1 then
     raise exception 'standard practice included questions of another opposition';
@@ -162,11 +162,11 @@ begin
     raise exception 'catalog summary did not follow selected opposition';
   end if;
 end
-$;
+$$;
 
 set request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
 set request.jwt.claim.app_role = 'restricted_question_bank_viewer';
-do $
+do $$
 begin
   begin
     perform 1 from app.get_standard_practice_batch('administrativo',0,20,'all');
@@ -181,11 +181,11 @@ begin
     when insufficient_privilege then null;
   end;
 end
-$;
+$$;
 
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
 set request.jwt.claim.app_role = '';
-do $
+do $$
 begin
   begin
     perform 1 from app.get_readiness_dashboard_v2(
@@ -204,10 +204,10 @@ begin
     when insufficient_privilege then null;
   end;
 end
-$;
+$$;
 reset role;
 -- Anonymous can no longer invoke privileged practice functions at all.
-do $
+do $$
 begin
   if has_function_privilege('anon','app.get_standard_practice_batch(text,integer,integer,text)','EXECUTE') then
     raise exception 'anonymous can execute privileged standard RPC';
@@ -216,7 +216,7 @@ begin
     raise exception 'anonymous can execute readiness data RPC';
   end if;
 end
-$;
+$$;
 
 select 'QUANTIA AUDIT 001: isolation and analytics regression passed' as result;
 
