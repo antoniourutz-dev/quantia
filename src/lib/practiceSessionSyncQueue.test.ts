@@ -51,4 +51,30 @@ describe('practice session sync queue', () => {
     removeQueuedPracticeSessionSync('user-1', 'session-1');
     expect(readQueuedPracticeSessionSyncs('user-1')).toEqual([]);
   });
+  it('never silently discards an older unsynchronized session', () => {
+    for (let i = 0; i < 25; i += 1) {
+      expect(enqueuePracticeSessionSync('user-1', payload(`session-${i}`))).toBe(true);
+    }
+    const pending = readQueuedPracticeSessionSyncs('user-1');
+    expect(pending).toHaveLength(25);
+    expect(pending[0]?.payload.session.id).toBe('session-0');
+    expect(pending[24]?.payload.session.id).toBe('session-24');
+  });
+
+  it('does not overwrite existing sessions when browser storage is full', () => {
+    expect(enqueuePracticeSessionSync('user-1', payload('session-old'))).toBe(true);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError');
+    });
+    expect(enqueuePracticeSessionSync('user-1', payload('session-new'))).toBe(false);
+    setItem.mockRestore();
+    expect(readQueuedPracticeSessionSyncs('user-1').map((item) => item.payload.session.id)).toEqual(['session-old']);
+  });
+
+  it('keeps unsynced sessions isolated by account', () => {
+    enqueuePracticeSessionSync('user-1', payload('first'));
+    enqueuePracticeSessionSync('user-2', payload('second'));
+    expect(readQueuedPracticeSessionSyncs('user-1').map((item) => item.payload.session.id)).toEqual(['first']);
+    expect(readQueuedPracticeSessionSyncs('user-2').map((item) => item.payload.session.id)).toEqual(['second']);
+  });
 });
