@@ -129,9 +129,9 @@ select 'QUANTIA AUDIT 001: RLS role smoke tests passed' as result;
 -- Run the exact second migration in an isolated DB, then exercise actual RPCs.
 create role service_role nologin;
 grant usage on schema app, auth to service_role;
-create function auth.jwt() returns jsonb language sql stable as $
+create function auth.jwt() returns jsonb language sql stable as $$
  select jsonb_build_object('role', coalesce(current_setting('request.jwt.claim.role', true), ''));
-$;
+$$;
 create function app.is_admin() returns boolean language sql stable as $$
  select coalesce(current_setting('request.jwt.claim.app_role',true),'') = 'admin';
 $$;
@@ -215,11 +215,11 @@ reset role;
 set role service_role;
 set request.jwt.claim.sub = '';
 set request.jwt.claim.role = 'service_role';
-do $
+do $$
 begin
   perform app.assert_full_practice_access('33333333-3333-4333-8333-333333333333'::uuid);
 end
-$;
+$$;
 reset role;
 set request.jwt.claim.role = '';
 -- Anonymous can no longer invoke privileged practice functions at all.
