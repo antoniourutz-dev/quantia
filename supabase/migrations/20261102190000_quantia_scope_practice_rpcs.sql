@@ -16,6 +16,12 @@ as $guard$
 declare
   v_caller uuid := auth.uid();
 begin
+  -- Supabase Edge sync-practice-session invokes readiness RPCs with a
+  -- server-only service_role JWT after persisting the student's attempts.
+  -- Never block that trusted backend path or force a frontend user token.
+  if coalesce(auth.jwt() ->> 'role', '') = 'service_role' then
+    return;
+  end if;
   if v_caller is null then
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
@@ -30,6 +36,7 @@ begin
 end;
 $guard$;
 revoke execute on function app.assert_full_practice_access(uuid) from public, anon, authenticated;
+grant execute on function app.assert_full_practice_access(uuid) to service_role;
 
 -- get_anti_trap_batch
 CREATE OR REPLACE FUNCTION app.get_anti_trap_batch(p_curriculum text DEFAULT 'general'::text, p_limit integer DEFAULT 20, p_question_scope text DEFAULT 'all'::text)

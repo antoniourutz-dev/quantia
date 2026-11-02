@@ -62,3 +62,12 @@ revisión del guardado transaccional de extremo a extremo.
 No confundir una buena nota con datos guardados ni con dominio auténtico.
 La experiencia debe ser sencilla, pero nunca a costa de ocultar errores.
 **Primero verdad, luego confianza y después aprendizaje medible.**
+
+## Contraprueba adicional — integración con la Edge Function real
+
+La Edge Function `sync-practice-session` de producción llama a
+`app.get_readiness_dashboard` utilizando el cliente con clave
+`service_role`. La nueva protección central no puede confundir ese
+cliente de servidor con un alumno sin sesión. Se ha incluido excepción
+exclusiva para un JWT firmado con `role=service_role` y se prueba ese
+caso en PostgreSQL sin abrir el acceso a `anon` o `authenticated`.
