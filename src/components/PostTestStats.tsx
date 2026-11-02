@@ -89,6 +89,7 @@ export default function PostTestStats({
   const avgTimeSec = timedAnswers.length
     ? (timedAnswers.reduce((sum, attempt) => sum + (attempt.responseTimeMs ?? 0), 0) / timedAnswers.length / 1000).toFixed(1)
     : '—';
+  const avgTimeLabel = timedAnswers.length ? `${avgTimeSec}s` : '—';
   const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
   const [analysisHydrated, setAnalysisHydrated] = useState(true);
   const [showReview, setShowReview] = useState(false);
@@ -379,7 +380,7 @@ export default function PostTestStats({
              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
                <Clock size={12} /> {isBasque ? 'Seg/gal' : 'Seg/preg'}
              </span>
-             <span className="text-[13px] font-black text-slate-700">{avgTimeSec}s</span>
+             <span className="text-[13px] font-black text-slate-700">{avgTimeLabel}</span>
            </div>
            <div className="flex-1 flex flex-col items-center px-1">
              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
@@ -440,9 +441,9 @@ export default function PostTestStats({
             </h3>
           </div>
           <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 text-center mt-2 border border-slate-100/60">
-             <span className="text-4xl font-black text-slate-800 tracking-tight">{avgTimeSec}s</span>
+             <span className="text-4xl font-black text-slate-800 tracking-tight">{avgTimeLabel}</span>
              <span className="text-[11px] font-extrabold text-slate-400 mt-1 uppercase tracking-widest">{isBasque ? 'Galderako' : 'Por pregunta'}</span>
-             <p className={`mt-5 text-[13px] font-bold leading-snug px-3 py-2 rounded-xl text-center shadow-sm w-full max-w-[240px] ${Number(avgTimeSec) < 30 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+             <p className={`mt-5 text-[13px] font-bold leading-snug px-3 py-2 rounded-xl text-center shadow-sm w-full max-w-[240px] ${!timedAnswers.length ? 'bg-slate-100 text-slate-700' : Number(avgTimeSec) < 30 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
                {speedMessage}
              </p>
           </div>
