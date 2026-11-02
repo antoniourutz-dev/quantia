@@ -16,6 +16,7 @@ import { useAppLocale } from '../lib/locale';
 import type { StudyQuestionData } from '../lib/quantiaApi';
 import HighlightableText from './HighlightableText';
 import EditorialExplanation from './EditorialExplanation';
+import ConfirmExitDialog from './ConfirmExitDialog';
 import { recordQuestionAnswer, recordQuestionView } from '../lib/questionActivity';
 
 interface TestInterfaceProps {
@@ -69,6 +70,7 @@ export default function TestInterface({
   const [timeLeft, setTimeLeft] = useState(() => (mode === 'simulacro' ? questions.length * 90 : questions.length * 60));
   const [questionStartAt, setQuestionStartAt] = useState(() => Date.now());
   const [finishRequested, setFinishRequested] = useState(false);
+  const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
   const [mistakeReview, setMistakeReview] = useState<{
     kind: 'pending' | 'all';
@@ -82,6 +84,8 @@ export default function TestInterface({
   const wasFinishingRef = useRef(false);
   const viewOccurrencesRef = useRef(new Map<string, number>());
   const currentViewEventIdRef = useRef<string | null>(null);
+  const examDeadlineRef = useRef(Date.now() + questions.length * 90_000);
+  const questionSetKey = useMemo(() => questions.map((question) => question.id).join('|'), [questions]);
 
   const activeQuestions = mistakeReview?.questions ?? questions;
   const activeSelectedAnswers = mistakeReview?.selectedAnswers ?? selectedAnswers;
@@ -162,13 +166,27 @@ export default function TestInterface({
   );
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (isSimulacro && !finishStartedRef.current) {
-        setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isSimulacro]);
+    if (!isSimulacro) return;
+
+    // A real exam must not gain time when browsers throttle background tabs.
+    const durationSeconds = questions.length * 90;
+    examDeadlineRef.current = Date.now() + durationSeconds * 1000;
+    setTimeLeft(durationSeconds);
+    const updateClock = () => {
+      if (finishStartedRef.current) return;
+      const seconds = Math.max(0, Math.ceil((examDeadlineRef.current - Date.now()) / 1000));
+      setTimeLeft(seconds);
+    };
+
+    const timer = window.setInterval(updateClock, 1000);
+    window.addEventListener('focus', updateClock);
+    document.addEventListener('visibilitychange', updateClock);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', updateClock);
+      document.removeEventListener('visibilitychange', updateClock);
+    };
+  }, [activitySessionId, isSimulacro, questionSetKey, questions.length]);
 
   useEffect(() => {
     if (wasFinishingRef.current && !isFinishing) {
@@ -192,6 +210,17 @@ export default function TestInterface({
   useEffect(() => {
     setNoteOpen(false);
   }, [currentQuestion?.id]);
+
+  useEffect(() => {
+    if (!selectedAnswers.some((answer) => answer !== null) || closingSession) return;
+
+    const warnOnUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnOnUnload);
+    return () => window.removeEventListener('beforeunload', warnOnUnload);
+  }, [closingSession, selectedAnswers]);
 
   useEffect(() => {
     if (!activityUserId || !activityCurriculum || !activitySessionId || !currentQuestion?.correctAnswer) return;
@@ -223,6 +252,7 @@ export default function TestInterface({
     }
     if (finishStartedRef.current) return;
     finishStartedRef.current = true;
+    setExitConfirmationOpen(false);
     setFinishRequested(true);
     void onFinish(finishPayload);
   }, [finishPayload, isSimulacro, mistakeReview, onFinish, selectedAnswers]);
@@ -232,6 +262,17 @@ export default function TestInterface({
       requestFinish();
     }
   }, [isSimulacro, requestFinish, timeLeft]);
+
+  const closeExitConfirmation = useCallback(() => setExitConfirmationOpen(false), []);
+  const requestExit = () => {
+    if (closingSession) return;
+    // Empty first question is safe to leave immediately. Do not lose attempts silently.
+    if (selectedAnswers.every((answer) => answer === null) && currentIndex === 0 && !mistakeReview) {
+      onCancel();
+      return;
+    }
+    setExitConfirmationOpen(true);
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -493,9 +534,10 @@ export default function TestInterface({
                   {currentIndex + 1} / {activeQuestions.length}
                 </span>
                 <button
-                  onClick={onCancel}
+                  type="button"
+                  onClick={requestExit}
                   disabled={closingSession}
-                  className={`text-xs mx-1 font-bold transition-colors ${
+                  className={`min-h-11 rounded-lg px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                     closingSession ? 'cursor-not-allowed text-rose-200' : 'text-rose-500 hover:text-rose-600'
                   }`}
                 >
@@ -946,6 +988,14 @@ export default function TestInterface({
             </div>
           )}
         </>
+      )}
+      {exitConfirmationOpen && (
+        <ConfirmExitDialog
+          isBasque={isBasque}
+          answeredCount={selectedAnswers.filter((answer) => answer !== null).length}
+          onStay={closeExitConfirmation}
+          onDiscard={onCancel}
+        />
       )}
     </div>
   );
