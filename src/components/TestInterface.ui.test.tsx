@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TestInterface from './TestInterface';
 import type { Question, FinishedTestPayload } from '../types';
@@ -93,7 +93,7 @@ describe('TestInterface: accesibilidad y flujo del examen', () => {
       render(<TestInterface {...createProps()} mode="simulacro" />);
       expect(screen.getByText('3:00')).toBeInTheDocument();
       now.mockReturnValue(start + 52_000);
-      document.dispatchEvent(new Event('visibilitychange'));
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
       expect(screen.getByText('2:08')).toBeInTheDocument();
     } finally {
       now.mockRestore();
