@@ -25,7 +25,6 @@ const DEFAULT_TABLES = [
   { schema: 'public', table: 'opposition_configs' },
   { schema: 'public', table: 'subjects' },
   { schema: 'public', table: 'question_scopes' },
-  { schema: 'public', table: 'user_opposition_profiles' },
   { schema: 'app', table: 'general_laws' },
   { schema: 'app', table: 'general_law_blocks' },
 ] as const;

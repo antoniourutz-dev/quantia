@@ -3232,10 +3232,27 @@ export const getQuestionBankSnapshot = async (params: {
   });
 };
 
-const ADMIN_EMAIL = 'admin@oposik.app';
 const normalizeEmail = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
-const assertAdminSession = async () => {
-  return await getFreshSessionForFunctionInvoke(ADMIN_EMAIL);
+
+// A manager's permissions are evaluated server-side for every protected operation.
+// Avoid any email-based or client-controlled administrative authorization.
+export const getQuantiaManagementPermissions = async () => {
+  const session = await getFreshSessionForFunctionInvoke();
+  const permissions = ['questions.manage', 'catalogs.manage', 'users.manage', 'statistics.read', 'quality.manage'] as const;
+  const access = await Promise.all(permissions.map(async (permission) => {
+    const { data, error } = await supabase.rpc('has_quantia_permission', { p_permission: permission });
+    if (error) throw new Error('No se ha podido validar el acceso administrativo.');
+    return [permission, data === true] as const;
+  }));
+  const owner = await supabase.rpc('quantia_is_owner');
+  if (owner.error) throw new Error('No se ha podido validar el acceso administrativo.');
+  return { isOwner: owner.data === true, userId: session.user.id, permissions: Object.fromEntries(access) as Record<(typeof permissions)[number], boolean> };
+};
+const assertAdminSession = async (permission = 'questions.manage') => {
+  const session = await getFreshSessionForFunctionInvoke();
+  const { data, error } = await supabase.rpc('has_quantia_permission', { p_permission: permission });
+  if (error || data !== true) throw new Error('Acceso administrativo denegado.');
+  return session;
 };
 
 const adminInvokeFunction = async <T = unknown>(functionName: string, body: Record<string, unknown>): Promise<T> => {
@@ -3251,7 +3268,7 @@ const adminInvokeFunction = async <T = unknown>(functionName: string, body: Reco
       body: JSON.stringify(body),
     });
 
-  const session = await assertAdminSession();
+  const session = await assertAdminSession('users.manage');
   const response = await send(session.access_token);
 
   const contentType = response.headers.get('content-type') ?? '';
@@ -3699,7 +3716,7 @@ export const adminListUsers = async (params: {
   page?: number;
   perPage?: number;
 }): Promise<{ items: AdminUserListItem[]; page: number; perPage: number; total: number | null }> => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const payload = await adminInvokeFunction<Record<string, unknown>>('admin-users', {
     action: 'list',
     search: readText(params.search) ?? null,
@@ -3728,7 +3745,7 @@ export const adminListUsers = async (params: {
 };
 
 export const adminGetUserDetail = async (userId: string): Promise<AdminUserDetail> => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const id = readText(userId);
   if (!id) throw new Error('Usuario inválido.');
   const payload = await adminInvokeFunction<Record<string, unknown>>('admin-users', { action: 'detail', userId: id });
@@ -3748,7 +3765,7 @@ export const adminGetUserDetail = async (userId: string): Promise<AdminUserDetai
 };
 
 export const adminCreateUser = async (input: { email: string; password: string; username?: string | null }) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const email = readText(input.email);
   const password = readText(input.password);
   if (!email || !password) throw new Error('Email y contraseña son obligatorios.');
@@ -3767,7 +3784,7 @@ export const adminCreateRestrictedQuestionBankViewer = async (input: {
   allowedCurriculumKeys?: string[] | null;
   redirectTo?: string | null;
 }): Promise<{ userId: string; magicLink: string | null }> => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const email = readText(input.email);
   if (!email) throw new Error('Email es obligatorio.');
   const payload = await adminInvokeFunction<Record<string, unknown>>('admin-users', {
@@ -3785,7 +3802,7 @@ export const adminCreateRestrictedQuestionBankViewer = async (input: {
 };
 
 export const adminUpdateUserName = async (input: { userId: string; username: string }) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const userId = readText(input.userId);
   const username = readText(input.username);
   if (!userId || !username) throw new Error('Datos inválidos.');
@@ -3793,21 +3810,21 @@ export const adminUpdateUserName = async (input: { userId: string; username: str
 };
 
 export const adminDeleteUser = async (userId: string) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const id = readText(userId);
   if (!id) throw new Error('Usuario inválido.');
   await adminInvokeFunction('admin-users', { action: 'delete', userId: id });
 };
 
 export const adminResetUserData = async (userId: string) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const id = readText(userId);
   if (!id) throw new Error('Usuario inválido.');
   await adminInvokeFunction('admin-users', { action: 'reset_progress', userId: id });
 };
 
 export const adminSetUserPassword = async (input: { userId: string; password: string }) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const userId = readText(input.userId);
   const password = readText(input.password);
   if (!userId || !password) throw new Error('Datos inválidos.');
@@ -3815,14 +3832,14 @@ export const adminSetUserPassword = async (input: { userId: string; password: st
 };
 
 export const adminSetUserActive = async (input: { userId: string; active: boolean }) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const userId = readText(input.userId);
   if (!userId) throw new Error('Datos inválidos.');
   await adminInvokeFunction('admin-users', { action: input.active ? 'enable' : 'disable', userId });
 };
 
 export const adminSetUserActiveOpposition = async (input: { userId: string; oppositionId: string }) => {
-  await assertAdminSession();
+  await assertAdminSession('users.manage');
   const userId = readText(input.userId);
   const oppositionId = readText(input.oppositionId);
   if (!userId || !oppositionId) throw new Error('Datos inválidos.');
@@ -3842,7 +3859,7 @@ const isAllowedAdminCatalogTable = (schema: string, table: string) =>
   ADMIN_CATALOG_TABLES.some((entry) => entry.schema === schema && entry.table === table);
 
 export const adminListCatalogTables = async (tables: { schema: string; table: string }[]) => {
-  await assertAdminSession();
+  await assertAdminSession('catalogs.manage');
   const input = Array.isArray(tables) ? tables : [];
   const grouped = new Map<string, string[]>();
   for (const entry of input) {
@@ -3858,7 +3875,7 @@ export const adminListCatalogTables = async (tables: { schema: string; table: st
   const discovered: { schema: string; table: string }[] = [];
   for (const [schema, list] of grouped.entries()) {
     const { data, error } = await supabase.rpc('admin_list_tables_v2', { p_schema: schema, p_tables: list });
-    if (error) continue;
+    if (error) throw new Error(mapPracticeCloudError(error));
     const rows = (Array.isArray(data) ? data : []) as unknown[];
     for (const row of rows) {
       const record = (row ?? null) as Record<string, unknown>;
@@ -3870,7 +3887,7 @@ export const adminListCatalogTables = async (tables: { schema: string; table: st
 };
 
 export const adminGetTableColumns = async (params: { schema: string; table: string }) => {
-  await assertAdminSession();
+  await assertAdminSession('catalogs.manage');
   const schema = readText(params.schema);
   const name = readText(params.table);
   if (!schema || !name || !isAllowedAdminCatalogTable(schema, name)) throw new Error('Tabla no permitida.');
@@ -3897,7 +3914,7 @@ export const adminUpsertCatalogRow = async (params: {
   row?: Record<string, unknown>;
   where?: Record<string, unknown>;
 }): Promise<Record<string, unknown>[] > => {
-  await assertAdminSession();
+  await assertAdminSession('catalogs.manage');
   const schema = readText(params.schema) as 'public' | 'app';
   const table = readText(params.table);
   if (!schema || !table || !isAllowedAdminCatalogTable(schema, table)) throw new Error('Tabla no permitida.');

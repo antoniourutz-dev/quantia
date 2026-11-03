@@ -23,7 +23,6 @@ import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
 import type { TestSelectionStateSnapshot } from '../TestSelection';
 import {
   GOI_TEKNIKARIA_FALLBACK_OPTION,
-  ADMIN_EMAIL,
   getCurriculumAccessPolicyForIdentity,
   getRestrictedCurriculumForIdentity,
   filterCurriculumOptionsByAllowedKeys,
@@ -60,6 +59,7 @@ import {
   recordPracticeSessionInCloud,
   retryPendingPracticeSessionsInCloud,
   signOut,
+  getQuantiaManagementPermissions,
   updateMyExamTarget,
   type CurriculumOption,
   type DashboardBundle,
@@ -114,6 +114,7 @@ const loadAdminQuestions = () => import('../admin/AdminQuestions');
 const loadAdminDashboard = () => import('../admin/AdminDashboard');
 const loadAdminStudents = () => import('../admin/AdminStudents');
 const loadAdminCatalogs = () => import('../admin/AdminCatalogs');
+const loadAdminQuality = () => import('../admin/AdminQuality');
 
 const TestSelection = lazy(loadTestSelection);
 const TestInterface = lazy(loadTestInterface);
@@ -128,6 +129,7 @@ const AdminQuestions = lazy(loadAdminQuestions);
 const AdminDashboard = lazy(loadAdminDashboard);
 const AdminStudents = lazy(loadAdminStudents);
 const AdminCatalogs = lazy(loadAdminCatalogs);
+const AdminQuality = lazy(loadAdminQuality);
 import {
   buildCoachCopySeed,
   buildHeaderStatusCopy,
@@ -183,7 +185,6 @@ const curriculumHasActivity = (option: CurriculumOption) =>
   (option.sessionCount ?? 0) > 0 ||
   (option.answeredCount ?? 0) > 0 ||
   Boolean(option.lastStudiedAt);
-const normalizeUserIdentifier = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
 const normalizeCurriculumId = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase().replace(/_/g, '-');
 const isGoiTeknikariaCurriculum = (value: string | null | undefined) => {
@@ -307,15 +308,33 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     [allowedCurriculumKeys, curriculumAccessPolicy],
   );
   const preferredCurriculumId = curriculumAccessPolicy?.preferredCurriculumId ?? null;
-  const isAdminEmail = normalizeUserIdentifier(session?.user?.email) === ADMIN_EMAIL;
+  const [isManagementOwner, setIsManagementOwner] = useState(false);
+  const [managementPermissions, setManagementPermissions] = useState<Record<string, boolean> | null>(null);
   useEffect(() => {
-    if (!isAdminEmail) {
+    let active = true;
+    setManagementPermissions(null);
+    setIsManagementOwner(false);
+    void getQuantiaManagementPermissions()
+      .then(({ permissions, isOwner }) => { if (active) { setManagementPermissions(permissions); setIsManagementOwner(isOwner); } })
+      .catch(() => { if (active) setManagementPermissions(null); });
+    return () => { active = false; };
+  }, [session.user.id]);
+  const hasManagementAccess = Object.values(managementPermissions ?? {}).some(Boolean);
+  const canManageQuestions = managementPermissions?.['questions.manage'] === true;
+  const canManageCatalogs = managementPermissions?.['catalogs.manage'] === true;
+  const canManageUsers = managementPermissions?.['users.manage'] === true;
+  const canReadStatistics = managementPermissions?.['statistics.read'] === true;
+  const canManageQuality = managementPermissions?.['quality.manage'] === true;
+  useEffect(() => {
+    if (managementPermissions === null) return;
+    if (!hasManagementAccess) {
       if (
         currentView === 'dashboard' ||
         currentView === 'admin-questions' ||
         currentView === 'admin-dashboard' ||
         currentView === 'admin-students' ||
-        currentView === 'admin-catalogs'
+        currentView === 'admin-catalogs' ||
+        currentView === 'admin-quality'
       ) {
         setCurrentView('test-selection');
       }
@@ -325,7 +344,11 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (currentView === 'dashboard') {
       setCurrentView('admin-dashboard');
     }
-  }, [currentView, isAdminEmail]);
+    if (hasManagementAccess && currentView === 'admin-questions' && !canManageQuestions) setCurrentView('admin-dashboard');
+    if (hasManagementAccess && currentView === 'admin-catalogs' && !canManageCatalogs) setCurrentView('admin-dashboard');
+    if (hasManagementAccess && currentView === 'admin-students' && !canManageUsers) setCurrentView('admin-dashboard');
+    if (hasManagementAccess && currentView === 'admin-quality' && !canManageQuality) setCurrentView('admin-dashboard');
+  }, [currentView, hasManagementAccess, canManageQuestions, canManageCatalogs, canManageUsers, canManageQuality, managementPermissions]);
   const accessibleCurriculumOptions = useMemo(() => {
     const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
     const preferredMatches = preferredCurriculumId
@@ -372,7 +395,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
 
   useEffect(() => {
     if (!session) return;
-    const shouldWarmup = isAdminEmail ? currentView === 'dashboard' : currentView === 'test-selection';
+    const shouldWarmup = hasManagementAccess ? currentView === 'dashboard' : currentView === 'test-selection';
     if (!shouldWarmup) return;
     if (import.meta.env.DEV) return;
 
@@ -421,7 +444,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       cancelIdle(primaryHandle);
       cancelIdle(secondaryHandle);
     };
-  }, [currentView, isAdminEmail, session]);
+  }, [currentView, hasManagementAccess, session]);
 
   const telemetryEnabled = useMemo(() => {
     if (bundle?.identity.is_admin) return true;
@@ -440,8 +463,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   useEffect(() => {
     if (currentView !== 'telemetry') return;
     if (telemetryEnabled) return;
-    setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
-  }, [currentView, telemetryEnabled, isAdminEmail]);
+    setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
+  }, [currentView, telemetryEnabled, hasManagementAccess]);
 
   const refreshDashboard = useCallback(async () => {
     if (!session) return;
@@ -918,14 +941,14 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
 
   useEffect(() => {
     if (!session) return;
-    if (isAdminEmail && currentView === 'dashboard') {
+    if (hasManagementAccess && currentView === 'dashboard') {
       void refreshDashboard();
       return;
     }
-    if (!isAdminEmail && currentView === 'stats') {
+    if (!hasManagementAccess && currentView === 'stats') {
       void refreshDashboard();
     }
-  }, [currentView, isAdminEmail, refreshDashboard, session]);
+  }, [currentView, hasManagementAccess, refreshDashboard, session]);
 
   useEffect(() => {
     if (currentView !== 'dashboard') return;
@@ -1930,9 +1953,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         setCurrentView('test-selection');
         return;
       }
-      setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
+      setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
     },
-    [handleStartCoachSession, handleStartCustomTest, handleStartLawTest, handleStartTest, isAdminEmail],
+    [handleStartCoachSession, handleStartCustomTest, handleStartLawTest, handleStartTest, hasManagementAccess],
   );
 
   const handleFinishTest = useCallback(
@@ -1999,7 +2022,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (!testReturnTarget || testReturnTarget.view === 'dashboard') {
       setActiveSession(null);
       setLastTestPayload(null);
-      setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
+      setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
       return;
     }
 
@@ -2018,14 +2041,14 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     setActiveSession(testReturnTarget.session);
     setLastTestPayload(testReturnTarget.payload);
     resetScroll();
-  }, [testReturnTarget, isAdminEmail]);
+  }, [testReturnTarget, hasManagementAccess]);
 
   const handleLogout = useCallback(async () => {
     await signOut();
     setBundle(null);
     setTestReturnTarget(null);
     setTestSelectionState(null);
-    setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
+    setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
   }, []);
 
   const headerStatus = useMemo(() => {
@@ -2315,9 +2338,9 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setTestSelectionState(null);
       setTestReturnTarget(null);
       setSidebarOpen(false);
-      setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
+      setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
     },
-    [isAdminEmail],
+    [hasManagementAccess],
   );
 
   const gamification = useMemo(() => {
@@ -2381,7 +2404,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     currentView === 'admin-dashboard' ||
     currentView === 'admin-students' ||
     currentView === 'admin-questions' ||
-    currentView === 'admin-catalogs';
+    currentView === 'admin-catalogs' ||
+    currentView === 'admin-quality';
   const showMobileTopBar =
     !isTesting && !isAdminView && currentView !== 'telemetry' && currentView !== 'study-bank';
   const showMobileBottomNav = showMobileTopBar && currentView !== 'test-results';
@@ -2390,7 +2414,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (currentView === 'stats') return 'stats';
     if (currentView === 'study') return 'study';
     if (currentView === 'settings') return 'settings';
-    return isAdminEmail ? 'dashboard' : 'test-selection';
+    return hasManagementAccess ? 'dashboard' : 'test-selection';
   })();
 
   const mobileTitle =
@@ -2660,7 +2684,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           )}
 
           <nav className="flex-1 space-y-3 [@media(max-height:800px)]:space-y-2 [@media(max-height:700px)]:space-y-1.5">
-            {isAdminEmail ? (
+            {hasManagementAccess ? (
               <>
                 <button
                   onClick={() => {
@@ -2782,7 +2806,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               <Settings size={22} />
               <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Ajustes', 'Doikuntzak')}</span>
             </button>
-            {isAdminEmail ? (
+            {canManageQuestions ? (
               <button
                 onClick={() => {
                   setCurrentView('admin-questions');
@@ -3225,29 +3249,35 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         ) : null}
 
         {currentView === 'admin-dashboard' ? (
-          isAdminEmail ? (
+          hasManagementAccess ? (
             <Suspense fallback={screenLoader}>
               <AdminDashboard
                 curriculumOptions={curriculumOptions}
                 defaultCurriculum={curriculum}
-                onOpenStudents={() => setCurrentView('admin-students')}
-                onOpenQuestions={() => setCurrentView('admin-questions')}
-                onOpenCatalogs={() => setCurrentView('admin-catalogs')}
+                onOpenStudents={() => { if (canManageUsers) setCurrentView('admin-students'); }}
+                onOpenQuestions={() => { if (canManageQuestions) setCurrentView('admin-questions'); }}
+                onOpenCatalogs={() => { if (canManageCatalogs) setCurrentView('admin-catalogs'); }}
+                onOpenQuality={() => { if (canManageQuality) setCurrentView('admin-quality'); }}
+                canManageQuestions={canManageQuestions}
+                canManageCatalogs={canManageCatalogs}
+                canManageUsers={canManageUsers}
+                canReadStatistics={canReadStatistics}
+                canManageQuality={canManageQuality}
               />
             </Suspense>
           ) : null
         ) : null}
 
         {currentView === 'admin-students' ? (
-          isAdminEmail ? (
+          canManageUsers ? (
             <Suspense fallback={screenLoader}>
-              <AdminStudents onClose={() => setCurrentView('admin-dashboard')} />
+              <AdminStudents isOwner={isManagementOwner} onClose={() => setCurrentView('admin-dashboard')} />
             </Suspense>
           ) : null
         ) : null}
 
         {currentView === 'admin-questions' ? (
-          isAdminEmail ? (
+          canManageQuestions ? (
             <Suspense fallback={screenLoader}>
               <AdminQuestions
                 curriculumOptions={curriculumOptions}
@@ -3259,9 +3289,21 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         ) : null}
 
         {currentView === 'admin-catalogs' ? (
-          isAdminEmail ? (
+          canManageCatalogs ? (
             <Suspense fallback={screenLoader}>
               <AdminCatalogs onClose={() => setCurrentView('admin-dashboard')} />
+            </Suspense>
+          ) : null
+        ) : null}
+
+        {currentView === 'admin-quality' ? (
+          canManageQuality ? (
+            <Suspense fallback={screenLoader}>
+              <AdminQuality
+                onClose={() => setCurrentView('admin-dashboard')}
+                onOpenQuestions={() => { if (canManageQuestions) setCurrentView('admin-questions'); }}
+                canOpenQuestions={canManageQuestions}
+              />
             </Suspense>
           ) : null
         ) : null}
@@ -3277,7 +3319,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               visiblePracticeModeIds={visiblePracticeModeIds}
               customSupportMode={customPracticeSupport}
               onSave={handleSaveExamTarget}
-              isAdmin={isAdminEmail}
+              isAdmin={hasManagementAccess}
               onOpenAdmin={() => setCurrentView('admin-dashboard')}
               onOpenTelemetry={() => setCurrentView('telemetry')}
             />
@@ -3346,7 +3388,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               curriculum={curriculum}
               username={bundle?.identity.current_username ?? session?.user.email ?? null}
               coachContext={activeSession.coach ?? null}
-              homeVariant={isAdminEmail ? 'dashboard' : 'test-selection'}
+              homeVariant={hasManagementAccess ? 'dashboard' : 'test-selection'}
               onStartNextSession={({ mode, questionCount, syllabus }) => {
                 if (selectedLawFilter) {
                   void handleStartLawTest(
@@ -3374,7 +3416,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               onGoHome={() => {
                 setActiveSession(null);
                 setLastTestPayload(null);
-                setCurrentView(isAdminEmail ? 'dashboard' : 'test-selection');
+                setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
               }}
             />
           </Suspense>
@@ -3411,7 +3453,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             setCurrentView(next);
             setSidebarOpen(false);
           }}
-          showDashboard={isAdminEmail}
+          showDashboard={hasManagementAccess}
         />
       ) : null}
       </div>
