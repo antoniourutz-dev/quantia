@@ -4,7 +4,6 @@ import { buildCorsHeaders, corsPreflightResponse } from '../_shared/cors.ts';
 
 type Json = Record<string, unknown>;
 
-const ADMIN_EMAIL = 'admin@oposik.app';
 
 const readText = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const canonicalizeAccessKey = (value: string) =>
@@ -92,11 +91,20 @@ const assertAdmin = async (req: Request) => {
     throw new Error('Sesion no valida.');
   }
 
-  const email = readText(data.user.email).toLowerCase();
-  if (email !== ADMIN_EMAIL) {
-    throw new Error('Acceso denegado.');
-  }
-  return { supabaseUrl, service, userId, email };
+  // Validate permissions using trusted server-side tables, never JWT email or user_metadata.
+  const { data: owner, error: ownerError } = await service
+    .from('admin_users').select('user_id').eq('user_id', userId).maybeSingle();
+  if (ownerError) throw ownerError;
+  const { data: role, error: roleError } = await service.schema('app')
+    .from('user_roles').select('role').eq('user_id', userId).eq('role', 'admin').maybeSingle();
+  if (roleError) throw roleError;
+  const isOwner = Boolean(owner && role);
+  const { data: managed, error: managedError } = await service
+    .from('quantia_admin_permissions').select('permission')
+    .eq('user_id', userId).eq('permission', 'users.manage').maybeSingle();
+  if (managedError) throw managedError;
+  if (!isOwner && !managed) throw new Error('Acceso denegado.');
+  return { supabaseUrl, service, userId, isOwner };
 };
 
 const getServiceClient = (supabaseUrl: string) => {
@@ -219,9 +227,28 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { service } = await assertAdmin(req);
+    const { service, isOwner } = await assertAdmin(req);
     const body = (await req.json().catch(() => ({}))) as Json;
     const action = readText(body.action).toLowerCase();
+    // Delegated managers may administer learners, never owners or other managers.
+    const targetUserId = readText(body.userId);
+    if (targetUserId && targetUserId !== '') {
+      const { data: targetOwner, error: ownerLookupError } = await service
+        .from('admin_users').select('user_id').eq('user_id', targetUserId).maybeSingle();
+      if (ownerLookupError) throw ownerLookupError;
+      const { data: targetRole, error: roleLookupError } = await service.schema('app')
+        .from('user_roles').select('role').eq('user_id', targetUserId).eq('role', 'admin').maybeSingle();
+      if (roleLookupError) throw roleLookupError;
+      const { data: targetManager, error: managerLookupError } = await service
+        .from('quantia_admin_permissions').select('permission').eq('user_id', targetUserId).limit(1);
+      if (managerLookupError) throw managerLookupError;
+      if (!isOwner && (targetOwner || targetRole || (targetManager?.length ?? 0) > 0)) {
+        throw new Error('Acceso denegado.');
+      }
+    }
+    if (!isOwner && (action === 'delete' || action === 'reset_progress' || action === 'set_password')) {
+      throw new Error('Acceso denegado.');
+    }
 
     if (action === 'list') {
       const page = Math.max(1, Number(body.page ?? 1));
