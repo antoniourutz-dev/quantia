@@ -15,6 +15,7 @@ export type ShellView =
   | 'admin-dashboard'
   | 'admin-students'
   | 'admin-catalogs'
+  | 'admin-quality'
   | 'telemetry';
 
 export type TestReturnTarget =
