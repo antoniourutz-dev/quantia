@@ -3232,10 +3232,28 @@ export const getQuestionBankSnapshot = async (params: {
   });
 };
 
-const ADMIN_EMAIL = 'admin@oposik.app';
-const normalizeEmail = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
+// A manager's permissions are evaluated server-side for every protected operation.
+// Avoid any email-based or client-controlled administrative authorization.
+export const getQuantiaManagementPermissions = async () => {
+  const session = await getFreshSessionForFunctionInvoke();
+  const permissions = ['questions.manage', 'catalogs.manage', 'users.manage', 'statistics.read', 'quality.manage'] as const;
+  const access = await Promise.all(permissions.map(async (permission) => {
+    const { data, error } = await supabase.rpc('has_quantia_permission', { p_permission: permission });
+    if (error) throw new Error('No se ha podido validar el acceso administrativo.');
+    return [permission, data === true] as const;
+  }));
+  return { userId: session.user.id, permissions: Object.fromEntries(access) as Record<(typeof permissions)[number], boolean> };
+};
 const assertAdminSession = async () => {
-  return await getFreshSessionForFunctionInvoke(ADMIN_EMAIL);
+  const session = await getFreshSessionForFunctionInvoke();
+  const { data, error } = await supabase.rpc('has_quantia_permission', { p_permission: 'users.manage' });
+  // All server mutations still enforce their individual RLS or Edge Function authorization.
+  // Here we only reject anonymous/unauthorized administrative access early.
+  if (error || data !== true) {
+    const question = await supabase.rpc('has_quantia_permission', { p_permission: 'questions.manage' });
+    if (question.error || question.data !== true) throw new Error('Acceso administrativo denegado.');
+  }
+  return session;
 };
 
 const adminInvokeFunction = async <T = unknown>(functionName: string, body: Record<string, unknown>): Promise<T> => {
