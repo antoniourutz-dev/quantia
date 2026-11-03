@@ -89,7 +89,7 @@ export default function AdminQuality({
             <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(0); }}
               className="min-w-56 rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-800">
               <option value="TODAS">Todos</option>
-              {STATES.map((state) => <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>)}
+              {STATES.map((state) => <option key={state} value={state}>{state.replace(/_/g, ' ')}</option>)}
             </select>
           </label>
           <div className="text-sm text-slate-500">
@@ -108,7 +108,7 @@ export default function AdminQuality({
                 {rows.map((row) => (
                   <tr key={row.id} className="border-b border-slate-100 last:border-0">
                     <td className="py-4 pr-4 font-bold text-slate-900">{row.numero_original ?? '—'}</td>
-                    <td className="py-4 pr-4 font-semibold text-slate-700">{row.estado.replaceAll('_', ' ')}</td>
+                    <td className="py-4 pr-4 font-semibold text-slate-700">{row.estado.replace(/_/g, ' ')}</td>
                     <td className="py-4 pr-4 text-slate-700">{row.respuesta_autorizada ?? 'Sin confirmar'}</td>
                     <td className="py-4 text-slate-500">{row.updated_at ? new Date(row.updated_at).toLocaleDateString('es-ES') : '—'}</td>
                   </tr>
