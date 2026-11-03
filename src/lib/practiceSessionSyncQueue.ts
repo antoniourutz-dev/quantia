@@ -20,7 +20,6 @@ export type QueuedPracticeSessionSync = {
 };
 
 const STORAGE_PREFIX = 'quantia.practice-session-sync.v1';
-const MAX_PENDING_SESSIONS = 12;
 
 const storageKey = (userId: string) => `${STORAGE_PREFIX}:${encodeURIComponent(userId)}`;
 
@@ -37,21 +36,26 @@ const isQueuedItem = (value: unknown, userId: string): value is QueuedPracticeSe
   );
 };
 
-export const readQueuedPracticeSessionSyncs = (userId: string): QueuedPracticeSessionSync[] => {
-  if (typeof window === 'undefined' || !userId) return [];
+// A malformed queue must never be silently replaced: that would erase past work.
+// A null result means the existing storage cannot be read or safely modified.
+const readQueueForMutation = (userId: string): QueuedPracticeSessionSync[] | null => {
+  if (typeof window === 'undefined' || !userId) return null;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(storageKey(userId)) ?? '[]') as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is QueuedPracticeSessionSync => isQueuedItem(item, userId));
+    if (!Array.isArray(parsed) || !parsed.every((item) => isQueuedItem(item, userId))) return null;
+    return parsed;
   } catch {
-    return [];
+    return null;
   }
 };
+
+export const readQueuedPracticeSessionSyncs = (userId: string): QueuedPracticeSessionSync[] =>
+  readQueueForMutation(userId) ?? [];
 
 const writeQueue = (userId: string, items: QueuedPracticeSessionSync[]) => {
   if (typeof window === 'undefined' || !userId) return false;
   try {
-    window.localStorage.setItem(storageKey(userId), JSON.stringify(items.slice(-MAX_PENDING_SESSIONS)));
+    window.localStorage.setItem(storageKey(userId), JSON.stringify(items));
     return true;
   } catch {
     return false;
@@ -63,7 +67,8 @@ export const enqueuePracticeSessionSync = (
   payload: PracticeSessionSyncPayload,
 ) => {
   if (!userId) return false;
-  const current = readQueuedPracticeSessionSyncs(userId);
+  const current = readQueueForMutation(userId);
+  if (!current) return false;
   const next = current.filter((item) => item.payload.session.id !== payload.session.id);
   next.push({ userId, queuedAt: new Date().toISOString(), payload });
   return writeQueue(userId, next);
@@ -71,8 +76,10 @@ export const enqueuePracticeSessionSync = (
 
 export const removeQueuedPracticeSessionSync = (userId: string, sessionId: string) => {
   if (!userId || !sessionId) return false;
+  const current = readQueueForMutation(userId);
+  if (!current) return false;
   return writeQueue(
     userId,
-    readQueuedPracticeSessionSyncs(userId).filter((item) => item.payload.session.id !== sessionId),
+    current.filter((item) => item.payload.session.id !== sessionId),
   );
 };

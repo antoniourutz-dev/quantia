@@ -30,6 +30,7 @@ import {
   removeQueuedPracticeSessionSync,
   type PracticeSessionSyncPayload,
 } from './practiceSessionSyncQueue';
+import { assertPracticeSyncAcknowledgement } from './practiceSyncIntegrity';
 import {
   mapAccountIdentity,
   mapCategoryRiskSummary,
@@ -4037,8 +4038,8 @@ export const buildPracticeSessionSyncPayload = (
         question_scope: question.questionScope,
         explanation: question.explanation,
         selected_option: answer.selectedOption,
-        correct_option: answer.correctOption,
-        is_correct: answer.isCorrect,
+        correct_option: question.correctAnswer,
+        is_correct: answer.selectedOption === question.correctAnswer,
         answered_at: answer.answeredAt,
         response_time_ms: answer.responseTimeMs,
         time_to_first_selection_ms: answer.timeToFirstSelectionMs,
@@ -4076,6 +4077,7 @@ const invokePracticeSessionSync = async (payload: PracticeSessionSyncPayload) =>
   });
 
   if (error) throw new Error(mapPracticeCloudError(error));
+  assertPracticeSyncAcknowledgement(data, payload.attempts.length);
   return data;
 };
 
@@ -4086,11 +4088,14 @@ export const recordPracticeSessionInCloud = async (
   userId?: string | null,
 ) => {
   const payload = buildPracticeSessionSyncPayload(session, answers, curriculum);
+  if (payload.attempts.length === 0) {
+    return { status: 'not_recorded' as const };
+  }
   const queued = userId ? enqueuePracticeSessionSync(userId, payload) : false;
 
   const data = await invokePracticeSessionSync(payload);
   if (queued && userId) removeQueuedPracticeSessionSync(userId, session.id);
-  return data;
+  return { status: 'saved' as const, data };
 };
 
 const pendingPracticeSessionSyncs = new Map<string, Promise<{ synced: number; pending: number }>>();

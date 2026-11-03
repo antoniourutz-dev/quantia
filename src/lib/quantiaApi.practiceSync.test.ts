@@ -136,4 +136,17 @@ describe('buildPracticeSessionSyncPayload', () => {
       attempts: [expect.objectContaining({ question_id: sharedQuestion.id, is_correct: false })],
     }));
   });
+  it('usa la clave correcta de la pregunta como fuente de verdad estadística', () => {
+    const session: ActivePracticeSession = {
+      id: 'truth-test', mode: 'standard', title: 'Test', startedAt: '2026-10-26T10:00:00.000Z',
+      questions: [question], batchNumber: 1, totalBatches: 1,
+      batchStartIndex: null, nextStandardBatchStartIndex: null,
+    };
+    const attempt = { ...answer, selectedOption: 'b' as const, correctOption: 'a' as const, isCorrect: false };
+    const sent = buildPracticeSessionSyncPayload(session, [attempt], 'administrativo');
+    expect(sent.attempts).toEqual([
+      expect.objectContaining({ correct_option: 'b', is_correct: true }),
+    ]);
+  });
+
 });

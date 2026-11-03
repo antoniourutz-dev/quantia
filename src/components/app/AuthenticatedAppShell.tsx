@@ -65,6 +65,8 @@ import {
   type DashboardBundle,
   type StudyQuestionData,
 } from '../../lib/quantiaApi';
+import { readQueuedPracticeSessionSyncs } from '../../lib/practiceSessionSyncQueue';
+import type { SessionSaveStatus } from '../../lib/practiceSyncIntegrity';
 import { useGeneralLawArticles } from '../../hooks/useGeneralLawArticles';
 import { useGeneralLawTrainingSelection } from '../../hooks/useGeneralLawTrainingSelection';
 import { getOfficialArticleCounts } from '../../repositories/officialPastQuestionsRepository';
@@ -244,6 +246,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const [dataError, setDataError] = useState<string | null>(null);
   const [practiceEmptyState, setPracticeEmptyState] = useState<PracticeEmptyStateModel | null>(null);
   const [syncingSession, setSyncingSession] = useState(false);
+  const [sessionSaveStatus, setSessionSaveStatus] = useState<SessionSaveStatus | null>(null);
   const [activeSession, setActiveSession] = useState<ActivePracticeSession | null>(null);
   const [activeTestSupport, setActiveTestSupport] = useState<{
     supportMode: { showMarks: boolean; showNotes: boolean };
@@ -1958,6 +1961,38 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     [handleStartCoachSession, handleStartCustomTest, handleStartLawTest, handleStartTest, hasManagementAccess],
   );
 
+  const saveFinishedSession = useCallback(
+    async (finishedSession: ActivePracticeSession, payload: FinishedTestPayload, savedCurriculum: string) => {
+      setSyncingSession(true);
+      setSessionSaveStatus('saving');
+      try {
+        const result = await recordPracticeSessionInCloud(
+          finishedSession,
+          payload.answers,
+          savedCurriculum,
+          session.user.id,
+        );
+        setSessionSaveStatus(result.status);
+        if (result.status === 'saved') {
+          // The acknowledgement is verified independently of dashboard refresh.
+          // A failed statistics fetch must not turn a successful save into a failure.
+          void refreshDashboardSilently().catch((error) => {
+            console.error('Dashboard refresh after saved session failed:', error);
+          });
+        }
+      } catch (error) {
+        console.error('Session sync was not confirmed:', error);
+        const hasBackup = readQueuedPracticeSessionSyncs(session.user.id).some(
+          (item) => item.payload.session.id === finishedSession.id,
+        );
+        setSessionSaveStatus(hasBackup ? 'pending' : 'unprotected');
+      } finally {
+        setSyncingSession(false);
+      }
+    },
+    [refreshDashboardSilently, session.user.id],
+  );
+
   const handleFinishTest = useCallback(
     async (payload: FinishedTestPayload) => {
       if (!activeSession) return;
@@ -1965,46 +2000,33 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       setLastTestPayload(payload);
       setCurrentView('test-results');
       setDataError(null);
+      setSessionSaveStatus('saving');
 
-      // Defer side effects to prioritize UI transition
+      trackEffect({
+        surface: 'session_end',
+        curriculum,
+        action: 'session_completed',
+        context: {
+          mode: activeSession.mode,
+          score: payload.score,
+          total: activeSession.questions.filter((question) => question.correctAnswer != null).length,
+          finishedAt: new Date().toISOString(),
+          coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
+        },
+      });
+
+      // First paint the results; a failed save is reported directly on that screen.
       setTimeout(() => {
-        setSyncingSession(true);
-        void (async () => {
-          try {
-            trackEffect({
-              surface: 'session_end',
-              curriculum,
-              action: 'session_completed',
-              context: {
-                mode: activeSession.mode,
-                score: payload.score,
-                total: activeSession.questions.filter((question) => question.correctAnswer != null).length,
-                finishedAt: new Date().toISOString(),
-                coachPrimaryAction: activeSession.coach?.primaryAction ?? null,
-              },
-            });
-            await recordPracticeSessionInCloud(
-              activeSession,
-              payload.answers,
-              curriculum,
-              session.user.id,
-            );
-            await refreshDashboardSilently();
-          } catch (error) {
-            console.error('Session sync failed:', error);
-            setDataError(
-              error instanceof Error
-                ? error.message
-                : t('No se ha podido sincronizar la sesion con kuantia.', 'Ezin izan da saioa kuantiarekin sinkronizatu.'),
-            );
-          } finally {
-            setSyncingSession(false);
-          }
-        })();
+        void saveFinishedSession(activeSession, payload, curriculum);
       }, 0);
     },
-    [activeSession, curriculum, refreshDashboardSilently, session.user.id, t],
+    [activeSession, curriculum, saveFinishedSession],
   );
+
+  const handleRetryFinishedSession = useCallback(() => {
+    if (!activeSession || !lastTestPayload || syncingSession) return;
+    void saveFinishedSession(activeSession, lastTestPayload, curriculum);
+  }, [activeSession, curriculum, lastTestPayload, saveFinishedSession, syncingSession]);
 
   const handleBackFromTestResults = useCallback(() => {
     const resetScroll = () => {
@@ -3383,6 +3405,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           <Suspense fallback={screenLoader}>
             <PostTestStats
               payload={lastTestPayload}
+              syncStatus={sessionSaveStatus}
+              onRetrySync={handleRetryFinishedSession}
               questions={activeSession.questions}
               mode={activeSession.mode}
               curriculum={curriculum}

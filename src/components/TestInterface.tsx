@@ -434,9 +434,23 @@ export default function TestInterface({
   }
 
   return (
-    <div className={`mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-4 duration-500 transition-all ${isFocusMode ? '-mt-4 space-y-1 pb-8 sm:-mt-8' : 'space-y-2.5 pb-24'}`}>
+    <div className={`mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-4 duration-300 transition-all motion-reduce:animate-none motion-reduce:transition-none ${isFocusMode ? '-mt-4 space-y-1 pb-8 sm:-mt-8' : 'space-y-2.5 pb-24'}`}>
+      {isFocusMode && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:hidden">
+          <button
+            type="button"
+            onClick={() => setIsFocusMode(false)}
+            className="min-h-11 rounded-lg px-3 text-sm font-bold text-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            {isBasque ? 'Kontzentraziotik irten' : 'Salir de concentración'}
+          </button>
+          <span className="text-sm font-semibold tabular-nums text-slate-600">
+            {currentIndex + 1} / {activeQuestions.length}
+          </span>
+        </div>
+      )}
       {!isFocusMode && (
-        <div className="animate-in slide-in-from-top-4 duration-500 px-2 sm:px-0">
+        <div className="animate-in slide-in-from-top-4 duration-500 motion-reduce:animate-none px-2 sm:px-0">
           <div className="rounded-2xl border border-slate-100 bg-white p-2.5 shadow-sm sm:p-4 mt-2 sm:mt-0">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
@@ -466,14 +480,14 @@ export default function TestInterface({
                 <button
                   onClick={() => setIsFocusMode(true)}
                   disabled={closingSession}
-                  className={`hidden sm:flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold transition-all ${
+                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                     closingSession
                       ? 'cursor-not-allowed bg-slate-50 text-slate-300'
                       : 'bg-slate-50 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'
                   }`}
                 >
-                  <Zap size={12} />
-                  Focus
+                  <Zap size={14} aria-hidden="true" />
+                  {isBasque ? 'Fokua' : 'Concentración'}
                 </button>
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                   {currentIndex + 1} / {activeQuestions.length}
@@ -489,7 +503,14 @@ export default function TestInterface({
                 </button>
               </div>
             </div>
-            <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              role="progressbar"
+              aria-label={isBasque ? 'Galderen aurrerapena' : 'Progreso del test'}
+              aria-valuemin={0}
+              aria-valuemax={activeQuestions.length}
+              aria-valuenow={currentIndex + 1}
+              className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-slate-100"
+            >
               <div
                 className="h-full bg-indigo-600 transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
@@ -572,7 +593,7 @@ export default function TestInterface({
                 )}
               </div>
 
-              <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
+              <h2 className={`${questionTextSizeClass} sm:max-h-[35vh] sm:overflow-y-auto pr-1 font-extrabold leading-[1.5] text-slate-800`}>
                 {showMarks ? (
                   <HighlightableText
                     text={currentQuestion.text}
@@ -652,9 +673,11 @@ export default function TestInterface({
                 return (
                   <button
                     key={option.id}
+                    type="button"
+                    aria-pressed={isSelected}
                     onClick={() => handleAnswer(option.id)}
                     disabled={closingSession || (!isSimulacro && selectedAnswer !== null)}
-                    className={itemClass}
+                    className={`${itemClass} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-600 motion-reduce:transition-none`}
                   >
                     {isSelected && (
                       <div
@@ -856,11 +879,11 @@ export default function TestInterface({
 
             <button
               onClick={nextQuestion}
-              disabled={closingSession || selectedAnswer === null}
-              className={`flex items-center gap-2 rounded-2xl px-8 py-4 font-bold transition-all shadow-lg ${
+              disabled={closingSession || (!isSimulacro && selectedAnswer === null)}
+              className={`flex items-center gap-2 rounded-2xl px-8 py-4 font-bold transition-all shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 ${
                 closingSession
                   ? 'bg-slate-900 text-white cursor-wait'
-                : selectedAnswer === null
+                : !isSimulacro && selectedAnswer === null
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:translate-y-[-2px]'
               }`}
@@ -879,7 +902,9 @@ export default function TestInterface({
                         : isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
                       : currentIndex === activeQuestions.length - 1
                         ? isBasque ? 'Amaitu' : 'Finalizar'
-                        : isBasque ? 'Hurrengoa' : 'Siguiente'}
+                        : isSimulacro && selectedAnswer === null
+                          ? isBasque ? 'Erantzun gabe pasa' : 'Pasar sin responder'
+                          : isBasque ? 'Hurrengoa' : 'Siguiente'}
                   </span>
                   <ChevronRight size={20} />
                 </>
@@ -887,15 +912,15 @@ export default function TestInterface({
             </button>
           </div>
 
-          {/* ÚNICA NAVEGACIÓN EN MÓVIL (flotante tras responder) */}
-          {!closingSession && selectedAnswer !== null && (
-            <div className="fixed bottom-4 left-4 right-4 z-50 animate-in slide-in-from-bottom-8 fade-in duration-300 sm:hidden">
+          {/* Navegación móvil siempre accesible en simulacros, incluso para omitir. */}
+          {!closingSession && (isSimulacro || selectedAnswer !== null) && (
+            <div className="fixed bottom-4 left-3 right-3 z-50 animate-in slide-in-from-bottom-8 fade-in duration-200 motion-reduce:animate-none sm:hidden" style={{ bottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
               <div className="flex items-center gap-2 rounded-2xl bg-slate-900/95 p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.3)] backdrop-blur-xl ring-1 ring-white/10">
                 {currentIndex > 0 && !isFocusMode && (
                   <button
                     onClick={prevQuestion}
                     className="flex shrink-0 items-center justify-center rounded-xl p-3.5 text-slate-300 transition-all hover:bg-white/10 hover:text-white"
-                    aria-label="Anterior"
+                    aria-label={isBasque ? 'Aurreko galdera' : 'Pregunta anterior'}
                   >
                     <ChevronLeft size={22} className="relative -left-[1px]" />
                   </button>
@@ -904,7 +929,7 @@ export default function TestInterface({
                 <button
                   onClick={nextQuestion}
                   disabled={closingSession}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-indigo-500/20 transition-all active:scale-[0.98]"
+                  className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-3 py-3.5 text-sm font-bold text-white shadow-md shadow-indigo-500/20 transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:text-base motion-reduce:transition-none"
                 >
                   {isMistakeReview
                     ? mistakeReview?.kind === 'all' && currentIndex === activeQuestions.length - 1
@@ -912,7 +937,9 @@ export default function TestInterface({
                       : isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
                     : currentIndex === activeQuestions.length - 1
                       ? isBasque ? 'Amaitu test' : 'Finalizar test'
-                      : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
+                      : isSimulacro && selectedAnswer === null
+                        ? isBasque ? 'Erantzun gabe pasa' : 'Pasar sin responder'
+                        : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
                   <ChevronRight size={20} className="relative left-[1px]" />
                 </button>
               </div>

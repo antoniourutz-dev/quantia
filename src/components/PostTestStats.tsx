@@ -11,6 +11,7 @@ import {
   Zap,
   Info,
 } from 'lucide-react';
+import type { SessionSaveStatus } from '../lib/practiceSyncIntegrity';
 import type {
   ActivePracticeSession,
   FinishedTestPayload,
@@ -35,6 +36,8 @@ import {
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
+  syncStatus?: SessionSaveStatus | null;
+  onRetrySync?: () => void;
   questions: Question[];
   mode: PracticeMode;
   curriculum: string;
@@ -53,6 +56,8 @@ interface PostTestStatsProps {
 
 export default function PostTestStats({
   payload,
+  syncStatus = null,
+  onRetrySync,
   questions,
   mode,
   curriculum,
@@ -73,11 +78,18 @@ export default function PostTestStats({
   );
   const total = scorableQuestions.length;
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
+  const answered = answers.filter((attempt) => attempt.selectedOption != null).length;
+  const unanswered = Math.max(0, total - answered);
+  const incorrect = answers.filter((attempt) => attempt.selectedOption != null && !attempt.isCorrect).length;
   const failed = total - score;
-  const avgTimeMs = answers.length > 0
-    ? answers.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answers.length
-    : 0;
-  const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
+  const timedAnswers = answers.filter((attempt) =>
+    attempt.selectedOption != null && typeof attempt.responseTimeMs === 'number'
+    && Number.isFinite(attempt.responseTimeMs) && attempt.responseTimeMs >= 0,
+  );
+  const avgTimeSec = timedAnswers.length
+    ? (timedAnswers.reduce((sum, attempt) => sum + (attempt.responseTimeMs ?? 0), 0) / timedAnswers.length / 1000).toFixed(1)
+    : '—';
+  const avgTimeLabel = timedAnswers.length ? `${avgTimeSec}s` : '—';
   const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
   const [analysisHydrated, setAnalysisHydrated] = useState(true);
   const [showReview, setShowReview] = useState(false);
@@ -164,7 +176,11 @@ export default function PostTestStats({
   const currentReviewItem = reviewFiltered[reviewIndex] ?? null;
   const continuityFocus = sessionEnd.nextMove.kind === 'start_session' && mode !== 'simulacro';
 
-  const speedMessage = Number(avgTimeSec) < 30
+  const speedMessage = timedAnswers.length === 0
+    ? isBasque
+      ? 'Ez dago denbora-daturik; emaitza ez da erritmoaren arabera baloratuko.'
+      : 'Sin datos de tiempo; no podemos valorar el ritmo de esta sesión.'
+    : Number(avgTimeSec) < 30
     ? isBasque
       ? 'Erritmo ona izan duzu. Merezi du horri eustea.'
       : 'Has ido con buen ritmo. Merece la pena mantenerlo.'
@@ -249,8 +265,43 @@ export default function PostTestStats({
     });
   };
 
+  const syncText = syncStatus === 'saving'
+    ? (isBasque ? 'Erantzunak gordetzen...' : 'Guardando respuestas...')
+    : syncStatus === 'saved'
+      ? (isBasque ? 'Erantzunak zure kontuan gordeta.' : 'Respuestas guardadas en tu cuenta.')
+      : syncStatus === 'pending'
+        ? (isBasque ? 'Hodeiko gordetzea egiteko dago; kopia lokala gordeta dago.' : 'Pendiente de guardar en la nube. Conservamos una copia local para reintentar.')
+        : syncStatus === 'unprotected'
+          ? (isBasque ? 'Ezin izan dugu gordetzea egiaztatu, eta ez dago tokiko kopia segururik. Ez itxi pantaila; saiatu berriro.' : 'No pudimos confirmar el guardado y no hay una copia local válida. No cierres esta pantalla; vuelve a intentarlo.')
+          : syncStatus === 'not_recorded'
+            ? (isBasque ? 'Ez dago ebaluatzeko erantzunik; ez da aurrerapenik erregistratu.' : 'No hay respuestas evaluables; no se ha registrado progreso.')
+            : null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-150 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
+      {syncText ? (
+        <div
+          role={syncStatus === 'unprotected' ? 'alert' : 'status'}
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-medium ${
+            syncStatus === 'unprotected'
+              ? 'border-rose-200 bg-rose-50 text-rose-800'
+              : syncStatus === 'pending'
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-slate-200 bg-white text-slate-700'
+          }`}
+        >
+          <span>{syncText}</span>
+          {(syncStatus === 'pending' || syncStatus === 'unprotected') && onRetrySync ? (
+            <button
+              type="button"
+              onClick={onRetrySync}
+              className="rounded-lg border border-current px-3 py-2 text-xs font-bold hover:bg-white/70"
+            >
+              {isBasque ? 'Berriro gorde' : 'Reintentar guardado'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
         
         {/* TOP ROW: Continuity & Metrics Compact */}
@@ -264,7 +315,8 @@ export default function PostTestStats({
              <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{isBasque ? 'Emaitza' : 'Resultado'}</div>
                 <div className="text-[13px] font-bold text-slate-600 leading-none">
-                  {score} {isBasque ? 'zuzen' : 'bien'} · {failed} {isBasque ? 'huts' : 'mal'}
+                  {score} {isBasque ? 'zuzen' : 'aciertos'} · {incorrect} {isBasque ? 'oker' : 'errores'}
+                  {unanswered > 0 ? (isBasque ? ` · ${unanswered} erantzun gabe` : ` · ${unanswered} sin responder`) : null}
                 </div>
              </div>
           </div>
@@ -314,7 +366,9 @@ export default function PostTestStats({
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-rose-100 bg-rose-50 py-3.5 text-[14px] font-black text-rose-700 transition-all hover:border-rose-200 hover:bg-rose-100"
             >
               <XCircle size={18} />
-              {isBasque ? `${failed} akatsak aztertu` : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`}
+              {unanswered > 0
+                ? isBasque ? `${failed} galdera berrikusi` : `Revisar ${failed} errores y omisiones`
+                : isBasque ? `${failed} akatsak aztertu` : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`}
             </button>
           ) : null}
         </div>
@@ -326,7 +380,7 @@ export default function PostTestStats({
              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
                <Clock size={12} /> {isBasque ? 'Seg/gal' : 'Seg/preg'}
              </span>
-             <span className="text-[13px] font-black text-slate-700">{avgTimeSec}s</span>
+             <span className="text-[13px] font-black text-slate-700">{avgTimeLabel}</span>
            </div>
            <div className="flex-1 flex flex-col items-center px-1">
              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
@@ -338,9 +392,14 @@ export default function PostTestStats({
              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
                <XCircle size={12} /> {isBasque ? 'Hutsak' : 'Fallos'}
              </span>
-             <span className="text-[13px] font-bold text-rose-600">{failed}</span>
+             <span className="text-[13px] font-bold text-rose-600">{incorrect}</span>
            </div>
         </div>
+        {unanswered > 0 ? (
+          <p className="mt-3 text-xs font-semibold text-slate-500">
+            {isBasque ? `${unanswered} galdera erantzun gabe; ez dira hutsegite kontzeptual gisa zenbatu.` : `${unanswered} preguntas sin responder; no se contabilizan como errores de conocimiento.`}
+          </p>
+        ) : null}
       </div>
 
       {!continuityFocus && analysisHydrated ? (
@@ -382,9 +441,9 @@ export default function PostTestStats({
             </h3>
           </div>
           <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 text-center mt-2 border border-slate-100/60">
-             <span className="text-4xl font-black text-slate-800 tracking-tight">{avgTimeSec}s</span>
+             <span className="text-4xl font-black text-slate-800 tracking-tight">{avgTimeLabel}</span>
              <span className="text-[11px] font-extrabold text-slate-400 mt-1 uppercase tracking-widest">{isBasque ? 'Galderako' : 'Por pregunta'}</span>
-             <p className={`mt-5 text-[13px] font-bold leading-snug px-3 py-2 rounded-xl text-center shadow-sm w-full max-w-[240px] ${Number(avgTimeSec) < 30 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+             <p className={`mt-5 text-[13px] font-bold leading-snug px-3 py-2 rounded-xl text-center shadow-sm w-full max-w-[240px] ${!timedAnswers.length ? 'bg-slate-100 text-slate-700' : Number(avgTimeSec) < 30 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
                {speedMessage}
              </p>
           </div>

@@ -697,10 +697,16 @@ export default function TestSelection({
           {isBasque ? 'Praktika modua' : 'Modo de práctica'}
         </h2>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] lg:gap-3">
+        <div
+          role="group"
+          aria-label={isBasque ? 'Praktika modua hautatu' : 'Elegir modo de práctica'}
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] lg:gap-3"
+        >
           {visiblePracticeModeSet.has('standard') ? <button
+            type="button"
+            aria-pressed={selectionMode === 'standard'}
             onClick={() => setSelectionMode('standard')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
               selectionMode === 'standard'
                 ? 'border-indigo-600 bg-indigo-50 shadow-xl shadow-indigo-100 ring-4 ring-indigo-500/10'
                 : 'border-slate-50 bg-white hover:border-indigo-100 hover:bg-slate-50'
@@ -727,8 +733,10 @@ export default function TestSelection({
           </button> : null}
 
           {visiblePracticeModeSet.has('quick') ? <button
+            type="button"
+            aria-pressed={selectionMode === 'quick'}
             onClick={() => setSelectionMode('quick')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
               selectionMode === 'quick'
                 ? 'border-amber-500 bg-amber-50 shadow-xl shadow-amber-100 ring-4 ring-amber-500/10'
                 : 'border-slate-50 bg-white hover:border-amber-100 hover:bg-slate-50'
@@ -743,8 +751,10 @@ export default function TestSelection({
           </button> : null}
 
           {visiblePracticeModeSet.has('errors') ? <button
+            type="button"
+            aria-pressed={selectionMode === 'errors'}
             onClick={() => setSelectionMode('errors')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
               selectionMode === 'errors'
                 ? 'border-rose-500 bg-rose-50 shadow-xl shadow-rose-100 ring-4 ring-rose-500/10'
                 : 'border-slate-50 bg-white hover:border-rose-100 hover:bg-slate-50'
@@ -759,8 +769,10 @@ export default function TestSelection({
           </button> : null}
 
           {visiblePracticeModeSet.has('simulacro') ? <button
+            type="button"
+            aria-pressed={selectionMode === 'simulacro'}
             onClick={() => setSelectionMode('simulacro')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
               selectionMode === 'simulacro'
                 ? 'border-slate-700 bg-slate-50 shadow-xl shadow-slate-200 ring-4 ring-slate-900/10'
                 : 'border-slate-50 bg-white hover:border-slate-200 hover:bg-slate-50'
@@ -779,11 +791,13 @@ export default function TestSelection({
           </button> : null}
 
           {visiblePracticeModeSet.has('custom') ? <button
+            type="button"
+            aria-pressed={selectionMode === 'custom'}
             onClick={() => {
               setSelectionMode('custom');
               setCustomError(null);
             }}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
+            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
               selectionMode === 'custom'
                 ? 'border-violet-600 bg-violet-50 shadow-xl shadow-violet-100 ring-4 ring-violet-500/10'
                 : 'border-slate-50 bg-white hover:border-violet-100 hover:bg-slate-50'
