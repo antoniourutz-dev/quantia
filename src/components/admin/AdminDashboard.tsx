@@ -21,12 +21,24 @@ export default function AdminDashboard({
   onOpenStudents,
   onOpenQuestions,
   onOpenCatalogs,
+  onOpenQuality,
+  canManageQuestions = true,
+  canManageCatalogs = true,
+  canManageUsers = true,
+  canReadStatistics = true,
+  canManageQuality = true,
 }: {
   curriculumOptions: CurriculumOption[];
   defaultCurriculum: string;
   onOpenStudents: () => void;
   onOpenQuestions: () => void;
   onOpenCatalogs: () => void;
+  onOpenQuality: () => void;
+  canManageQuestions?: boolean;
+  canManageCatalogs?: boolean;
+  canManageUsers?: boolean;
+  canReadStatistics?: boolean;
+  canManageQuality?: boolean;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -50,6 +62,7 @@ export default function AdminDashboard({
   }, [range]);
 
   const refresh = async () => {
+    if (!canReadStatistics) return;
     setLoading(true);
     setNotice(null);
     try {
@@ -93,7 +106,7 @@ export default function AdminDashboard({
 
   useEffect(() => {
     void refresh();
-  }, [range, curriculum]);
+  }, [range, curriculum, canReadStatistics]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -124,30 +137,34 @@ export default function AdminDashboard({
               </option>
             ))}
           </select>
-          <button
+          {canManageUsers ? <button
             type="button"
             onClick={onOpenStudents}
             className="h-11 rounded-2xl bg-white border border-slate-200 px-4 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all inline-flex items-center gap-2"
           >
             <Users size={16} />
             {t('Alumnos', 'Ikasleak')}
-          </button>
-          <button
+          </button> : null}
+          {canManageQuestions ? <button
             type="button"
             onClick={onOpenQuestions}
             className="h-11 rounded-2xl bg-indigo-600 px-4 text-sm font-black text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all inline-flex items-center gap-2"
           >
             <Database size={16} />
             {t('Preguntas', 'Galderak')}
-          </button>
-          <button
+          </button> : null}
+          {canManageCatalogs ? <button
             type="button"
             onClick={onOpenCatalogs}
             className="h-11 rounded-2xl bg-white border border-slate-200 px-4 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all inline-flex items-center gap-2"
           >
             <Database size={16} />
             {t('Catálogos', 'Katalogoak')}
-          </button>
+          </button> : null}
+          {canManageQuality ? <button type="button" onClick={onOpenQuality}
+            className="h-11 rounded-2xl bg-white border border-slate-200 px-4 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all">
+            {t('Calidad', 'Kalitatea')}
+          </button> : null}
         </div>
       </div>
 
@@ -157,7 +174,7 @@ export default function AdminDashboard({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      {canReadStatistics ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {[
           { label: t('Usuarios totales', 'Erabiltzaileak'), value: usersTotal, icon: Users },
           { label: t('Sesiones iniciadas', 'Hasitako saioak'), value: sessionsStarted, icon: BarChart3 },
@@ -174,9 +191,9 @@ export default function AdminDashboard({
             </div>
           </div>
         ))}
-      </div>
+      </div> : null}
 
-      <div className="rounded-[2.5rem] border border-slate-100 bg-white p-6 shadow-sm">
+      {canReadStatistics ? <div className="rounded-[2.5rem] border border-slate-100 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Contenido', 'Edukia')}</div>
@@ -189,7 +206,7 @@ export default function AdminDashboard({
             {loading ? <Loader2 className="h-7 w-7 animate-spin text-slate-400" /> : questionsNew ?? '—'}
           </div>
         </div>
-      </div>
+      </div> : null}
     </div>
   );
 }
