@@ -23,7 +23,6 @@ import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
 import type { TestSelectionStateSnapshot } from '../TestSelection';
 import {
   GOI_TEKNIKARIA_FALLBACK_OPTION,
-  ADMIN_EMAIL,
   getCurriculumAccessPolicyForIdentity,
   getRestrictedCurriculumForIdentity,
   filterCurriculumOptionsByAllowedKeys,
@@ -60,6 +59,7 @@ import {
   recordPracticeSessionInCloud,
   retryPendingPracticeSessionsInCloud,
   signOut,
+  getQuantiaManagementPermissions,
   updateMyExamTarget,
   type CurriculumOption,
   type DashboardBundle,
@@ -307,7 +307,19 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     [allowedCurriculumKeys, curriculumAccessPolicy],
   );
   const preferredCurriculumId = curriculumAccessPolicy?.preferredCurriculumId ?? null;
-  const isAdminEmail = normalizeUserIdentifier(session?.user?.email) === ADMIN_EMAIL;
+  const [managementPermissions, setManagementPermissions] = useState<Record<string, boolean> | null>(null);
+  useEffect(() => {
+    let active = true;
+    setManagementPermissions(null);
+    void getQuantiaManagementPermissions()
+      .then(({ permissions }) => { if (active) setManagementPermissions(permissions); })
+      .catch(() => { if (active) setManagementPermissions(null); });
+    return () => { active = false; };
+  }, [session.user.id]);
+  const isAdminEmail = Object.values(managementPermissions ?? {}).some(Boolean);
+  const canManageQuestions = managementPermissions?.['questions.manage'] === true;
+  const canManageCatalogs = managementPermissions?.['catalogs.manage'] === true;
+  const canManageUsers = managementPermissions?.['users.manage'] === true;
   useEffect(() => {
     if (!isAdminEmail) {
       if (
@@ -325,7 +337,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (currentView === 'dashboard') {
       setCurrentView('admin-dashboard');
     }
-  }, [currentView, isAdminEmail]);
+    if (isAdminEmail && currentView === 'admin-questions' && !canManageQuestions) setCurrentView('admin-dashboard');
+    if (isAdminEmail && currentView === 'admin-catalogs' && !canManageCatalogs) setCurrentView('admin-dashboard');
+    if (isAdminEmail && currentView === 'admin-students' && !canManageUsers) setCurrentView('admin-dashboard');
+  }, [currentView, isAdminEmail, canManageQuestions, canManageCatalogs, canManageUsers]);
   const accessibleCurriculumOptions = useMemo(() => {
     const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
     const preferredMatches = preferredCurriculumId
@@ -2782,7 +2797,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               <Settings size={22} />
               <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Ajustes', 'Doikuntzak')}</span>
             </button>
-            {isAdminEmail ? (
+            {canManageQuestions ? (
               <button
                 onClick={() => {
                   setCurrentView('admin-questions');
@@ -3230,16 +3245,16 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               <AdminDashboard
                 curriculumOptions={curriculumOptions}
                 defaultCurriculum={curriculum}
-                onOpenStudents={() => setCurrentView('admin-students')}
-                onOpenQuestions={() => setCurrentView('admin-questions')}
-                onOpenCatalogs={() => setCurrentView('admin-catalogs')}
+                onOpenStudents={() => { if (canManageUsers) setCurrentView('admin-students'); }}
+                onOpenQuestions={() => { if (canManageQuestions) setCurrentView('admin-questions'); }}
+                onOpenCatalogs={() => { if (canManageCatalogs) setCurrentView('admin-catalogs'); }}
               />
             </Suspense>
           ) : null
         ) : null}
 
         {currentView === 'admin-students' ? (
-          isAdminEmail ? (
+          canManageUsers ? (
             <Suspense fallback={screenLoader}>
               <AdminStudents onClose={() => setCurrentView('admin-dashboard')} />
             </Suspense>
@@ -3247,7 +3262,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         ) : null}
 
         {currentView === 'admin-questions' ? (
-          isAdminEmail ? (
+          canManageQuestions ? (
             <Suspense fallback={screenLoader}>
               <AdminQuestions
                 curriculumOptions={curriculumOptions}
@@ -3259,7 +3274,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         ) : null}
 
         {currentView === 'admin-catalogs' ? (
-          isAdminEmail ? (
+          canManageCatalogs ? (
             <Suspense fallback={screenLoader}>
               <AdminCatalogs onClose={() => setCurrentView('admin-dashboard')} />
             </Suspense>
