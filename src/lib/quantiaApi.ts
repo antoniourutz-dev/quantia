@@ -3232,6 +3232,8 @@ export const getQuestionBankSnapshot = async (params: {
   });
 };
 
+const normalizeEmail = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
+
 // A manager's permissions are evaluated server-side for every protected operation.
 // Avoid any email-based or client-controlled administrative authorization.
 export const getQuantiaManagementPermissions = async () => {
