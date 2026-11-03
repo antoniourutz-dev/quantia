@@ -117,6 +117,28 @@ create policy quantia_audit_update on app.osa_question_audit for update to authe
   using ((select public.has_quantia_permission('quality.manage')))
   with check ((select public.has_quantia_permission('quality.manage')));
 
+
+-- Non-destructive analytics access: administrators can see all session totals,
+-- without gaining rights to alter any learner's practice history.
+grant select on app.practice_sessions to authenticated;
+create policy quantia_statistics_sessions_read on app.practice_sessions for select to authenticated
+  using ((select public.has_quantia_permission('statistics.read')));
+
+-- Allow editorial highlight adjustments for the approved question/quality scopes.
+create policy quantia_highlight_insert on public.question_highlight_overrides for insert to authenticated
+  with check (((select public.has_quantia_permission('quality.manage')) or
+               (select public.has_quantia_permission('questions.manage')))
+              and created_by = (select auth.uid()) and updated_by = (select auth.uid()));
+create policy quantia_highlight_update on public.question_highlight_overrides for update to authenticated
+  using ((select public.has_quantia_permission('quality.manage')) or
+         (select public.has_quantia_permission('questions.manage')))
+  with check (((select public.has_quantia_permission('quality.manage')) or
+               (select public.has_quantia_permission('questions.manage')))
+              and updated_by = (select auth.uid()));
+
+-- Catalog metadata helper must be usable by managers, without exposing any
+-- unrestricted information_schema permissions to the client.
+
 -- Privilege helper is callable by clients, but it cannot add or remove permissions.
 comment on function public.has_quantia_permission(text)
   is 'Current authenticated user only: owner or explicitly granted Quantia manager permission.';
