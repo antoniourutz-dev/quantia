@@ -183,7 +183,6 @@ const curriculumHasActivity = (option: CurriculumOption) =>
   (option.sessionCount ?? 0) > 0 ||
   (option.answeredCount ?? 0) > 0 ||
   Boolean(option.lastStudiedAt);
-const normalizeUserIdentifier = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase();
 const normalizeCurriculumId = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase().replace(/_/g, '-');
 const isGoiTeknikariaCurriculum = (value: string | null | undefined) => {
