@@ -321,6 +321,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const canManageCatalogs = managementPermissions?.['catalogs.manage'] === true;
   const canManageUsers = managementPermissions?.['users.manage'] === true;
   useEffect(() => {
+    if (managementPermissions === null) return;
     if (!isAdminEmail) {
       if (
         currentView === 'dashboard' ||
@@ -340,7 +341,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (isAdminEmail && currentView === 'admin-questions' && !canManageQuestions) setCurrentView('admin-dashboard');
     if (isAdminEmail && currentView === 'admin-catalogs' && !canManageCatalogs) setCurrentView('admin-dashboard');
     if (isAdminEmail && currentView === 'admin-students' && !canManageUsers) setCurrentView('admin-dashboard');
-  }, [currentView, isAdminEmail, canManageQuestions, canManageCatalogs, canManageUsers]);
+  }, [currentView, isAdminEmail, canManageQuestions, canManageCatalogs, canManageUsers, managementPermissions]);
   const accessibleCurriculumOptions = useMemo(() => {
     const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
     const preferredMatches = preferredCurriculumId
