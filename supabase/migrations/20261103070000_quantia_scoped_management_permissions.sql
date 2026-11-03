@@ -48,6 +48,28 @@ begin
   delete from public.admin_users where user_id = manager_id;
 end $$;
 
+-- Guard privileged identities even against direct PostgREST table requests.
+create or replace function public.quantia_is_owner()
+returns boolean language sql stable security definer set search_path = ''
+as $
+  select exists (
+    select 1 from public.admin_users a
+    join app.user_roles r on r.user_id = a.user_id and r.role = 'admin'
+    where a.user_id = (select auth.uid())
+  );
+$;
+create or replace function public.quantia_is_protected_user(p_user_id uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $
+  select exists(select 1 from public.admin_users where user_id = p_user_id)
+    or exists(select 1 from app.user_roles where user_id = p_user_id and role = 'admin')
+    or exists(select 1 from public.quantia_admin_permissions where user_id = p_user_id);
+$;
+revoke all on function public.quantia_is_owner() from public, anon;
+revoke all on function public.quantia_is_protected_user(uuid) from public, anon;
+grant execute on function public.quantia_is_owner() to authenticated;
+grant execute on function public.quantia_is_protected_user(uuid) to authenticated;
+
 -- Question bank: remove hardcoded email from existing privileged policies.
 drop policy if exists preguntas_insert_admin on public.preguntas;
 create policy preguntas_insert_admin on public.preguntas for insert to authenticated
@@ -60,17 +82,23 @@ create policy preguntas_update_admin on public.preguntas for update to authentic
 -- Restricted curriculum assignments: only user-management permission.
 drop policy if exists restricted_question_bank_access_select on public.restricted_question_bank_access;
 create policy restricted_question_bank_access_select on public.restricted_question_bank_access for select to authenticated
-  using (user_id = (select auth.uid()) or (select public.has_quantia_permission('users.manage')));
+  using (user_id = (select auth.uid()) or
+    ((select public.has_quantia_permission('users.manage')) and
+      ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id))));
 drop policy if exists restricted_question_bank_access_insert_admin on public.restricted_question_bank_access;
 create policy restricted_question_bank_access_insert_admin on public.restricted_question_bank_access for insert to authenticated
-  with check ((select public.has_quantia_permission('users.manage')));
+  with check ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)));
 drop policy if exists restricted_question_bank_access_update_admin on public.restricted_question_bank_access;
 create policy restricted_question_bank_access_update_admin on public.restricted_question_bank_access for update to authenticated
-  using ((select public.has_quantia_permission('users.manage')))
-  with check ((select public.has_quantia_permission('users.manage')));
+  using ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)))
+  with check ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)));
 drop policy if exists restricted_question_bank_access_delete_admin on public.restricted_question_bank_access;
 create policy restricted_question_bank_access_delete_admin on public.restricted_question_bank_access for delete to authenticated
-  using ((select public.has_quantia_permission('users.manage')));
+  using ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)));
 
 -- Editable opposition catalogs: both authenticated grants and row policies required.
 do $$
@@ -86,12 +114,19 @@ end $$;
 
 -- The existing admin UI can inspect/modify user opposition contexts.
 create policy quantia_context_read on public.user_opposition_profiles for select to authenticated
-  using ((select public.has_quantia_permission('users.manage')));
+  using ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)));
+
 create policy quantia_context_insert on public.user_opposition_profiles for insert to authenticated
-  with check ((select public.has_quantia_permission('users.manage')));
+  with check ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)));
+
 create policy quantia_context_update on public.user_opposition_profiles for update to authenticated
-  using ((select public.has_quantia_permission('users.manage')))
-  with check ((select public.has_quantia_permission('users.manage')));
+  using ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)))
+  with check ((select public.has_quantia_permission('users.manage')) and
+    ((select public.quantia_is_owner()) or not public.quantia_is_protected_user(user_id)));
+
 
 -- General-law catalogs live in a separate schema.
 grant usage on schema app to authenticated;
