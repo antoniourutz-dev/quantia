@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { service, isOwner } = await assertAdmin(req);
+    const { service, isOwner, supabaseUrl } = await assertAdmin(req);
     const body = (await req.json().catch(() => ({}))) as Json;
     const action = readText(body.action).toLowerCase();
     // Delegated managers may administer learners, never owners or other managers.
