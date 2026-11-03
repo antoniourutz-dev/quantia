@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Database, Loader2, Users } from 'lucide-react';
 import { useAppLocale } from '../../lib/locale';
 import type { CurriculumOption } from '../../lib/quantiaApi';
-import { adminListUsers } from '../../lib/quantiaApi';
 import { supabase } from '../../lib/supabaseClient';
 
 type RangeKey = 'today' | '7d' | '30d';
@@ -22,11 +21,11 @@ export default function AdminDashboard({
   onOpenQuestions,
   onOpenCatalogs,
   onOpenQuality,
-  canManageQuestions = true,
-  canManageCatalogs = true,
-  canManageUsers = true,
-  canReadStatistics = true,
-  canManageQuality = true,
+  canManageQuestions = false,
+  canManageCatalogs = false,
+  canManageUsers = false,
+  canReadStatistics = false,
+  canManageQuality = false,
 }: {
   curriculumOptions: CurriculumOption[];
   defaultCurriculum: string;
@@ -66,8 +65,9 @@ export default function AdminDashboard({
     setLoading(true);
     setNotice(null);
     try {
-      const users = await adminListUsers({ page: 1, perPage: 1 });
-      setUsersTotal(users.total);
+      const users = await supabase.rpc('quantia_user_count');
+      if (users.error) throw new Error(users.error.message);
+      setUsersTotal(Number(users.data));
 
       const preguntasBase = supabase.from('preguntas').select('id', { count: 'exact', head: true });
       const preguntasQuery = curriculum ? preguntasBase.eq('curriculum', curriculum) : preguntasBase;

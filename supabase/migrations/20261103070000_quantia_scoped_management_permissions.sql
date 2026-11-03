@@ -8,14 +8,15 @@ create table if not exists public.quantia_admin_permissions (
   primary key (user_id, permission)
 );
 alter table public.quantia_admin_permissions enable row level security;
-revoke all on public.quantia_admin_permissions from anon, authenticated;
+revoke all on public.quantia_admin_permissions from public, anon, authenticated;
 grant select on public.quantia_admin_permissions to service_role;
 
 create or replace function public.has_quantia_permission(p_permission text)
 returns boolean
 language sql stable security definer set search_path = ''
 as $$
-  select (select auth.uid()) is not null and (
+  select p_permission = any(array['questions.manage','catalogs.manage','users.manage','statistics.read','quality.manage'])
+    and (select auth.uid()) is not null and (
     exists (
       select 1 from public.admin_users a
       join app.user_roles r on r.user_id = a.user_id and r.role = 'admin'
@@ -33,11 +34,16 @@ grant execute on function public.has_quantia_permission(text) to authenticated, 
 -- A former full administrator becomes a specifically scoped manager. Lookup by
 -- immutable auth user identity at migration time, not JWT email on every request.
 do $$
-declare manager_id uuid;
+declare manager_id uuid; owner_id uuid;
 begin
   select id into manager_id from auth.users
   where lower(email) = 'ardura@oposik.app' and email_confirmed_at is not null;
   if manager_id is null then raise exception 'Confirmed Quantia manager account not found'; end if;
+
+  select a.user_id into owner_id from public.admin_users a
+  join app.user_roles r on r.user_id = a.user_id and r.role = 'admin'
+  where a.user_id <> manager_id limit 1;
+  if owner_id is null then raise exception 'Independent owner account not found'; end if;
 
   insert into public.quantia_admin_permissions (user_id, permission)
   select manager_id, unnest(array[
@@ -51,20 +57,20 @@ end $$;
 -- Guard privileged identities even against direct PostgREST table requests.
 create or replace function public.quantia_is_owner()
 returns boolean language sql stable security definer set search_path = ''
-as $
+as $$
   select exists (
     select 1 from public.admin_users a
     join app.user_roles r on r.user_id = a.user_id and r.role = 'admin'
     where a.user_id = (select auth.uid())
   );
-$;
+$$;
 create or replace function public.quantia_is_protected_user(p_user_id uuid)
 returns boolean language sql stable security definer set search_path = ''
-as $
+as $$
   select exists(select 1 from public.admin_users where user_id = p_user_id)
     or exists(select 1 from app.user_roles where user_id = p_user_id and role = 'admin')
     or exists(select 1 from public.quantia_admin_permissions where user_id = p_user_id);
-$;
+$$;
 revoke all on function public.quantia_is_owner() from public, anon;
 revoke all on function public.quantia_is_protected_user(uuid) from public, anon;
 grant execute on function public.quantia_is_owner() to authenticated;
@@ -178,16 +184,16 @@ create policy quantia_highlight_update on public.question_highlight_overrides fo
 create or replace function public.admin_list_tables_v2(p_schema text, p_tables text[])
 returns table(table_name text)
 language sql stable security definer set search_path = ''
-as $
+as $$
   select t.table_name::text
   from information_schema.tables t
   where public.has_quantia_permission('catalogs.manage')
     and ((p_schema = 'public' and t.table_name in
-           ('oppositions','opposition_configs','subjects','question_scopes','user_opposition_profiles'))
+           ('oppositions','opposition_configs','subjects','question_scopes'))
       or (p_schema = 'app' and t.table_name in ('general_laws','general_law_blocks')))
     and t.table_schema = p_schema
     and t.table_name = any(p_tables);
-$;
+$$;
 revoke all on function public.admin_list_tables_v2(text,text[]) from public, anon;
 grant execute on function public.admin_list_tables_v2(text,text[]) to authenticated;
 
@@ -201,20 +207,197 @@ returns table(
   udt_name text
 )
 language sql stable security definer set search_path = ''
-as $
+as $$
   select c.ordinal_position::integer, c.column_name::text, c.data_type::text,
          (c.is_nullable = 'YES')::boolean, c.column_default::text, c.udt_name::text
   from information_schema.columns c
   where public.has_quantia_permission('catalogs.manage')
     and ((p_schema = 'public' and p_table in
-           ('oppositions','opposition_configs','subjects','question_scopes','user_opposition_profiles'))
+           ('oppositions','opposition_configs','subjects','question_scopes'))
       or (p_schema = 'app' and p_table in ('general_laws','general_law_blocks')))
     and c.table_schema = p_schema and c.table_name = p_table
   order by c.ordinal_position;
-$;
+$$;
 revoke all on function public.admin_get_table_columns_v2(text,text) from public, anon;
 grant execute on function public.admin_get_table_columns_v2(text,text) to authenticated;
 
 -- Privilege helper is callable by clients, but it cannot add or remove permissions.
 comment on function public.has_quantia_permission(text)
   is 'Current authenticated user only: owner or explicitly granted Quantia manager permission.';
+
+-- These catalogs must never become writable through a future RLS-disabled table.
+alter table public.oppositions enable row level security;
+alter table public.opposition_configs enable row level security;
+alter table public.subjects enable row level security;
+alter table public.question_scopes enable row level security;
+alter table app.general_laws enable row level security;
+alter table app.general_law_blocks enable row level security;
+alter table app.osa_question_audit enable row level security;
+alter table app.practice_sessions enable row level security;
+
+-- This legacy service-only mutation had a nullable JWT email check and PUBLIC EXECUTE.
+-- The Edge Function performs the actor and protected-target authorization first.
+revoke all on function public.admin_set_active_opposition_context(uuid,uuid)
+  from public, anon, authenticated;
+grant execute on function public.admin_set_active_opposition_context(uuid,uuid) to service_role;
+
+-- Prevent self-service profile editing from changing a legacy administrative role.
+revoke update on public.profiles from public, anon, authenticated;
+grant update (full_name, avatar_url, updated_at) on public.profiles to authenticated;
+
+-- Statistics permission must work independently of user management.
+create or replace function public.quantia_user_count()
+returns bigint language plpgsql stable security definer set search_path = ''
+as $$
+begin
+  if not public.has_quantia_permission('statistics.read') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  return (select count(*) from auth.users where deleted_at is null);
+end;
+$$;
+revoke all on function public.quantia_user_count() from public, anon;
+grant execute on function public.quantia_user_count() to authenticated;
+
+-- Editorial RPCs use the same scoped permissions as their tables.
+CREATE OR REPLACE FUNCTION app.admin_set_question_highlight_override(p_question_id bigint, p_content_type text, p_answer_index smallint DEFAULT NULL::smallint, p_mode text DEFAULT 'manual'::text, p_spans jsonb DEFAULT '[]'::jsonb)
+ RETURNS question_highlight_overrides
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'app', 'public', 'auth'
+AS $function$
+declare
+  v_actor_user_id uuid := auth.uid();
+  v_content_type text := lower(trim(coalesce(p_content_type, '')));
+  v_mode text := lower(trim(coalesce(p_mode, '')));
+  v_answer_index smallint := p_answer_index;
+  v_next_version integer;
+  v_result public.question_highlight_overrides;
+begin
+  if v_actor_user_id is null or not (public.has_quantia_permission('questions.manage') or public.has_quantia_permission('quality.manage')) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  if p_question_id is null or p_question_id <= 0 then
+    raise exception 'invalid question_id' using errcode = '22023';
+  end if;
+
+  if v_content_type not in ('question', 'answer', 'explanation') then
+    raise exception 'invalid content_type' using errcode = '22023';
+  end if;
+
+  if v_mode not in ('manual', 'disabled') then
+    raise exception 'invalid mode' using errcode = '22023';
+  end if;
+
+  if v_content_type = 'answer' and v_answer_index is null then
+    raise exception 'answer_index required for answer content_type' using errcode = '22023';
+  end if;
+
+  if v_content_type <> 'answer' then
+    v_answer_index := null;
+  end if;
+
+  update public.question_highlight_overrides
+  set
+    is_active = false,
+    updated_by = v_actor_user_id,
+    updated_at = timezone('utc', now())
+  where question_id = p_question_id
+    and content_type = v_content_type
+    and (
+      (v_answer_index is null and answer_index is null)
+      or answer_index = v_answer_index
+    )
+    and is_active = true;
+
+  select coalesce(max(version), 0) + 1
+    into v_next_version
+  from public.question_highlight_overrides
+  where question_id = p_question_id
+    and content_type = v_content_type
+    and (
+      (v_answer_index is null and answer_index is null)
+      or answer_index = v_answer_index
+    );
+
+  insert into public.question_highlight_overrides (
+    question_id,
+    content_type,
+    answer_index,
+    mode,
+    spans,
+    version,
+    is_active,
+    created_by,
+    updated_by
+  )
+  values (
+    p_question_id,
+    v_content_type,
+    v_answer_index,
+    v_mode,
+    case
+      when v_mode = 'manual' then coalesce(p_spans, '[]'::jsonb)
+      else '[]'::jsonb
+    end,
+    v_next_version,
+    true,
+    v_actor_user_id,
+    v_actor_user_id
+  )
+  returning *
+    into v_result;
+
+  return v_result;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION app.admin_restore_question_highlight_automatic(p_question_id bigint, p_content_type text, p_answer_index smallint DEFAULT NULL::smallint)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'app', 'public', 'auth'
+AS $function$
+declare
+  v_actor_user_id uuid := auth.uid();
+  v_content_type text := lower(trim(coalesce(p_content_type, '')));
+  v_answer_index smallint := p_answer_index;
+begin
+  if v_actor_user_id is null or not (public.has_quantia_permission('questions.manage') or public.has_quantia_permission('quality.manage')) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  if p_question_id is null or p_question_id <= 0 then
+    raise exception 'invalid question_id' using errcode = '22023';
+  end if;
+
+  if v_content_type not in ('question', 'answer', 'explanation') then
+    raise exception 'invalid content_type' using errcode = '22023';
+  end if;
+
+  if v_content_type = 'answer' and v_answer_index is null then
+    raise exception 'answer_index required for answer content_type' using errcode = '22023';
+  end if;
+
+  if v_content_type <> 'answer' then
+    v_answer_index := null;
+  end if;
+
+  update public.question_highlight_overrides
+  set
+    is_active = false,
+    updated_by = v_actor_user_id,
+    updated_at = timezone('utc', now())
+  where question_id = p_question_id
+    and content_type = v_content_type
+    and (
+      (v_answer_index is null and answer_index is null)
+      or answer_index = v_answer_index
+    )
+    and is_active = true;
+end;
+$function$;
+
+revoke all on function app.admin_set_question_highlight_override(bigint,text,smallint,text,jsonb) from public, anon;
+revoke all on function app.admin_restore_question_highlight_automatic(bigint,text,smallint) from public, anon;

@@ -69,6 +69,7 @@ const assertAdmin = async (req: Request) => {
   try {
     const verified = await jwtVerify(accessToken, getSupabaseJwks(), {
       issuer: getJwtIssuer(),
+      audience: 'authenticated',
     });
     userId = readText(verified.payload.sub);
   } catch (error) {
@@ -83,7 +84,7 @@ const assertAdmin = async (req: Request) => {
 
   const service = getServiceClient(supabaseUrl);
   const { data, error } = await service.auth.admin.getUserById(userId);
-  if (error || !data.user) {
+  if (error || !data.user || (data.user.banned_until && Date.parse(data.user.banned_until) > Date.now())) {
     console.error('admin-users auth user lookup failed', {
       userId,
       message: error?.message ?? 'Missing user.',
@@ -255,7 +256,7 @@ Deno.serve(async (req) => {
       const perPage = Math.max(10, Math.min(200, Number(body.perPage ?? 50)));
       const search = readText(body.search).toLowerCase();
 
-      let data: { users?: unknown[]; total?: unknown } = {};
+      let data: { users?: Array<{ id: string; email?: string; user_metadata?: unknown; created_at?: string; last_sign_in_at?: string }>; total?: unknown } = {};
       try {
         const result = await service.auth.admin.listUsers({ page, perPage });
         data = result.data ?? {};
@@ -285,7 +286,21 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'listUsers failed', detail: message }, { status: 500 });
       }
 
+      const protectedIds = new Set<string>();
+      if (!isOwner) {
+        for (const [schema, table, roleFilter] of [
+          ['public', 'admin_users', false], ['app', 'user_roles', true],
+          ['public', 'quantia_admin_permissions', false],
+        ] as const) {
+          let query = service.schema(schema).from(table).select('user_id');
+          if (roleFilter) query = query.eq('role', 'admin');
+          const { data: protectedRows, error: protectedError } = await query;
+          if (protectedError) throw protectedError;
+          for (const row of protectedRows ?? []) protectedIds.add(row.user_id);
+        }
+      }
       const users = (data.users ?? []).filter((u) => {
+        if (protectedIds.has(u.id)) return false;
         if (!search) return true;
         const email = (u.email ?? '').toLowerCase();
         const username = (readMetaUsername(u.user_metadata) ?? '').toLowerCase();
@@ -376,7 +391,7 @@ Deno.serve(async (req) => {
       return jsonResponse({
         page,
         perPage,
-        total: typeof data.total === 'number' ? data.total : null,
+        total: typeof data.total === 'number' ? Math.max(0, data.total - protectedIds.size) : null,
         items: users.map((u) => ({
           userId: u.id,
           email: u.email ?? null,
@@ -546,6 +561,8 @@ Deno.serve(async (req) => {
         const message = error.message ?? '';
         const alreadyExists = /already|exists|registered|duplicate/i.test(message);
         if (!alreadyExists) throw error;
+        // Never turn an email-only create into account takeover or credential reset.
+        if (!isOwner) throw new Error('Acceso denegado.');
         const existingId = await findUserIdByEmail(service, email);
         if (!existingId) throw error;
         createdId = existingId;
@@ -557,18 +574,20 @@ Deno.serve(async (req) => {
       }
       if (!createdId) throw new Error('User not created.');
 
-      await service.auth.admin.updateUserById(createdId, {
+      const { error: metadataError } = await service.auth.admin.updateUserById(createdId, {
         app_metadata: {
           role: 'restricted_question_bank_viewer',
           allowed_curriculum_keys: effectiveAllowed,
         },
       });
 
+      if (metadataError) throw metadataError;
+
       if (username) {
         await upsertProfileName(service, { userId: createdId, username });
       }
 
-      await service
+      const { error: accessError } = await service
         .schema('public')
         .from('restricted_question_bank_access')
         .upsert(
@@ -580,6 +599,8 @@ Deno.serve(async (req) => {
           },
           { onConflict: 'user_id' },
         );
+
+      if (accessError) throw accessError;
 
       const redirectTo = readText((body as Record<string, unknown>).redirectTo) || req.headers.get('origin') || '';
       let magicLink: string | null = null;

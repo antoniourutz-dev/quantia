@@ -20,7 +20,7 @@ type ConfirmAction =
   | { type: 'reset'; user: AdminUserDetail; confirm: string }
   | null;
 
-export default function AdminStudents({ onClose }: { onClose: () => void }) {
+export default function AdminStudents({ onClose, isOwner = false }: { onClose: () => void; isOwner?: boolean }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const t = (es: string, eu: string) => (isBasque ? eu : es);
@@ -496,6 +496,7 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
 
+              {isOwner ? <>
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Cambiar contraseña', 'Pasahitza aldatu')}</div>
                 <input
@@ -514,6 +515,7 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
 
+              </> : null}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -533,6 +535,7 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                 </button>
               </div>
 
+              {isOwner ? <>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 space-y-3">
                 <div className="flex items-center gap-2 text-amber-900 font-black">
                   <AlertTriangle size={18} />
@@ -554,6 +557,7 @@ export default function AdminStudents({ onClose }: { onClose: () => void }) {
                   {t('Borrar usuario', 'Erabiltzailea ezabatu')}
                 </button>
               </div>
+              </> : null}
             </div>
           ) : (
             <div className="mt-8 text-slate-500 font-bold">{t('Selecciona un alumno del listado.', 'Hautatu ikasle bat zerrendatik.')}</div>
