@@ -138,6 +138,47 @@ create policy quantia_highlight_update on public.question_highlight_overrides fo
 
 -- Catalog metadata helper must be usable by managers, without exposing any
 -- unrestricted information_schema permissions to the client.
+-- Both catalog browser RPCs were absent from the linked Supabase schema.
+-- Explicit allowlist blocks introspection of unrelated or sensitive tables.
+create or replace function public.admin_list_tables_v2(p_schema text, p_tables text[])
+returns table(table_name text)
+language sql stable security definer set search_path = ''
+as $
+  select t.table_name::text
+  from information_schema.tables t
+  where public.has_quantia_permission('catalogs.manage')
+    and ((p_schema = 'public' and t.table_name in
+           ('oppositions','opposition_configs','subjects','question_scopes','user_opposition_profiles'))
+      or (p_schema = 'app' and t.table_name in ('general_laws','general_law_blocks')))
+    and t.table_schema = p_schema
+    and t.table_name = any(p_tables);
+$;
+revoke all on function public.admin_list_tables_v2(text,text[]) from public, anon;
+grant execute on function public.admin_list_tables_v2(text,text[]) to authenticated;
+
+create or replace function public.admin_get_table_columns_v2(p_schema text, p_table text)
+returns table(
+  ordinal_position integer,
+  column_name text,
+  data_type text,
+  is_nullable boolean,
+  column_default text,
+  udt_name text
+)
+language sql stable security definer set search_path = ''
+as $
+  select c.ordinal_position::integer, c.column_name::text, c.data_type::text,
+         (c.is_nullable = 'YES')::boolean, c.column_default::text, c.udt_name::text
+  from information_schema.columns c
+  where public.has_quantia_permission('catalogs.manage')
+    and ((p_schema = 'public' and p_table in
+           ('oppositions','opposition_configs','subjects','question_scopes','user_opposition_profiles'))
+      or (p_schema = 'app' and p_table in ('general_laws','general_law_blocks')))
+    and c.table_schema = p_schema and c.table_name = p_table
+  order by c.ordinal_position;
+$;
+revoke all on function public.admin_get_table_columns_v2(text,text) from public, anon;
+grant execute on function public.admin_get_table_columns_v2(text,text) to authenticated;
 
 -- Privilege helper is callable by clients, but it cannot add or remove permissions.
 comment on function public.has_quantia_permission(text)
