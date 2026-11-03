@@ -16,9 +16,11 @@ type AuditRow = {
 export default function AdminQuality({
   onClose,
   onOpenQuestions,
+  canOpenQuestions,
 }: {
   onClose: () => void;
   onOpenQuestions: () => void;
+  canOpenQuestions: boolean;
 }) {
   const [status, setStatus] = useState('PENDIENTE');
   const [page, setPage] = useState(0);
@@ -74,10 +76,10 @@ export default function AdminQuality({
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             <RefreshCcw size={16} /> Actualizar
           </button>
-          <button type="button" onClick={onOpenQuestions}
+          {canOpenQuestions ? <button type="button" onClick={onOpenQuestions}
             className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">
             Abrir editor de preguntas
-          </button>
+          </button> : null}
         </div>
       </header>
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
