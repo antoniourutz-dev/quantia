@@ -28,8 +28,11 @@ Fecha: 3 de noviembre de 2026. PR: #5.
 - Ensayo transaccional de migración en Oposik, con ROLLBACK completo: correcto tras corregir también terminadores de las RPC editoriales.
 - Comprobaciones repetidas tras aplicar la migración: propietario y Ardura con cinco permisos; identidad sintética sin permisos ni lectura de calidad/sesiones ajenas; anónimo sin ejecución de funciones protegidas; bloqueo de escritura en permisos y rol del perfil.
 - Producción confirmada mediante el código servido por `https://kuantia.vercel.app`: proyecto Supabase `gmwgwttwzkgyljevddul` (Oposik).
-- Migración aplicada en Oposik; `admin-users` desplegada ACTIVE, versión 27.
+- Migración aplicada en Oposik (versión `20261103064234`, nombre del archivo sincronizado con el historial remoto); `admin-users` desplegada ACTIVE, versión 27.
 - No se han cambiado preguntas, estadísticas ni datos reales de alumnos para probar. Las mutaciones del handler se prueban exclusivamente con dobles en memoria. Las comprobaciones SQL usan lecturas y permisos; el ensayo de migración se revirtió antes de la aplicación definitiva.
+
+- HTTP real: Edge sin sesión y con token inválido devuelve 401; las RPC `has_quantia_permission`, `quantia_user_count` y `admin_set_active_opposition_context` rechazan al anónimo con 401/42501.
+- Preview de Vercel del commit `b3947ca` compilada READY y responde HTTP 200.
 
 ## Límites y comprobaciones pendientes
 
