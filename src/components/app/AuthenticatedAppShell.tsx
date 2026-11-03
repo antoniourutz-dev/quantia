@@ -114,6 +114,7 @@ const loadAdminQuestions = () => import('../admin/AdminQuestions');
 const loadAdminDashboard = () => import('../admin/AdminDashboard');
 const loadAdminStudents = () => import('../admin/AdminStudents');
 const loadAdminCatalogs = () => import('../admin/AdminCatalogs');
+const loadAdminQuality = () => import('../admin/AdminQuality');
 
 const TestSelection = lazy(loadTestSelection);
 const TestInterface = lazy(loadTestInterface);
@@ -128,6 +129,7 @@ const AdminQuestions = lazy(loadAdminQuestions);
 const AdminDashboard = lazy(loadAdminDashboard);
 const AdminStudents = lazy(loadAdminStudents);
 const AdminCatalogs = lazy(loadAdminCatalogs);
+const AdminQuality = lazy(loadAdminQuality);
 import {
   buildCoachCopySeed,
   buildHeaderStatusCopy,
@@ -319,6 +321,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const canManageQuestions = managementPermissions?.['questions.manage'] === true;
   const canManageCatalogs = managementPermissions?.['catalogs.manage'] === true;
   const canManageUsers = managementPermissions?.['users.manage'] === true;
+  const canReadStatistics = managementPermissions?.['statistics.read'] === true;
+  const canManageQuality = managementPermissions?.['quality.manage'] === true;
   useEffect(() => {
     if (managementPermissions === null) return;
     if (!isAdminEmail) {
@@ -327,7 +331,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         currentView === 'admin-questions' ||
         currentView === 'admin-dashboard' ||
         currentView === 'admin-students' ||
-        currentView === 'admin-catalogs'
+        currentView === 'admin-catalogs' ||
+        currentView === 'admin-quality'
       ) {
         setCurrentView('test-selection');
       }
@@ -340,7 +345,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (isAdminEmail && currentView === 'admin-questions' && !canManageQuestions) setCurrentView('admin-dashboard');
     if (isAdminEmail && currentView === 'admin-catalogs' && !canManageCatalogs) setCurrentView('admin-dashboard');
     if (isAdminEmail && currentView === 'admin-students' && !canManageUsers) setCurrentView('admin-dashboard');
-  }, [currentView, isAdminEmail, canManageQuestions, canManageCatalogs, canManageUsers, managementPermissions]);
+    if (isAdminEmail && currentView === 'admin-quality' && !canManageQuality) setCurrentView('admin-dashboard');
+  }, [currentView, isAdminEmail, canManageQuestions, canManageCatalogs, canManageUsers, canManageQuality, managementPermissions]);
   const accessibleCurriculumOptions = useMemo(() => {
     const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
     const preferredMatches = preferredCurriculumId
@@ -2396,7 +2402,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     currentView === 'admin-dashboard' ||
     currentView === 'admin-students' ||
     currentView === 'admin-questions' ||
-    currentView === 'admin-catalogs';
+    currentView === 'admin-catalogs' ||
+    currentView === 'admin-quality';
   const showMobileTopBar =
     !isTesting && !isAdminView && currentView !== 'telemetry' && currentView !== 'study-bank';
   const showMobileBottomNav = showMobileTopBar && currentView !== 'test-results';
@@ -3248,6 +3255,12 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
                 onOpenStudents={() => { if (canManageUsers) setCurrentView('admin-students'); }}
                 onOpenQuestions={() => { if (canManageQuestions) setCurrentView('admin-questions'); }}
                 onOpenCatalogs={() => { if (canManageCatalogs) setCurrentView('admin-catalogs'); }}
+                onOpenQuality={() => { if (canManageQuality) setCurrentView('admin-quality'); }}
+                canManageQuestions={canManageQuestions}
+                canManageCatalogs={canManageCatalogs}
+                canManageUsers={canManageUsers}
+                canReadStatistics={canReadStatistics}
+                canManageQuality={canManageQuality}
               />
             </Suspense>
           ) : null
@@ -3277,6 +3290,17 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
           canManageCatalogs ? (
             <Suspense fallback={screenLoader}>
               <AdminCatalogs onClose={() => setCurrentView('admin-dashboard')} />
+            </Suspense>
+          ) : null
+        ) : null}
+
+        {currentView === 'admin-quality' ? (
+          canManageQuality ? (
+            <Suspense fallback={screenLoader}>
+              <AdminQuality
+                onClose={() => setCurrentView('admin-dashboard')}
+                onOpenQuestions={() => { if (canManageQuestions) setCurrentView('admin-questions'); }}
+              />
             </Suspense>
           ) : null
         ) : null}
