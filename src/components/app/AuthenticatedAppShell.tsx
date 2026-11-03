@@ -3300,6 +3300,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
               <AdminQuality
                 onClose={() => setCurrentView('admin-dashboard')}
                 onOpenQuestions={() => { if (canManageQuestions) setCurrentView('admin-questions'); }}
+                canOpenQuestions={canManageQuestions}
               />
             </Suspense>
           ) : null
