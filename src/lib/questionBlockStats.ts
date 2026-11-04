@@ -15,7 +15,46 @@ export type QuestionBlockAttempt = {
   questionNumber: number | null;
   scope: SyllabusType | null;
   dedupeKey?: string | null;
+  answeredAt?: string | null;
   isCorrect: boolean | null;
+};
+
+export type MistakeReviewPeriod =
+  | { type: 'all' }
+  | { type: 'recent_tests'; count: number }
+  | { type: 'last_day' };
+
+export const filterAttemptsForMistakeReview = (
+  attempts: QuestionBlockAttempt[],
+  period: MistakeReviewPeriod,
+  now = new Date(),
+): QuestionBlockAttempt[] => {
+  if (period.type === 'all') return attempts;
+
+  const datedAttempts = attempts
+    .map((attempt) => ({ attempt, answeredAt: Date.parse(attempt.answeredAt ?? '') }))
+    .filter(({ answeredAt }) => Number.isFinite(answeredAt));
+
+  if (period.type === 'last_day') {
+    const since = now.getTime() - 24 * 60 * 60 * 1000;
+    return datedAttempts
+      .filter(({ answeredAt }) => answeredAt >= since && answeredAt <= now.getTime())
+      .map(({ attempt }) => attempt);
+  }
+
+  const lastAnsweredAtBySession = new Map<string, number>();
+  for (const { attempt, answeredAt } of datedAttempts) {
+    const sessionId = String(attempt.sessionId ?? '').trim();
+    if (!sessionId) continue;
+    lastAnsweredAtBySession.set(sessionId, Math.max(lastAnsweredAtBySession.get(sessionId) ?? 0, answeredAt));
+  }
+  const selectedSessionIds = new Set(
+    [...lastAnsweredAtBySession.entries()]
+      .sort(([, left], [, right]) => right - left)
+      .slice(0, Math.max(1, Math.trunc(period.count)))
+      .map(([sessionId]) => sessionId),
+  );
+  return attempts.filter((attempt) => selectedSessionIds.has(String(attempt.sessionId ?? '').trim()));
 };
 
 export type QuestionBlockPerformance = {

@@ -18,9 +18,11 @@ import {
 } from './adaptiveQuestionSelection';
 import {
   buildQuestionBlockPerformance,
+  filterAttemptsForMistakeReview,
   selectMostFailedQuestionIds,
   type QuestionBlockAttempt,
   type QuestionBlockPerformance,
+  type MistakeReviewPeriod,
 } from './questionBlockStats';
 import { getPendingQuestionActivity, syncQuestionActivity } from './questionActivity';
 import { mergePracticeSessionHistory, type PracticeActivitySummaryRow } from './practiceStatistics';
@@ -4246,7 +4248,10 @@ const getCloudQuestionActivityRows = async (curriculum: string, userId?: string)
   }
 };
 
-export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => {
+export const getQuestionBlockStats = async (
+  curriculum = DEFAULT_CURRICULUM,
+  options?: { mistakeReviewPeriod?: MistakeReviewPeriod },
+) => {
   const [bank, attemptRows, authResult] = await Promise.all([
     getQuestionBankIndex(curriculum, 'all'),
     getGranularAttemptRowsForCurriculum(curriculum),
@@ -4305,6 +4310,7 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
           attempt.grupo,
       ),
       dedupeKey: buildAttemptQuestionDedupKey(attempt),
+      answeredAt: readText(attempt.answered_at ?? attempt.answeredAt ?? attempt.completed_at ?? attempt.completedAt),
       isCorrect,
     });
   }
@@ -4316,6 +4322,7 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
       questionId: readText(event.question_id),
       questionNumber: readOptionalNumber(event.question_number),
       scope: normalizeQuestionScope(event.question_scope),
+      answeredAt: readText(event.answered_at ?? event.viewed_at),
       isCorrect: readAttemptCorrectness(event.is_correct),
     })),
   );
@@ -4327,9 +4334,14 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
       questionId: event.questionId,
       questionNumber: event.questionNumber,
       scope: event.scope,
+      answeredAt: event.answeredAt ?? event.viewedAt,
       isCorrect: event.isCorrect,
     })),
   );
+
+  const filteredAttempts = options?.mistakeReviewPeriod
+    ? filterAttemptsForMistakeReview(attempts, options.mistakeReviewPeriod)
+    : attempts;
 
   return buildQuestionBlockPerformance(
     bank.map((question) => ({
@@ -4339,7 +4351,7 @@ export const getQuestionBlockStats = async (curriculum = DEFAULT_CURRICULUM) => 
       text: question.text,
       dedupeKey: question.dedupeKey,
     })),
-    attempts,
+    filteredAttempts,
   );
 };
 
@@ -4348,11 +4360,14 @@ export const getMostFailedPracticeBatch = async (params: {
   batchSize: number;
   questionScope?: PracticeQuestionScopeFilter;
   filters?: PracticeFilters | null;
+  mistakeReviewPeriod?: MistakeReviewPeriod;
 }): Promise<Question[]> => {
   const curriculum = String(params.curriculum ?? '').trim() || DEFAULT_CURRICULUM;
   const batchSize = Math.max(1, Math.min(120, Math.trunc(params.batchSize)));
   const questionScope = params.questionScope ?? 'all';
-  const blocks = await getQuestionBlockStats(curriculum);
+  const blocks = await getQuestionBlockStats(curriculum, {
+    mistakeReviewPeriod: params.mistakeReviewPeriod,
+  });
   const questionIds = selectMostFailedQuestionIds(blocks, questionScope, batchSize);
 
   return getPracticeQuestionsByIds({

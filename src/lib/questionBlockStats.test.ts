@@ -1,8 +1,28 @@
 import {
   buildQuestionBlockPerformance,
+  filterAttemptsForMistakeReview,
   rankQuestionPerformance,
   selectMostFailedQuestionIds,
 } from './questionBlockStats';
+
+describe('filterAttemptsForMistakeReview', () => {
+  const now = new Date('2026-11-04T12:00:00.000Z');
+  const attempts = [
+    { sessionId: 'one', questionId: 'one-a', questionNumber: 1, scope: 'common' as const, isCorrect: false, answeredAt: '2026-11-01T10:00:00.000Z' },
+    { sessionId: 'two', questionId: 'two-a', questionNumber: 2, scope: 'common' as const, isCorrect: true, answeredAt: '2026-11-03T09:00:00.000Z' },
+    { sessionId: 'two', questionId: 'two-b', questionNumber: 3, scope: 'common' as const, isCorrect: false, answeredAt: '2026-11-03T09:01:00.000Z' },
+    { sessionId: 'three', questionId: 'three-a', questionNumber: 4, scope: 'specific' as const, isCorrect: false, answeredAt: '2026-11-04T11:00:00.000Z' },
+  ];
+
+  it('uses complete recent tests, ordered by their latest answer', () => {
+    expect(filterAttemptsForMistakeReview(attempts, { type: 'recent_tests', count: 2 }, now))
+      .toEqual([attempts[1], attempts[2], attempts[3]]);
+  });
+
+  it('uses only attempts completed in the last 24 hours', () => {
+    expect(filterAttemptsForMistakeReview(attempts, { type: 'last_day' }, now)).toEqual([attempts[3]]);
+  });
+});
 
 describe('buildQuestionBlockPerformance', () => {
   it('separa comun y especifico y conserva bloques sin intentos', () => {

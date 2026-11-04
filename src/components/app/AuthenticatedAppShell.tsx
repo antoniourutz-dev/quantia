@@ -65,6 +65,7 @@ import {
   type DashboardBundle,
   type StudyQuestionData,
 } from '../../lib/quantiaApi';
+import type { MistakeReviewPeriod } from '../../lib/questionBlockStats';
 import { useGeneralLawArticles } from '../../hooks/useGeneralLawArticles';
 import { useGeneralLawTrainingSelection } from '../../hooks/useGeneralLawTrainingSelection';
 import { getOfficialArticleCounts } from '../../repositories/officialPastQuestionsRepository';
@@ -1463,6 +1464,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
       syllabus?: SyllabusType,
       count?: number,
       coachContext?: ActivePracticeSession['coach'] | null,
+      mistakeReviewPeriod?: MistakeReviewPeriod,
     ) => {
       captureTestReturnTarget();
       setSelectedSyllabus(syllabus ?? null);
@@ -1503,6 +1505,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             curriculum,
             batchSize,
             questionScope: scope,
+            mistakeReviewPeriod,
           });
           if (questions.length === 0) {
             const request = {
@@ -1526,7 +1529,12 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             return;
           }
           reviewPriority = 'most_problematic';
-          resolvedTitle = t('Corregir fallos', 'Hutsegiteak zuzendu');
+          resolvedTitle =
+            mistakeReviewPeriod?.type === 'recent_tests'
+              ? t(`Fallos de los últimos ${mistakeReviewPeriod.count} tests`, `Azken ${mistakeReviewPeriod.count} testen akatsak`)
+              : mistakeReviewPeriod?.type === 'last_day'
+                ? t('Fallos del último día', 'Azken eguneko akatsak')
+                : t('Corregir fallos', 'Hutsegiteak zuzendu');
         } else if (!syllabus && !isSingleScopePracticeCurriculum) {
           questions = await getBalancedMixedPracticeBatch({
             count: batchSize,

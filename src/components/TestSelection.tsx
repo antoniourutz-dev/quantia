@@ -10,6 +10,7 @@ import {
   type GeneralLawSelectionMode,
   type GeneralLawTrainingSelection,
   type Question,
+  type ActivePracticeSession,
 } from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
 import type {
@@ -27,12 +28,15 @@ import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
 type StandardSyllabusSelection = 'mixed' | SyllabusType;
+type ReviewSource = 'all' | 'recent_tests' | 'last_day';
 
 export type TestSelectionStateSnapshot = {
   selectionMode: SelectionMode;
   selectedSyllabus: StandardSyllabusSelection;
   selectedLaw: string;
   questionCount: number;
+  reviewSource?: ReviewSource;
+  reviewTestCount?: number;
   simulacroScope: 'mixed' | SyllabusType;
   simulacroCount: number;
   customFrom: string;
@@ -51,7 +55,16 @@ interface TestSelectionProps {
   lawOptions: string[];
   lawOptionsLoading?: boolean;
   initialLaw?: string | null;
-  onStart: (mode: PracticeMode, syllabus?: SyllabusType, count?: number) => void;
+  onStart: (
+    mode: PracticeMode,
+    syllabus?: SyllabusType,
+    count?: number,
+    coachContext?: ActivePracticeSession['coach'] | null,
+    reviewPeriod?:
+      | { type: 'all' }
+      | { type: 'recent_tests'; count: number }
+      | { type: 'last_day' },
+  ) => void;
   onStartLawTest: (law: string, count?: number) => void;
   onStartCustomTest: (params: { from: number; to: number; randomize: boolean; syllabus?: SyllabusType | null }) => void;
   onStartCustomPractice: (config: CustomPracticeConfig) => void;
@@ -138,6 +151,8 @@ export default function TestSelection({
   );
   const [selectedLaw, setSelectedLaw] = useState<string>(initialState?.selectedLaw ?? initialLaw ?? '');
   const [questionCount, setQuestionCount] = useState<number>(initialState?.questionCount ?? 20);
+  const [reviewSource, setReviewSource] = useState<ReviewSource>(initialState?.reviewSource ?? 'all');
+  const [reviewTestCount, setReviewTestCount] = useState(initialState?.reviewTestCount ?? 1);
   const options = [10, 20, 50];
   const simulacroOptions = [50, 100];
   const [simulacroScope, setSimulacroScope] = useState<'mixed' | SyllabusType>(initialState?.simulacroScope ?? 'mixed');
@@ -253,6 +268,8 @@ export default function TestSelection({
       selectedSyllabus,
       selectedLaw,
       questionCount,
+      reviewSource,
+      reviewTestCount,
       simulacroScope,
       simulacroCount,
       customFrom,
@@ -277,6 +294,8 @@ export default function TestSelection({
     customTopicMode,
     onStateChange,
     questionCount,
+    reviewSource,
+    reviewTestCount,
     selectedLaw,
     selectedSyllabus,
     selectionMode,
@@ -403,10 +422,18 @@ export default function TestSelection({
     } else if (selectionMode === 'quick') {
       onStart('quick_five', undefined, 5);
     } else if (selectionMode === 'errors') {
+      const reviewPeriod =
+        reviewSource === 'recent_tests'
+          ? { type: 'recent_tests' as const, count: reviewTestCount }
+          : reviewSource === 'last_day'
+            ? { type: 'last_day' as const }
+            : { type: 'all' as const };
       onStart(
         'review',
         usesSingleScope || usesLawSelection || selectedSyllabus === 'mixed' ? undefined : selectedSyllabus,
         questionCount,
+        undefined,
+        reviewPeriod,
       );
     } else if (selectionMode === 'simulacro') {
       onStart(
@@ -630,7 +657,51 @@ export default function TestSelection({
   };
 
   const renderReviewConfiguration = () => (
-    <div className="space-y-6 lg:grid lg:grid-cols-[1fr_1fr_auto] lg:items-end lg:gap-4 lg:space-y-0">
+    <div className="space-y-6 lg:space-y-4">
+      <div className="space-y-3">
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+          {isBasque ? 'Zein akats berrikusi' : 'Qué fallos repasar'}
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          {([
+            { id: 'all', label: isBasque ? 'Akats guztiak' : 'Todos mis fallos' },
+            { id: 'recent_tests', label: isBasque ? 'Azken testak' : 'Últimos tests' },
+            { id: 'last_day', label: isBasque ? 'Azken 24 orduak' : 'Último día' },
+          ] as const).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setReviewSource(option.id)}
+              className={`rounded-2xl border-2 px-4 py-3 text-left font-black text-sm transition-all ${
+                reviewSource === option.id
+                  ? 'border-rose-500 bg-rose-50 text-rose-700'
+                  : 'border-slate-100 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+          {reviewSource === 'recent_tests' ? (
+            <div className="grid grid-cols-4 gap-1 rounded-2xl border border-rose-100 bg-rose-50 p-1">
+              {[1, 2, 3, 5].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => setReviewTestCount(count)}
+                  className={`rounded-xl px-2 py-2 text-sm font-black transition-all ${
+                    reviewTestCount === count ? 'bg-rose-600 text-white shadow-sm' : 'text-rose-700 hover:bg-white'
+                  }`}
+                  aria-label={isBasque ? `Azken ${count} testak` : `Últimos ${count} tests`}
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_1fr_auto] lg:items-end lg:gap-4">
       {!usesSingleScope && !usesLawSelection ? (
         <div className="space-y-3">
           <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
@@ -686,6 +757,7 @@ export default function TestSelection({
           ? 'Hutsegite-tasa handiena lehenengo.'
           : 'Mayor tasa de fallo primero.'}
       </div>
+    </div>
     </div>
   );
 

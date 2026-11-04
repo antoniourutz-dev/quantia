@@ -289,7 +289,7 @@ export default function TestInterface({
   };
 
   const nextQuestion = () => {
-    if (closingSession) return;
+    if (closingSession || selectedAnswer === null) return;
     if (mistakeReview) {
       const currentDetail = activeAnswerDetails[currentIndex];
       if (!currentDetail) return;
@@ -362,6 +362,26 @@ export default function TestInterface({
       requestFinish();
     }
   };
+
+  useEffect(() => {
+    const handleEnterToContinue = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' || event.repeat || closingSession || selectedAnswer === null) return;
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest('button, a, input, textarea, select, [role="button"]'))
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      nextQuestion();
+    };
+
+    window.addEventListener('keydown', handleEnterToContinue);
+    return () => window.removeEventListener('keydown', handleEnterToContinue);
+  }, [closingSession, nextQuestion, selectedAnswer]);
 
   const prevQuestion = () => {
     if (closingSession) return;
