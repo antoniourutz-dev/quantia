@@ -20,7 +20,6 @@ export type QueuedPracticeSessionSync = {
 };
 
 const STORAGE_PREFIX = 'quantia.practice-session-sync.v1';
-const MAX_PENDING_SESSIONS = 12;
 
 const storageKey = (userId: string) => `${STORAGE_PREFIX}:${encodeURIComponent(userId)}`;
 
@@ -51,7 +50,7 @@ export const readQueuedPracticeSessionSyncs = (userId: string): QueuedPracticeSe
 const writeQueue = (userId: string, items: QueuedPracticeSessionSync[]) => {
   if (typeof window === 'undefined' || !userId) return false;
   try {
-    window.localStorage.setItem(storageKey(userId), JSON.stringify(items.slice(-MAX_PENDING_SESSIONS)));
+    window.localStorage.setItem(storageKey(userId), JSON.stringify(items));
     return true;
   } catch {
     return false;

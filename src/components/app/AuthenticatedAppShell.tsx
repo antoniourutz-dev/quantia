@@ -28,7 +28,7 @@ import {
   filterCurriculumOptionsByAllowedKeys,
   readAllowedCurriculumKeys,
 } from '../../features/authenticatedShell/restrictedCurriculum';
-import { readHomeFirstPaintCache, HOME_FIRST_PAINT_STORAGE_KEY, type HomeFirstPaintModel } from '../../features/authenticatedShell/homeFirstPaintStorage';
+import { readHomeFirstPaintCache, homeFirstPaintStorageKey, type HomeFirstPaintModel } from '../../features/authenticatedShell/homeFirstPaintStorage';
 import { cancelIdle, requestIdle, type IdleHandle } from '../../features/authenticatedShell/shellIdle';
 import { startOfDay } from '../../features/authenticatedShell/shellDateUtils';
 import type { ShellView as View, TestReturnTarget } from '../../features/authenticatedShell/shellTypes';
@@ -280,7 +280,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   const homeLcpNodeMarkedRef = useRef(false);
   const recentSessionsFetchInFlightRef = useRef(false);
   const [homeFirstPaintCache, setHomeFirstPaintCache] = useState<Record<string, HomeFirstPaintModel>>(
-    () => readHomeFirstPaintCache(),
+    () => readHomeFirstPaintCache(session.user.id),
   );
   const [homeHeroFinalModel, setHomeHeroFinalModel] = useState<HomeHeroFinalModel | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
@@ -1104,13 +1104,14 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       }
       const updated = { ...prev, [curriculum]: nextModel };
       try {
-        window.localStorage.setItem(HOME_FIRST_PAINT_STORAGE_KEY, JSON.stringify(updated));
+        window.localStorage.setItem(homeFirstPaintStorageKey(session.user.id), JSON.stringify(updated));
       } catch {
         // ignore
       }
       return updated;
     });
   }, [
+    session.user.id,
     bundle,
     continuityLine,
     curriculum,
