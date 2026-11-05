@@ -51,6 +51,7 @@ export type TestSelectionStateSnapshot = {
 };
 
 interface TestSelectionProps {
+  oppositionLabel?: string;
   curriculum: string;
   lawOptions: string[];
   lawOptionsLoading?: boolean;
@@ -103,6 +104,7 @@ interface TestSelectionProps {
 }
 
 export default function TestSelection({
+  oppositionLabel,
   curriculum,
   lawOptions,
   initialLaw = null,
@@ -369,6 +371,7 @@ export default function TestSelection({
       .finally(() => setCustomTopicsLoading(false));
   }, [curriculum, customContentScope, customTopic, customTopicMode, isBasque, selectionMode]);
 
+  const [starting, setStarting] = useState(false);
   const handleStart = () => {
     if (selectionMode === 'standard') {
       if (usesLawSelection) {
@@ -391,8 +394,7 @@ export default function TestSelection({
           );
           return;
         }
-        onStartLawTest(activeGeneralLawLabel, questionCount);
-        return;
+        return onStartLawTest(activeGeneralLawLabel, questionCount);
       }
       if (standardRangeEnabled) {
         const standardSyllabus = selectedSyllabus === 'mixed' ? null : selectedSyllabus;
@@ -406,21 +408,20 @@ export default function TestSelection({
           return;
         }
         setStandardRangeError(null);
-        onStartCustomTest({
+        return onStartCustomTest({
           from: built.from,
           to: built.to,
           randomize: built.randomize,
           syllabus: usesSingleScope ? null : standardSyllabus,
         });
-        return;
       }
-      onStart(
+      return onStart(
         'standard',
         usesSingleScope || selectedSyllabus === 'mixed' ? undefined : selectedSyllabus,
         questionCount,
       );
     } else if (selectionMode === 'quick') {
-      onStart('quick_five', undefined, 5);
+      return onStart('quick_five', undefined, 5);
     } else if (selectionMode === 'errors') {
       const reviewPeriod =
         reviewSource === 'recent_tests'
@@ -428,7 +429,7 @@ export default function TestSelection({
           : reviewSource === 'last_day'
             ? { type: 'last_day' as const }
             : { type: 'all' as const };
-      onStart(
+      return onStart(
         'review',
         usesSingleScope || usesLawSelection || selectedSyllabus === 'mixed' ? undefined : selectedSyllabus,
         questionCount,
@@ -436,7 +437,7 @@ export default function TestSelection({
         reviewPeriod,
       );
     } else if (selectionMode === 'simulacro') {
-      onStart(
+      return onStart(
         'simulacro',
         usesSingleScope ? undefined : simulacroScope === 'mixed' ? undefined : simulacroScope,
         simulacroCount,
@@ -474,8 +475,7 @@ export default function TestSelection({
               : customContentScope === 'specific_only'
                 ? 'specific'
                 : null;
-        onStartCustomTest({ from: built.from, to: built.to, randomize: built.randomize, syllabus });
-        return;
+        return onStartCustomTest({ from: built.from, to: built.to, randomize: built.randomize, syllabus });
       }
       if (customTopicMode === 'single' && !customTopic.trim()) {
         setCustomError(isBasque ? 'Aukeratu gai bat.' : 'Elige un tema.');
@@ -492,7 +492,7 @@ export default function TestSelection({
         order: customOrder,
         supportMode: { showMarks: customShowMarks, showNotes: customShowNotes },
       };
-      onStartCustomPractice(config);
+      return onStartCustomPractice(config);
     }
   };
 
@@ -1355,7 +1355,7 @@ export default function TestSelection({
                 className={`py-6 px-8 lg:px-5 lg:py-3 rounded-2xl border-2 transition-all duration-300 font-black text-2xl lg:text-xl ${
                   questionCount === count
                     ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-50 bg-white text-slate-400 hover:border-indigo-100'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-400'
                 }`}
               >
                 {count}
@@ -1738,8 +1738,11 @@ export default function TestSelection({
 
       <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
         <button
-          onClick={handleStart}
-          disabled={selectionMode === 'standard' && usesLawSelection && !activeGeneralLaw && (!selectedLaw || lawOptions.length === 0)}
+          onClick={async () => {
+            setStarting(true);
+            try { await handleStart(); } finally { setStarting(false); }
+          }}
+          disabled={starting || selectionMode === 'standard' && usesLawSelection && !activeGeneralLaw && (!selectedLaw || lawOptions.length === 0)}
           className={`flex w-full items-center justify-center gap-4 rounded-[1.75rem] py-4 text-base font-black shadow-2xl transition-all duration-500 sm:rounded-[2rem] sm:py-6 sm:text-2xl lg:rounded-2xl lg:py-3 lg:text-lg ${
             selectionMode === 'standard'
               ? 'bg-indigo-600 text-white shadow-indigo-200 hover:bg-indigo-700'
@@ -1752,7 +1755,11 @@ export default function TestSelection({
                     : 'bg-slate-800 text-white shadow-slate-200 hover:bg-slate-900'
           } disabled:bg-slate-300 disabled:text-white disabled:shadow-none`}
         >
-          {startLabel}
+          <span>
+            <span className="block text-xs font-semibold">{oppositionLabel ?? curriculum}{selectionMode === 'standard' && !usesLawSelection && !usesSingleScope ? ' · ' + (selectedSyllabus === 'mixed' ? (isBasque ? 'Mistoa' : 'Mixto') : formatSyllabusUiLabel(selectedSyllabus)) : ''}</span>
+            {starting ? (isBasque ? 'Galderak prestatzen…' : 'Preparando las preguntas…') : startLabel}
+            {!starting && selectionMode === 'standard' && !standardRangeEnabled && (' · ' + questionCount + (isBasque ? ' galdera' : ' preguntas'))}
+          </span>
           <ChevronRight size={28} />
         </button>
       </div>
