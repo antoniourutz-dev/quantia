@@ -1,10 +1,9 @@
 const allowHeaders = 'authorization, x-client-info, apikey, content-type';
 const allowMethods = 'POST, OPTIONS';
 
-const parseAllowedOrigins = () => {
+const parseAllowedOrigins = (requiredOrigins: readonly string[]) => {
   const raw = Deno.env.get('CORS_ALLOWED_ORIGINS')?.trim() ?? '';
-  if (!raw) return [] as string[];
-  return raw.split(',').map((entry) => entry.trim()).filter(Boolean);
+  return [...requiredOrigins, ...raw.split(',').map((entry) => entry.trim()).filter(Boolean)];
 };
 
 const isLocalhostOrigin = (origin: string) =>
@@ -35,8 +34,8 @@ const isAllowedOrigin = (origin: string, allowed: string[]) =>
   isLocalhostOrigin(origin) || isPrivateNetworkOrigin(origin) || allowed.includes(origin);
 
 /** When `CORS_ALLOWED_ORIGINS` is unset, allows `*` (dev / legacy). When set, echoes `Origin` only if listed. */
-export const buildCorsHeaders = (req: Request): Record<string, string> => {
-  const allowed = parseAllowedOrigins();
+export const buildCorsHeaders = (req: Request, requiredOrigins: readonly string[] = []): Record<string, string> => {
+  const allowed = parseAllowedOrigins(requiredOrigins);
   if (allowed.length === 0) {
     return {
       'access-control-allow-origin': '*',
@@ -69,12 +68,12 @@ export const buildCorsHeaders = (req: Request): Record<string, string> => {
   };
 };
 
-export const corsPreflightResponse = (req: Request): Response | null => {
+export const corsPreflightResponse = (req: Request, requiredOrigins: readonly string[] = []): Response | null => {
   if (req.method !== 'OPTIONS') return null;
-  const allowed = parseAllowedOrigins();
+  const allowed = parseAllowedOrigins(requiredOrigins);
   const origin = req.headers.get('origin');
   if (allowed.length > 0 && origin && !isAllowedOrigin(origin, allowed)) {
     return new Response('Forbidden', { status: 403 });
   }
-  return new Response('ok', { headers: buildCorsHeaders(req) });
+  return new Response('ok', { headers: buildCorsHeaders(req, requiredOrigins) });
 };

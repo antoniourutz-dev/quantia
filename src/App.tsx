@@ -11,6 +11,41 @@ import { getSafeSupabaseSession, supabase } from './lib/supabaseClient';
 const AuthenticatedAppShell = lazy(() => import('./components/app/AuthenticatedAppShell'));
 const RestrictedQuestionBankShell = lazy(() => import('./components/app/RestrictedQuestionBankShell'));
 
+function AssignmentGate({session, restricted}: {session: Session; restricted: boolean}) {
+  const [scope, setScope] = useState<{manager:boolean; keys:string[]} | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let sequence = 0;
+    const refresh = async () => {
+      const ticket = ++sequence;
+      try {
+        const {data,error} = await supabase.rpc('student_access_scope');
+        if (!active || ticket !== sequence) return;
+        if (error || !Array.isArray(data?.keys) || typeof data?.manager !== 'boolean') throw new Error();
+        setScope(data); setFailed(false);
+      } catch {
+        if (active && ticket === sequence) { setFailed(true); setScope(null); }
+      }
+    };
+    void refresh();
+    window.addEventListener('focus', refresh);
+    const interval = window.setInterval(refresh, 60000);
+    return () => { active = false; window.removeEventListener('focus', refresh); window.clearInterval(interval); };
+  }, [session.user.id]);
+  if (!scope || (!scope.manager && !scope.keys.length)) return <main className="mx-auto max-w-md p-8">
+    <h1 className="text-xl font-bold">{failed ? 'No se pudieron comprobar los permisos' : !scope ? 'Consultando permisos…' : 'Sin oposiciones asignadas'}</h1>
+    {scope && <p>Tu administrador puede asignarte oposiciones desde tu ficha de alumno.</p>}
+    {failed && <button onClick={() => window.location.reload()}>Reintentar</button>}
+    <button className="mt-4 block" onClick={() => void supabase.auth.signOut()}>Cerrar sesión</button>
+  </main>;
+  const keys = scope.manager ? undefined : scope.keys;
+  const key = JSON.stringify(keys);
+  return restricted
+    ? <RestrictedQuestionBankShell key={key} session={session} assignedKeys={keys} />
+    : <AuthenticatedAppShell key={key} session={session} assignedKeys={keys} />;
+}
+
 const CURRICULUM_STORAGE_KEY = 'quantia_curriculum';
 const LEGACY_CURRICULUM_STORAGE_KEY = 'osakitest_curriculum';
 const DEFAULT_PUBLIC_CURRICULUM = 'administrativo';
@@ -141,11 +176,7 @@ export default function App() {
           </div>
         }
       >
-        {isRestrictedQuestionBankViewer ? (
-          <RestrictedQuestionBankShell session={session} />
-        ) : (
-          <AuthenticatedAppShell session={session} />
-        )}
+        <AssignmentGate key={session.user.id} session={session} restricted={isRestrictedQuestionBankViewer} />
       </Suspense>
     </AppErrorBoundary>
   );

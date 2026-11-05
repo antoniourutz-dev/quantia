@@ -50,8 +50,9 @@ const formatCurriculumLabel = (value: string, locale: 'es' | 'eu') => {
   return value;
 };
 
-export default function RestrictedQuestionBankShell({ session }: { session: Session }) {
+export default function RestrictedQuestionBankShell({ session, assignedKeys }: { session: Session; assignedKeys?: string[] }) {
   const allowedCurriculums = useMemo(() => {
+    if (assignedKeys) return assignedKeys;
     const appMetadata = readSessionAppMetadata(session);
     const raw = Array.isArray(appMetadata?.allowedCurriculumKeys)
       ? appMetadata.allowedCurriculumKeys
@@ -71,7 +72,7 @@ export default function RestrictedQuestionBankShell({ session }: { session: Sess
     }
 
     return normalized;
-  }, [session.user.app_metadata]);
+  }, [assignedKeys, session.user.app_metadata]);
 
   const visibleCurriculums = useMemo(() => {
     const unique = new Map<string, string>();
