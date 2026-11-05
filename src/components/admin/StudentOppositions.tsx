@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAppLocale } from '../../lib/locale';
 
-type Option = { id: string; name: string; assigned: boolean };
+type Option = { id: string; name: string; assigned: boolean; historicalSessions?: number; previouslySelected?: boolean };
 
 export default function StudentOppositions({ userId }: { userId: string }) {
   const eu = useAppLocale() === 'eu';
@@ -41,8 +41,10 @@ export default function StudentOppositions({ userId }: { userId: string }) {
       <input type="checkbox" checked={selection.includes(o.id)} onChange={e => {
         setMessage('');
         setSelection(e.target.checked ? [...selection, o.id] : selection.filter(id => id !== o.id));
-      }} />{o.name}
+      }} />
+      <span>{o.name}{!o.assigned && (Number(o.historicalSessions ?? 0) > 0 || o.previouslySelected) && <span className="ml-2 text-xs font-semibold text-amber-800">{eu ? 'Lehen erabilia' : 'Uso anterior'}{Number(o.historicalSessions ?? 0) > 0 ? ` · ${o.historicalSessions} ${eu ? 'saio' : 'sesiones'}` : ''}{o.previouslySelected ? ` · ${eu ? 'aurreko profila' : 'perfil previo'}` : ''}</span>}</span>
     </label>)}
+    {options?.some(o => !o.assigned && (o.historicalSessions || o.previouslySelected)) && <p className="text-sm text-amber-800">{eu ? 'Kontuan hartu: aurreko jarduera ez da baimen berria. Berrikusi eta esleitu behar diren oposizioak berariaz hautatu.' : 'Atención: este alumno tiene actividad o un perfil anterior en oposiciones no autorizadas actualmente. Revisa las sugerencias antes de conceder acceso.'}</p>}
     {options && !selection.length && <p>{eu ? 'Ikasleak ez du oposiziorik ikusiko.' : 'El alumno no verá ninguna oposición.'}</p>}
     <button className="rounded-xl border px-4 py-2" disabled={!options || !options.some(o => o.assigned !== selection.includes(o.id))} onClick={save}>{eu ? 'Baimenak gorde' : 'Guardar permisos'}</button>
     <p role="status">{message}</p>
