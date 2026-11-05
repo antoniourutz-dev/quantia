@@ -1,3 +1,5 @@
+import StudentProgress from './StudentProgress';
+import StudentOppositions from './StudentOppositions';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, Plus, Search, Trash2, User2, X } from 'lucide-react';
 import { useAppLocale } from '../../lib/locale';
@@ -9,7 +11,6 @@ import {
   adminGetUserDetail,
   adminListUsers,
   adminResetUserData,
-  adminSetUserActiveOpposition,
   adminSetUserActive,
   adminSetUserPassword,
   adminUpdateUserName,
@@ -20,7 +21,7 @@ type ConfirmAction =
   | { type: 'reset'; user: AdminUserDetail; confirm: string }
   | null;
 
-export default function AdminStudents({ onClose, isOwner = false }: { onClose: () => void; isOwner?: boolean }) {
+export default function AdminStudents({ onClose, isOwner = false, canReadStatistics = false }: { canReadStatistics?: boolean; onClose: () => void; isOwner?: boolean }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const t = (es: string, eu: string) => (isBasque ? eu : es);
@@ -49,8 +50,6 @@ export default function AdminStudents({ onClose, isOwner = false }: { onClose: (
   const [savingName, setSavingName] = useState(false);
   const [passwordDraft, setPasswordDraft] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
-  const [oppositionDraft, setOppositionDraft] = useState('');
-  const [savingOpposition, setSavingOpposition] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
   const [acting, setActing] = useState(false);
 
@@ -85,7 +84,6 @@ export default function AdminStudents({ onClose, isOwner = false }: { onClose: (
       setDetail(d);
       setNameDraft(d.currentUsername ?? '');
       setPasswordDraft('');
-      setOppositionDraft(d.activeOppositionId ?? '');
     } catch (error) {
       setNotice({ kind: 'error', text: error instanceof Error ? error.message : t('Error cargando el alumno.', 'Errorea ikaslea kargatzean.') });
     } finally {
@@ -186,24 +184,6 @@ export default function AdminStudents({ onClose, isOwner = false }: { onClose: (
       setNotice({ kind: 'error', text: error instanceof Error ? error.message : t('No se ha podido actualizar el estado.', 'Ezin izan da egoera eguneratu.') });
     } finally {
       setActing(false);
-    }
-  };
-
-  const handleSaveOpposition = async () => {
-    if (!detail) return;
-    setSavingOpposition(true);
-    setNotice(null);
-    try {
-      await adminSetUserActiveOpposition({ userId: detail.userId, oppositionId: oppositionDraft });
-      const updated = await adminGetUserDetail(detail.userId);
-      setDetail(updated);
-      setOppositionDraft(updated.activeOppositionId ?? '');
-      setNotice({ kind: 'success', text: t('Contexto actualizado.', 'Testuingurua eguneratuta.') });
-      await refresh(page);
-    } catch (error) {
-      setNotice({ kind: 'error', text: error instanceof Error ? error.message : t('No se ha podido cambiar el contexto.', 'Ezin izan da testuingurua aldatu.') });
-    } finally {
-      setSavingOpposition(false);
     }
   };
 
@@ -437,29 +417,7 @@ export default function AdminStudents({ onClose, isOwner = false }: { onClose: (
                 ) : null}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{t('Sesiones', 'Saioak')}</div>
-                  <div className="mt-2 text-2xl font-black text-slate-900">{detail.sessionsTotal ?? '—'}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{t('Sesiones 7d', 'Saioak 7e')}</div>
-                  <div className="mt-2 text-2xl font-black text-slate-900">{detail.sessionsLast7d ?? '—'}</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{t('Acierto 7d', 'Asmatze 7e')}</div>
-                  <div className="mt-2 text-2xl font-black text-slate-900">
-                    {typeof detail.accuracyRateLast7d === 'number' ? `${Math.round(detail.accuracyRateLast7d * 100)}%` : '—'}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-100 bg-white p-4">
-                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{t('Respondidas 7d', 'Erantzunda 7e')}</div>
-                  <div className="mt-2 text-2xl font-black text-slate-900">{detail.totalAnsweredLast7d ?? '—'}</div>
-                </div>
-              </div>
+              {canReadStatistics && <StudentProgress key={detail.userId} userId={detail.userId} />}
 
               <div className="space-y-2">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Nombre', 'Izena')}</div>
@@ -478,23 +436,7 @@ export default function AdminStudents({ onClose, isOwner = false }: { onClose: (
                 </button>
               </div>
 
-              <div className="space-y-2">
-                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Oposición activa', 'Oposizio aktiboa')}</div>
-                <input
-                  value={oppositionDraft}
-                  onChange={(e) => setOppositionDraft(e.target.value)}
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-800 outline-none focus:border-indigo-400 focus:bg-white"
-                  placeholder="opposition_id (UUID)"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveOpposition}
-                  disabled={savingOpposition || !oppositionDraft.trim()}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-6 py-4 text-slate-700 font-black text-base shadow-sm hover:bg-slate-50 transition-all disabled:opacity-50"
-                >
-                  {savingOpposition ? t('Guardando...', 'Gordetzen...') : t('Cambiar contexto activo', 'Testuinguru aktiboa aldatu')}
-                </button>
-              </div>
+              <StudentOppositions key={detail.userId} userId={detail.userId} />
 
               {isOwner ? <>
               <div className="space-y-2">

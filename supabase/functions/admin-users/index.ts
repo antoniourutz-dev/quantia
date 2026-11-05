@@ -209,10 +209,11 @@ const resolveCurriculumFromOppositionId = async (service: ReturnType<typeof crea
 };
 
 Deno.serve(async (req) => {
-  const preflight = corsPreflightResponse(req);
+  const productionOrigins = ['https://kuantia.vercel.app'];
+  const preflight = corsPreflightResponse(req, productionOrigins);
   if (preflight) return preflight;
 
-  const corsHeaders = buildCorsHeaders(req);
+  const corsHeaders = buildCorsHeaders(req, productionOrigins);
   const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
     new Response(JSON.stringify(body), {
       ...init,
@@ -430,46 +431,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      let sessionsTotal: number | null = null;
-      let sessionsLast7d: number | null = null;
-      let accuracyRateLast7d: number | null = null;
-      let totalAnsweredLast7d: number | null = null;
       let activeOppositionId: string | null = null;
       let activeCurriculum: string | null = null;
-
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      try {
-        const base = service.schema('app').from('practice_sessions');
-        const userIdColumn = await pickUserIdColumn(service, 'app', 'practice_sessions');
-        const totalRes = await base.select('session_id', { count: 'exact', head: true }).eq(userIdColumn, userId);
-        if (!totalRes.error) sessionsTotal = totalRes.count ?? null;
-        const lastRes = await base
-          .select('session_id', { count: 'exact', head: true })
-          .eq(userIdColumn, userId)
-          .gte('finished_at', since);
-        if (!lastRes.error) sessionsLast7d = lastRes.count ?? null;
-
-        const aggRes = await base
-          .select('score,total')
-          .eq(userIdColumn, userId)
-          .gte('finished_at', since)
-          .limit(500);
-        if (!aggRes.error && Array.isArray(aggRes.data)) {
-          let score = 0;
-          let total = 0;
-          for (const row of aggRes.data as unknown[]) {
-            const record = row as Record<string, unknown>;
-            const s = Number(record.score ?? 0);
-            const t = Number(record.total ?? 0);
-            if (Number.isFinite(s)) score += s;
-            if (Number.isFinite(t)) total += t;
-          }
-          totalAnsweredLast7d = total;
-          accuracyRateLast7d = total > 0 ? score / total : null;
-        }
-      } catch {
-        sessionsTotal = null;
-      }
 
       try {
         const query = service
@@ -503,10 +466,6 @@ Deno.serve(async (req) => {
         currentUsername: profileName ?? readMetaUsername(user.user_metadata),
         activeOppositionId,
         activeCurriculum,
-        sessionsTotal,
-        sessionsLast7d,
-        accuracyRateLast7d,
-        totalAnsweredLast7d,
       });
     }
 

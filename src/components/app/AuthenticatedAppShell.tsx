@@ -197,11 +197,12 @@ const CURRICULUM_STORAGE_KEY = 'quantia_curriculum';
 const LEGACY_CURRICULUM_STORAGE_KEY = 'osakitest_curriculum';
 
 type AuthenticatedAppShellProps = {
+  assignedKeys?: string[];
   session: Session;
 };
 
-export default function AuthenticatedAppShell({ session }: AuthenticatedAppShellProps) {
-  const [curriculum, setCurriculum] = useState<string>(() => {
+export default function AuthenticatedAppShell({ session, assignedKeys }: AuthenticatedAppShellProps) {
+  const [selectedCurriculum, setCurriculum] = useState<string>(() => {
     try {
       return (
         window.localStorage.getItem(CURRICULUM_STORAGE_KEY) ||
@@ -213,6 +214,8 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     }
     return DEFAULT_CURRICULUM;
   });
+  const curriculum = assignedKeys && !assignedKeys.some(key => normalizeCurriculumId(key) === normalizeCurriculumId(selectedCurriculum))
+    ? assignedKeys[0] : selectedCurriculum;
   const [curriculumOptions, setCurriculumOptions] = useState<CurriculumOption[]>(() =>
     buildFallbackCurriculumOptions(curriculum),
   );
@@ -288,16 +291,16 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
   const isLawSelectionCurriculum = useMemo(() => hasLawSelection(curriculum), [curriculum]);
   const isSingleScopePracticeCurriculum = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
   const restrictedCurriculum = useMemo(
-    () => getRestrictedCurriculumForIdentity(session, bundle?.identity ?? null),
-    [bundle?.identity, session],
+    () => assignedKeys ? null : getRestrictedCurriculumForIdentity(session, bundle?.identity ?? null),
+    [assignedKeys, bundle?.identity, session],
   );
   const curriculumAccessPolicy = useMemo(
-    () => getCurriculumAccessPolicyForIdentity(session, bundle?.identity ?? null),
-    [bundle?.identity, session],
+    () => assignedKeys ? null : getCurriculumAccessPolicyForIdentity(session, bundle?.identity ?? null),
+    [assignedKeys, bundle?.identity, session],
   );
   const allowedCurriculumKeys = useMemo(() => readAllowedCurriculumKeys(session), [session]);
   const effectiveAllowedCurriculumKeys = useMemo(
-    () =>
+    () => assignedKeys ??
       Array.from(
         new Set([
           ...allowedCurriculumKeys,
@@ -306,7 +309,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
             : []),
         ]),
       ),
-    [allowedCurriculumKeys, curriculumAccessPolicy],
+    [assignedKeys, allowedCurriculumKeys, curriculumAccessPolicy],
   );
   const preferredCurriculumId = curriculumAccessPolicy?.preferredCurriculumId ?? null;
   const [isManagementOwner, setIsManagementOwner] = useState(false);
@@ -351,7 +354,10 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     if (hasManagementAccess && currentView === 'admin-quality' && !canManageQuality) setCurrentView('admin-dashboard');
   }, [currentView, hasManagementAccess, canManageQuestions, canManageCatalogs, canManageUsers, canManageQuality, managementPermissions]);
   const accessibleCurriculumOptions = useMemo(() => {
-    const limitedOptions = filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
+    const limitedOptions = assignedKeys
+      ? assignedKeys.map(id => curriculumOptions.find(option => normalizeCurriculumId(option.id) === normalizeCurriculumId(id))
+          ?? buildFallbackCurriculumOptions(id).find(option => option.id === id)!)
+      : filterCurriculumOptionsByAllowedKeys(curriculumOptions, effectiveAllowedCurriculumKeys);
     const preferredMatches = preferredCurriculumId
       ? limitedOptions.filter((option) => normalizeCurriculumId(option.id) === normalizeCurriculumId(preferredCurriculumId))
       : [];
@@ -380,7 +386,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
     });
 
     return [scored[0]];
-  }, [curriculumOptions, effectiveAllowedCurriculumKeys, preferredCurriculumId, restrictedCurriculum]);
+  }, [assignedKeys, curriculumOptions, effectiveAllowedCurriculumKeys, preferredCurriculumId, restrictedCurriculum]);
   const visibleCurriculumOptions = useMemo(() => {
     if (!selectedVisibleCurriculumIds) return accessibleCurriculumOptions;
     const selected = new Set(selectedVisibleCurriculumIds.map(normalizeCurriculumId));
@@ -3279,7 +3285,7 @@ export default function AuthenticatedAppShell({ session }: AuthenticatedAppShell
         {currentView === 'admin-students' ? (
           canManageUsers ? (
             <Suspense fallback={screenLoader}>
-              <AdminStudents isOwner={isManagementOwner} onClose={() => setCurrentView('admin-dashboard')} />
+              <AdminStudents canReadStatistics={canReadStatistics} isOwner={isManagementOwner} onClose={() => setCurrentView('admin-dashboard')} />
             </Suspense>
           ) : null
         ) : null}
