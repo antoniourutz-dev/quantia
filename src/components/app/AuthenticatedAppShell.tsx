@@ -244,6 +244,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   const [selectedLawFilter, setSelectedLawFilter] = useState<string | null>(null);
   const [bundle, setBundle] = useState<DashboardBundle | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
+  const [statsHydratedFor, setStatsHydratedFor] = useState('');
+  const [sessionsReadyFor, setSessionsReadyFor] = useState('');
+  const [statsFailedFor, setStatsFailedFor] = useState('');
   const [dashboardSecondaryHydrating, setDashboardSecondaryHydrating] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [practiceEmptyState, setPracticeEmptyState] = useState<PracticeEmptyStateModel | null>(null);
@@ -486,6 +489,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     homeLcpNodeMarkedRef.current = false;
     setHomeHeroFinalModel(null);
 
+    setStatsHydratedFor('');
+    setSessionsReadyFor('');
+    setStatsFailedFor('');
     setDataLoading(true);
     setDashboardSecondaryHydrating(false);
     setDataError(null);
@@ -501,6 +507,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         void getRecentSessionsForHome(curriculum)
           .then((recentSessions) => {
             if (dashboardLoadCycleRef.current !== loadCycle) return;
+            setSessionsReadyFor(curriculum);
             setBundle((prev) => {
               if (!prev) return prev;
               return {
@@ -513,7 +520,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             });
           })
           .catch(() => {
-            void 0;
+            if (dashboardLoadCycleRef.current === loadCycle) setStatsFailedFor(curriculum);
           });
       }, 400);
       requestIdle(() => {
@@ -538,6 +545,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               };
             });
             setDashboardSecondaryHydrating(false);
+            setStatsHydratedFor(curriculum);
             markHomeHydrated(trace);
 
             requestIdle(() => {
@@ -579,6 +587,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             }, 2500);
           } catch {
             if (dashboardLoadCycleRef.current !== loadCycle) return;
+            setStatsFailedFor(curriculum);
             setDashboardSecondaryHydrating(false);
           }
         })();
@@ -586,6 +595,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     } catch (error) {
       if (dashboardLoadCycleRef.current !== loadCycle) return;
       setDashboardSecondaryHydrating(false);
+      setStatsFailedFor(curriculum);
       setDataError(
         error instanceof Error ? error.message : t('No se ha podido cargar el panel.', 'Ezin izan da panela kargatu.'),
       );
@@ -600,9 +610,11 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (!session) return;
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
+    const loadCycle = dashboardLoadCycleRef.current;
     try {
       const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
       const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum, { skipSharedCommonOverride: true });
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
       setBundle((prev) => {
         const recentSessions =
           prev?.practiceState.recentSessions?.length ? prev.practiceState.recentSessions : nextBundle.practiceState.recentSessions;
@@ -617,6 +629,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       requestIdle(() => {
         void getRecentSessionsForHome(curriculum)
           .then((recentSessions) => {
+            if (dashboardLoadCycleRef.current !== loadCycle) return;
             setBundle((prev) => {
               if (!prev) return prev;
               return {
@@ -638,7 +651,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             curriculum,
             nextBundle.questionBlocks,
           ).catch(() => null);
-          if (!sharedOverride) return;
+          if (!sharedOverride || dashboardLoadCycleRef.current !== loadCycle) return;
           setBundle((prev) => {
             if (!prev?.practiceState.learningDashboardV2) return prev;
             const learningDashboardV2 = prev.practiceState.learningDashboardV2;
@@ -952,7 +965,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       void refreshDashboard();
       return;
     }
-    if (!hasManagementAccess && currentView === 'stats') {
+    if (currentView === 'stats') {
       void refreshDashboard();
     }
   }, [currentView, hasManagementAccess, refreshDashboard, session]);
@@ -2572,12 +2585,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   <GraduationCap className="text-white w-7 h-7" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-black text-2xl tracking-tighter">kuantia</span>
-                    <span className="text-slate-500 font-black text-xs">•</span>
-                    <span className="text-xs font-black text-slate-200 truncate max-w-[140px]">
-                      {activeCurriculumLabel}
-                    </span>
+                  <div className="text-xs font-semibold text-indigo-200">{t('Oposición', 'Oposizioa')}</div>
+                  <div className="text-base font-bold leading-tight text-white break-words">
+                    {activeCurriculumLabel}
                   </div>
                 </div>
               </div>
@@ -3055,7 +3065,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           </div>
         ) : null}
 
-        {dataLoading && !bundle && currentView !== 'test-active' && currentView !== 'dashboard' ? (
+        {dataLoading && !bundle && currentView !== 'test-active' && currentView !== 'dashboard' && currentView !== 'stats' ? (
           <div className="flex items-center justify-center rounded-[2rem] border border-slate-100 bg-white p-20 text-slate-500">
             <Loader2 className="mr-3 h-6 w-6 animate-spin" />
             {t('Cargando panel...', 'Panela kargatzen...')}
@@ -3165,6 +3175,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         {currentView === 'test-selection' ? (
           <Suspense fallback={screenLoader}>
             <TestSelection
+              oppositionLabel={activeCurriculumLabel}
               curriculum={curriculum}
               lawOptions={lawOptions}
               lawOptionsLoading={discoveredLawOptionsLoading}
@@ -3180,7 +3191,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   isLawSelectionCurriculum ? activeGeneralLawPracticeFilters : null,
                 )
               }
-              onStartCustomTest={(params) => void handleStartCustomTest(params)}
+              onStartCustomTest={(params) => handleStartCustomTest(params)}
               onStartCustomPractice={handleStartCustomPractice}
               initialSyllabus={selectedSyllabus}
               onStateChange={setTestSelectionState}
@@ -3439,6 +3450,12 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
 
         {currentView === 'stats' ? (
           <Suspense fallback={screenLoader}>
+            {statsFailedFor === curriculum ? <div role="alert" className="rounded-2xl bg-white p-6">
+              {t('No se pudo cargar tu progreso.', 'Ezin izan da zure aurrerapena kargatu.')}
+              <button className="ml-3 font-bold text-indigo-700" onClick={() => void refreshDashboard()}>{t('Reintentar', 'Saiatu berriro')}</button>
+            </div> : statsHydratedFor !== curriculum || sessionsReadyFor !== curriculum || !bundle ? <div role="status" className="flex items-center gap-3 rounded-2xl bg-white p-6">
+              <Loader2 className="h-5 w-5 animate-spin" />{t('Cargando tu progreso en', 'Aurrerapena kargatzen:')} {activeCurriculumLabel}…
+            </div> : (
             <StatsDashboard
               results={statsResults}
               bundle={bundle}
@@ -3458,6 +3475,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 void handleStartCoachSession();
               }}
             />
+            )}
           </Suspense>
         ) : null}
       </main>
