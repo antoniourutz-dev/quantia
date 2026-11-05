@@ -45,6 +45,12 @@ function harness(actor = 'manager', banned = false, invalid = false) {
     call: (body: Record<string,unknown>, auth=true) => handler(new Request('https://example.test/admin-users', {method:'POST', headers: auth ? {authorization:'Bearer test'} : {}, body:JSON.stringify(body)})) };
 }
 describe('admin-users authorization', () => {
+  it('requires statistics permission for the learning record', async () => {
+    expect((await harness().call({action:'learning_record',userId:'learner',section:'sessions'})).status).toBe(403);
+  });
+  it('blocks delegated reads of privileged learning records', async () => {
+    expect((await harness().call({action:'learning_record',userId:'owner',section:'answers'})).status).toBe(403);
+  });
   it('rejects anonymous requests', async () => expect((await harness().call({action:'list'},false)).status).toBe(401));
   it('rejects an invalid token', async () => expect((await harness('manager',false,true).call({action:'list'})).status).toBe(401));
   it('rejects banned users', async () => expect((await harness('manager',true).call({action:'list'})).status).toBe(401));

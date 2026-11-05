@@ -3746,6 +3746,9 @@ export const adminListUsers = async (params: {
   };
 };
 
+export const adminLearningRecord = (userId:string, section:string, page:number) =>
+  adminInvokeFunction<{rows:Record<string,unknown>[];count:number}>('admin-users',{action:'learning_record',userId,section,page});
+
 export const adminGetUserDetail = async (userId: string): Promise<AdminUserDetail> => {
   await assertAdminSession('users.manage');
   const id = readText(userId);

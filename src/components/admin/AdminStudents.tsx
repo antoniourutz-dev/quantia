@@ -1,6 +1,7 @@
+import LearningRecord from './LearningRecord';
 import StudentProgress from './StudentProgress';
 import StudentOppositions from './StudentOppositions';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Loader2, Plus, Search, Trash2, User2, X } from 'lucide-react';
 import { useAppLocale } from '../../lib/locale';
 import type { AdminUserDetail, AdminUserListItem } from '../../types';
@@ -74,20 +75,24 @@ export default function AdminStudents({ onClose, isOwner = false, canReadStatist
     setDetail(null);
   }, [perPage]);
 
+  const requestNumber = useRef(0);
   const openUser = async (userId: string) => {
+    const ticket = ++requestNumber.current;
     setSelectedId(userId);
     setDetail(null);
     setDetailLoading(true);
     setNotice(null);
     try {
       const d = await adminGetUserDetail(userId);
+      if (ticket !== requestNumber.current) return;
       setDetail(d);
       setNameDraft(d.currentUsername ?? '');
       setPasswordDraft('');
     } catch (error) {
+      if (ticket !== requestNumber.current) return;
       setNotice({ kind: 'error', text: error instanceof Error ? error.message : t('Error cargando el alumno.', 'Errorea ikaslea kargatzean.') });
     } finally {
-      setDetailLoading(false);
+      if (ticket === requestNumber.current) setDetailLoading(false);
     }
   };
 
@@ -436,6 +441,7 @@ export default function AdminStudents({ onClose, isOwner = false, canReadStatist
                 </button>
               </div>
 
+              {canReadStatistics && <LearningRecord key={detail.userId} userId={detail.userId} />}
               <StudentOppositions key={detail.userId} userId={detail.userId} />
 
               {isOwner ? <>

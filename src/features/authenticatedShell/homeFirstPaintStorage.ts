@@ -1,4 +1,4 @@
-export const HOME_FIRST_PAINT_STORAGE_KEY = 'quantia.home.firstpaint.v1';
+export const homeFirstPaintStorageKey = (userId: string) => 'quantia.home.firstpaint.v2:' + userId;
 
 export type HomeFirstPaintModel = {
   coachLabel: string;
@@ -10,10 +10,10 @@ export type HomeFirstPaintModel = {
   primaryCardCtaLabel: string;
 };
 
-export const readHomeFirstPaintCache = (): Record<string, HomeFirstPaintModel> => {
+export const readHomeFirstPaintCache = (userId: string): Record<string, HomeFirstPaintModel> => {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = window.localStorage.getItem(HOME_FIRST_PAINT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(homeFirstPaintStorageKey(userId));
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};

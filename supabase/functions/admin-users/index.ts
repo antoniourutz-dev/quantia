@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { service, isOwner, supabaseUrl } = await assertAdmin(req);
+    const { service, isOwner, supabaseUrl, userId: actorId } = await assertAdmin(req);
     const body = (await req.json().catch(() => ({}))) as Json;
     const action = readText(body.action).toLowerCase();
     // Delegated managers may administer learners, never owners or other managers.
@@ -250,6 +250,35 @@ Deno.serve(async (req) => {
     }
     if (!isOwner && (action === 'delete' || action === 'reset_progress' || action === 'set_password')) {
       throw new Error('Acceso denegado.');
+    }
+
+    if (action === 'learning_record') {
+      if (!targetUserId) throw new Error('Alumno requerido.');
+      if (!isOwner) {
+        const check = await service.from('quantia_admin_permissions').select('permission')
+          .eq('user_id', actorId).eq('permission','statistics.read').maybeSingle();
+        if (check.error) throw check.error;
+        if (!check.data) throw new Error('Acceso denegado.');
+      }
+      const sources = {
+        sessions: ['app','practice_sessions','started_at,curriculum,mode,title,finished_at,score,total','started_at','session_id'],
+        answers: ['app','question_attempt_events','answered_at,curriculum,question_id,selected_option,correct_option,is_correct','answered_at','id'],
+        visits: ['public','user_question_activity','viewed_at,curriculum,surface,mode,question_number,answered_at','viewed_at','event_id'],
+        legacy: ['app','practice_attempts','answered_at,curriculum,question_number,category,is_correct','answered_at','attempt_id'],
+        notes: ['public','user_notes','updated_at,question_id,content','updated_at','question_id'],
+        highlights: ['public','user_highlights_v2','updated_at,question_id,content_type,category','updated_at','id'],
+        goals: ['app','exam_targets','updated_at,curriculum,exam_date,daily_new_capacity,daily_review_capacity','updated_at','curriculum'],
+      } as const;
+      const section = readText(body.section);
+      if (!Object.hasOwn(sources,section)) throw new Error('Sección desconocida.');
+      const page = Number(body.page ?? 1);
+      if (!Number.isSafeInteger(page) || page < 1 || page > 1000000) throw new Error('Página inválida.');
+      const [schema,table,fields,date,key] = sources[section as keyof typeof sources];
+      const result = await service.schema(schema).from(table).select(fields,{count:'exact'})
+        .eq('user_id',targetUserId).order(date,{ascending:false,nullsFirst:false}).order(key)
+        .range((page-1)*20,page*20-1);
+      if (result.error) throw result.error;
+      return jsonResponse({rows:result.data,count:result.count});
     }
 
     if (action === 'list') {
