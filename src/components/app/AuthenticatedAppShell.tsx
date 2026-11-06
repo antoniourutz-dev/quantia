@@ -2148,7 +2148,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       const el = curriculumTriggerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const desiredWidth = Math.max(280, rect.width);
+      const desiredWidth = Math.min(400, Math.max(240, window.innerWidth - 24));
       const maxLeft = Math.max(12, window.innerWidth - desiredWidth - 12);
       const desiredHeight = 420;
       const belowTop = rect.bottom + 12;
@@ -2564,7 +2564,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               onClick={() => setCurriculumMenuOpen((prev) => !prev)}
               disabled={curriculumOptionsLoading}
               className="w-full flex items-center justify-between gap-4 group text-left rounded-3xl px-3 py-2.5 outline-none transition-all hover:bg-white/5 focus:bg-white/5 disabled:opacity-60 disabled:hover:bg-transparent"
-              aria-haspopup="menu"
+              aria-label={t('Cambiar oposición', 'Oposizioa aldatu')}
+              aria-haspopup="true"
               aria-expanded={curriculumMenuOpen}
             >
               <div className="flex items-center gap-4 min-w-0">
@@ -2575,9 +2576,10 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="font-black text-2xl tracking-tighter">kuantia</span>
                     <span className="text-slate-500 font-black text-xs">•</span>
-                    <span className="text-xs font-black text-slate-200 truncate max-w-[140px]">
-                      {activeCurriculumLabel}
-                    </span>
+                  </div>
+                  <div className="mt-1 text-xs font-bold leading-snug text-slate-200 break-words">
+                    <span className="block text-[10px] uppercase tracking-wide text-slate-400">{t('Oposición activa', 'Oposizio aktiboa')}</span>
+                    {activeCurriculumLabel}
                   </div>
                 </div>
               </div>
@@ -2609,7 +2611,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                       <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                         {t('Oposicion', 'Oposizioa')}
                       </div>
-                      <div className="mt-1 text-sm font-black text-white truncate">{activeCurriculumLabel}</div>
+                      <div className="mt-1 text-sm font-black text-white break-words">{activeCurriculumLabel}</div>
                       <div className="mt-2 text-[10px] font-bold text-slate-400 leading-relaxed">
                         {t(
                           'Estadisticas y progreso independientes por oposicion.',
@@ -2625,7 +2627,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                           !curriculumHasActivity(opt);
                         const selected = opt.id === curriculum;
                         const subtitle = unavailable
-                          ? t('Sincronizacion pendiente', 'Sinkronizazioa zain')
+                          ? t('Disponibilidad por comprobar', 'Erabilgarritasuna egiaztatzeko')
                           : null;
 
                         return (
@@ -2649,7 +2651,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                             } ${selected ? 'bg-white/10' : ''}`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-black text-white truncate">{opt.label}</div>
+                              <div className="text-sm font-black leading-snug text-white break-words">{opt.label}</div>
                               {subtitle ? (
                                 <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                   {subtitle}
@@ -2666,6 +2668,11 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                           </button>
                         );
                       })}
+                    </div>
+                    <div className="border-t border-white/10 p-3">
+                      <button type="button" onClick={() => { setCurriculumMenuOpen(false); setSidebarOpen(false); setCurrentView('settings'); }} className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-indigo-200 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300">
+                        {t('Gestionar oposiciones visibles', 'Ikusgai dauden oposizioak kudeatu')}
+                      </button>
                     </div>
                   </div>,
                   document.body,
@@ -2862,7 +2869,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           curriculumOptions={visibleCurriculumOptions}
           curriculumOptionsLoading={curriculumOptionsLoading}
           compact={mobileChromeCompact}
-          onSelectCurriculum={(next) => setCurriculum(next)}
+          onSelectCurriculum={(next) => { if (next !== curriculum) handleCurriculumChange(next); }}
+          onManageCurriculums={() => setCurrentView('settings')}
           onLogout={() => {
             setSidebarOpen(false);
             void handleLogout();
