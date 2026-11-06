@@ -78,7 +78,7 @@ export default function MobileTopBar({
                   compact ? 'h-10 max-w-[8.5rem] text-[11px]' : 'h-11 max-w-[9.75rem] text-[11px]'
                 }`}
               >
-                <span className="min-w-0 truncate">{t('Oposici�n', 'Oposizioa')}</span>
+                <span className="min-w-0 truncate">{t('Oposición', 'Oposizioa')}</span>
                 <ChevronDown size={14} className="shrink-0" />
               </button>
 
@@ -147,7 +147,7 @@ export default function MobileTopBar({
                 {t('Selecciona oposicion', 'Hautatu oposizioa')}
               </div>
               <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Mis oposiciones', 'Nire oposizioak')}</div>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{t('Elige la oposici�n que quieres preparar.', 'Aukeratu prestatu nahi duzun oposizioa.')}</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">{t('Elige la oposición que quieres preparar.', 'Aukeratu prestatu nahi duzun oposizioa.')}</p>
               <div className="mt-4">
                 <input
                   value={query}
@@ -179,7 +179,7 @@ export default function MobileTopBar({
                     >
                       <div className="min-w-0">
                         <div className="break-words text-sm font-black leading-snug text-slate-900">{opt.label}</div>
-                        {opt.id === curriculumId ? <div className="mt-1 text-xs font-bold text-emerald-700">{t('Oposici�n activa', 'Oposizio aktiboa')}</div> : null}
+                        {opt.id === curriculumId ? <div className="mt-1 text-xs font-bold text-emerald-700">{t('Oposición activa', 'Oposizio aktiboa')}</div> : null}
                       </div>
                       {opt.id === curriculumId ? (
                         <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
@@ -201,4 +201,3 @@ export default function MobileTopBar({
     </>
   );
 }
-
