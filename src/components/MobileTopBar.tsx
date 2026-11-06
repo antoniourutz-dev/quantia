@@ -17,6 +17,7 @@ export default function MobileTopBar({
   curriculumOptionsLoading,
   compact = false,
   onSelectCurriculum,
+  onManageCurriculums,
   onLogout,
 }: {
   title: string;
@@ -28,6 +29,7 @@ export default function MobileTopBar({
   curriculumOptionsLoading: boolean;
   compact?: boolean;
   onSelectCurriculum: (next: string) => void;
+  onManageCurriculums: () => void;
   onLogout: () => void;
 }) {
   const locale = useAppLocale();
@@ -76,7 +78,7 @@ export default function MobileTopBar({
                   compact ? 'h-10 max-w-[8.5rem] text-[11px]' : 'h-11 max-w-[9.75rem] text-[11px]'
                 }`}
               >
-                <span className="min-w-0 truncate">{t('Oposición', 'Oposizioa')}</span>
+                <span className="min-w-0 truncate">{t('Oposici�n', 'Oposizioa')}</span>
                 <ChevronDown size={14} className="shrink-0" />
               </button>
 
@@ -144,7 +146,8 @@ export default function MobileTopBar({
               <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
                 {t('Selecciona oposicion', 'Hautatu oposizioa')}
               </div>
-              <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Temarios', 'Gai-zerrendak')}</div>
+              <div className="mt-2 text-2xl font-black tracking-tight text-slate-900">{t('Mis oposiciones', 'Nire oposizioak')}</div>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">{t('Elige la oposici�n que quieres preparar.', 'Aukeratu prestatu nahi duzun oposizioa.')}</p>
               <div className="mt-4">
                 <input
                   value={query}
@@ -175,8 +178,8 @@ export default function MobileTopBar({
                       className="flex w-full items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-left transition-all hover:bg-slate-100"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-black text-slate-900">{opt.label}</div>
-                        <div className="mt-1 truncate text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">{opt.id}</div>
+                        <div className="break-words text-sm font-black leading-snug text-slate-900">{opt.label}</div>
+                        {opt.id === curriculumId ? <div className="mt-1 text-xs font-bold text-emerald-700">{t('Oposici�n activa', 'Oposizio aktiboa')}</div> : null}
                       </div>
                       {opt.id === curriculumId ? (
                         <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50">
@@ -185,6 +188,10 @@ export default function MobileTopBar({
                       ) : null}
                     </button>
                   ))}
+                  {filteredOptions.length === 0 ? <p className="px-5 py-4 text-sm text-slate-600">{t('No hay oposiciones que coincidan.', 'Ez da bat datorren oposiziorik aurkitu.')}</p> : null}
+                  <button type="button" onClick={() => { setSheetOpen(false); setQuery(''); onManageCurriculums(); }} className="w-full rounded-2xl px-5 py-4 text-left text-sm font-bold text-indigo-700 hover:bg-indigo-50">
+                    {t('Gestionar oposiciones visibles', 'Ikusgai dauden oposizioak kudeatu')}
+                  </button>
                 </div>
               )}
             </div>
@@ -194,3 +201,4 @@ export default function MobileTopBar({
     </>
   );
 }
+

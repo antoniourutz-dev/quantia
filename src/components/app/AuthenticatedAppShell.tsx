@@ -559,10 +559,10 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                         ...learningDashboardV2,
                         topicBreakdown: [
                           ...(learningDashboardV2.topicBreakdown ?? []).filter(
-                            (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte común'),
+                            (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte com�n'),
                           ),
                           {
-                            topicLabel: 'Parte común',
+                            topicLabel: 'Parte com�n',
                             scope: 'common' as const,
                             attempts: sharedOverride.attempts,
                             questionCount: sharedOverride.total,
@@ -650,10 +650,10 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   ...learningDashboardV2,
                   topicBreakdown: [
                     ...(learningDashboardV2.topicBreakdown ?? []).filter(
-                      (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte común'),
+                      (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte com�n'),
                     ),
                     {
-                      topicLabel: 'Parte común',
+                      topicLabel: 'Parte com�n',
                       scope: 'common' as const,
                       attempts: sharedOverride.attempts,
                       questionCount: sharedOverride.total,
@@ -1538,9 +1538,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           reviewPriority = 'most_problematic';
           resolvedTitle =
             mistakeReviewPeriod?.type === 'recent_tests'
-              ? t(`Fallos de los últimos ${mistakeReviewPeriod.count} tests`, `Azken ${mistakeReviewPeriod.count} testen akatsak`)
+              ? t(`Fallos de los �ltimos ${mistakeReviewPeriod.count} tests`, `Azken ${mistakeReviewPeriod.count} testen akatsak`)
               : mistakeReviewPeriod?.type === 'last_day'
-                ? t('Fallos del último día', 'Azken eguneko akatsak')
+                ? t('Fallos del �ltimo d�a', 'Azken eguneko akatsak')
                 : t('Corregir fallos', 'Hutsegiteak zuzendu');
         } else if (!syllabus && !isSingleScopePracticeCurriculum) {
           questions = await getBalancedMixedPracticeBatch({
@@ -1671,7 +1671,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           const emptyArticleSelection = Array.isArray(normalizedFilters.generalLawArticleIds);
           setGeneralLawBlockSelectionError(
             emptyArticleSelection
-              ? t('Selecciona al menos un artículo para empezar el test.', 'Hautatu gutxienez artikulu bat testa hasteko.')
+              ? t('Selecciona al menos un art�culo para empezar el test.', 'Hautatu gutxienez artikulu bat testa hasteko.')
               : t('Selecciona al menos un bloque para iniciar el test.', 'Hautatu gutxienez bloke bat testa hasteko.'),
           );
           return;
@@ -1818,8 +1818,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           id: createId(),
           mode: 'custom',
           title: t(
-            `Test personalizado (${params.from}–${params.to})${params.randomize ? ' • aleatorio' : ''}`,
-            `Test pertsonalizatua (${params.from}–${params.to})${params.randomize ? ' • ausazkoa' : ''}`,
+            `Test personalizado (${params.from}-${params.to})${params.randomize ? '  aleatorio' : ''}`,
+            `Test pertsonalizatua (${params.from}-${params.to})${params.randomize ? '  ausazkoa' : ''}`,
           ),
           startedAt: new Date().toISOString(),
           questions,
@@ -1902,7 +1902,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           setActiveTestSupport({ supportMode: plan.supportMode, studyData });
         }
 
-        const topicLabel = plan.topicId ? ` · ${plan.topicId}` : '';
+        const topicLabel = plan.topicId ? ` � ${plan.topicId}` : '';
         const title = t(`A tu medida${topicLabel}`, `Zure neurrira${topicLabel}`);
 
         const activePracticeSession: ActivePracticeSession = {
@@ -2148,7 +2148,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       const el = curriculumTriggerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const desiredWidth = Math.max(280, rect.width);
+      const desiredWidth = Math.min(400, Math.max(240, window.innerWidth - 24));
       const maxLeft = Math.max(12, window.innerWidth - desiredWidth - 12);
       const desiredHeight = 420;
       const belowTop = rect.bottom + 12;
@@ -2250,12 +2250,12 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         const emptyArticleSelection = Array.isArray(filters.generalLawArticleIds);
         setGeneralLawBlockSelectionError(
           emptyArticleSelection
-            ? t('Selecciona al menos un artículo para iniciar el estudio.', 'Hautatu gutxienez artikulu bat ikasketa hasteko.')
+            ? t('Selecciona al menos un art�culo para iniciar el estudio.', 'Hautatu gutxienez artikulu bat ikasketa hasteko.')
             : t('Selecciona al menos un bloque para iniciar el estudio.', 'Hautatu gutxienez bloke bat ikasketa hasteko.'),
         );
         throw new Error(
           emptyArticleSelection
-            ? t('Selecciona al menos un artículo para iniciar el estudio.', 'Hautatu gutxienez artikulu bat ikasketa hasteko.')
+            ? t('Selecciona al menos un art�culo para iniciar el estudio.', 'Hautatu gutxienez artikulu bat ikasketa hasteko.')
             : t('Selecciona al menos un bloque para iniciar el estudio.', 'Hautatu gutxienez bloke bat ikasketa hasteko.'),
         );
       }
@@ -2265,20 +2265,20 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         const fromValue = Math.trunc(Number(range[0]));
         const toValue = Math.trunc(Number(range[1]));
         if (!Number.isFinite(fromValue) || !Number.isFinite(toValue) || fromValue <= 0 || toValue <= 0) {
-          throw new Error(t('Introduce un rango válido.', 'Sartu tarte egoki bat.'));
+          throw new Error(t('Introduce un rango v�lido.', 'Sartu tarte egoki bat.'));
         }
         const computedCount = Math.abs(toValue - fromValue) + 1;
         if (computedCount > MAX_RANGE_QUESTIONS) {
           throw new Error(
             t(
-              `Rango demasiado grande (máx. ${MAX_RANGE_QUESTIONS} preguntas).`,
+              `Rango demasiado grande (m�x. ${MAX_RANGE_QUESTIONS} preguntas).`,
               `Tarte handiegia da (gehienez ${MAX_RANGE_QUESTIONS} galdera).`,
             ),
           );
         }
         const filtered = await getQuestionsByNumberRange({ curriculum, from: fromValue, to: toValue, randomize: false, filters });
         if (filtered.length === 0) {
-          throw new Error(t('No hay preguntas disponibles en ese rango numérico.', 'Ez dago galderarik tarte horretan.'));
+          throw new Error(t('No hay preguntas disponibles en ese rango num�rico.', 'Ez dago galderarik tarte horretan.'));
         }
         selected = filtered;
       } else {
@@ -2442,7 +2442,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           : currentView === 'stats'
             ? t('Stats', 'Stats')
             : currentView === 'test-results'
-              ? t('Análisis', 'Analisia')
+              ? t('An�lisis', 'Analisia')
               : currentView === 'settings'
                 ? t('Ajustes', 'Doikuntzak')
                 : isAdminView
@@ -2564,7 +2564,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               onClick={() => setCurriculumMenuOpen((prev) => !prev)}
               disabled={curriculumOptionsLoading}
               className="w-full flex items-center justify-between gap-4 group text-left rounded-3xl px-3 py-2.5 outline-none transition-all hover:bg-white/5 focus:bg-white/5 disabled:opacity-60 disabled:hover:bg-transparent"
-              aria-haspopup="menu"
+              aria-label={t('Cambiar oposici�n', 'Oposizioa aldatu')}
+              aria-haspopup="true"
               aria-expanded={curriculumMenuOpen}
             >
               <div className="flex items-center gap-4 min-w-0">
@@ -2574,10 +2575,11 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="font-black text-2xl tracking-tighter">kuantia</span>
-                    <span className="text-slate-500 font-black text-xs">•</span>
-                    <span className="text-xs font-black text-slate-200 truncate max-w-[140px]">
-                      {activeCurriculumLabel}
-                    </span>
+                    <span className="text-slate-500 font-black text-xs"></span>
+                  </div>
+                  <div className="mt-1 text-xs font-bold leading-snug text-slate-200 break-words">
+                    <span className="block text-[10px] uppercase tracking-wide text-slate-400">{t('Oposici�n activa', 'Oposizio aktiboa')}</span>
+                    {activeCurriculumLabel}
                   </div>
                 </div>
               </div>
@@ -2609,7 +2611,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                       <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                         {t('Oposicion', 'Oposizioa')}
                       </div>
-                      <div className="mt-1 text-sm font-black text-white truncate">{activeCurriculumLabel}</div>
+                      <div className="mt-1 text-sm font-black text-white break-words">{activeCurriculumLabel}</div>
                       <div className="mt-2 text-[10px] font-bold text-slate-400 leading-relaxed">
                         {t(
                           'Estadisticas y progreso independientes por oposicion.',
@@ -2625,7 +2627,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                           !curriculumHasActivity(opt);
                         const selected = opt.id === curriculum;
                         const subtitle = unavailable
-                          ? t('Sincronizacion pendiente', 'Sinkronizazioa zain')
+                          ? t('Disponibilidad por comprobar', 'Erabilgarritasuna egiaztatzeko')
                           : null;
 
                         return (
@@ -2649,7 +2651,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                             } ${selected ? 'bg-white/10' : ''}`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-black text-white truncate">{opt.label}</div>
+                              <div className="text-sm font-black leading-snug text-white break-words">{opt.label}</div>
                               {subtitle ? (
                                 <div className="mt-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                   {subtitle}
@@ -2666,6 +2668,11 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                           </button>
                         );
                       })}
+                    </div>
+                    <div className="border-t border-white/10 p-3">
+                      <button type="button" onClick={() => { setCurriculumMenuOpen(false); setSidebarOpen(false); setCurrentView('settings'); }} className="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-indigo-200 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300">
+                        {t('Gestionar oposiciones visibles', 'Ikusgai dauden oposizioak kudeatu')}
+                      </button>
                     </div>
                   </div>,
                   document.body,
@@ -2755,7 +2762,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   }`}
                 >
                   <GraduationCap size={22} className={currentView === 'admin-catalogs' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
-                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Catálogos', 'Katalogoak')}</span>
+                  <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Cat�logos', 'Katalogoak')}</span>
                 </button>
               </>
             ) : (
@@ -2834,7 +2841,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 }`}
               >
                 <Database size={22} />
-                <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Gestión BD', 'BD kudeaketa')}</span>
+                <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Gesti�n BD', 'BD kudeaketa')}</span>
               </button>
             ) : null}
             <button
@@ -2862,7 +2869,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           curriculumOptions={visibleCurriculumOptions}
           curriculumOptionsLoading={curriculumOptionsLoading}
           compact={mobileChromeCompact}
-          onSelectCurriculum={(next) => setCurriculum(next)}
+          onSelectCurriculum={(next) => { if (next !== curriculum) handleCurriculumChange(next); }}
+          onManageCurriculums={() => setCurrentView('settings')}
           onLogout={() => {
             setSidebarOpen(false);
             void handleLogout();
@@ -3475,3 +3483,5 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     </LocaleProvider>
   );
 }
+
+
