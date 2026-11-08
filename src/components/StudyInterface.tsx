@@ -240,6 +240,7 @@ export default function StudyInterface({
           </div>
 
           <div className="text-[17px] sm:text-[19px] font-extrabold leading-relaxed text-slate-800 pr-1 select-text">
+            {currentQuestion.auditIncident && <span aria-hidden="true" className="mr-1 text-amber-700">*</span>}
             <HighlightableText
               text={currentQuestion.text}
               highlights={highlightsMap[currentQuestion.id] || []}
@@ -247,6 +248,7 @@ export default function StudyInterface({
               onRemoveHighlight={handleRemoveHighlight}
             />
           </div>
+          {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galdera honek auditorian hautemandako gorabehera bat du.' : 'Esta pregunta presenta una incidencia detectada en la auditoría.'}</p>}
         </div>
 
         {currentQuestion.correctAnswer == null ? (
@@ -445,3 +447,4 @@ export default function StudyInterface({
     </div>
   );
 }
+
