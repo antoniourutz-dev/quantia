@@ -214,6 +214,10 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
       row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
     ),
     text: normalizeYearDots(statement),
+    auditIncident:
+      row.curriculum_key === 'osakidetza_tecnico_superior_mantenimiento_instalaciones' &&
+      typeof row.explicacion_editorial === 'string' &&
+      row.explicacion_editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]'),
     options: OPTION_KEYS.map((key) => ({ id: key, text: normalizeYearDots(options[key]) })),
     correctAnswer: correctOption,
     explanation:
@@ -468,3 +472,4 @@ export const mapPressureInsightsV2 = (
       readText(value.pressure_message) ?? 'Todavia hace falta un poco mas para saber como respondes cuando sube la exigencia.',
   };
 };
+

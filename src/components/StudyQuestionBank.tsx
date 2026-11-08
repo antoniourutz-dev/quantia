@@ -516,8 +516,10 @@ export default function StudyQuestionBank({
                         {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}
                       </div>
                       <h2 className="mt-2 text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
+                        {selectedQuestion.auditIncident && <span aria-hidden="true" className="mr-1 text-amber-700">*</span>}
                         {selectedQuestion.text}
                       </h2>
+                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{t('Esta pregunta presenta una incidencia detectada en la auditoría.', 'Galdera honek auditorian hautemandako gorabehera bat du.')}</p>}
                       {selectedQuestion.category ? (
                         <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                           {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ??
