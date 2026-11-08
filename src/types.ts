@@ -59,6 +59,7 @@ export interface Question {
   id: string;
   number: number | null;
   text: string;
+  auditIncident?: boolean;
   options: Option[];
   correctAnswer: OptionKey | null;
   explanation: string;
@@ -467,3 +468,4 @@ export const formatModeLabel = (mode: PracticeMode, locale: AppLocale = 'es') =>
       return locale === 'eu' ? 'Blokea' : 'Bloque';
   }
 };
+
