@@ -3156,17 +3156,22 @@ export const getStudyQuestionsSlice = async (
   return getRandomPracticeBatch(limit, curriculum, 'all', filters);
 };
 
-// The question-bank topic selector must use syllabus themes, not individual legal or
-// bibliographic references. Other curricula retain their existing category grouping.
-const isMediumMaintenanceCurriculum = (curriculum: string) =>
-  canonicalizeCurriculumId(curriculum) ===
-  canonicalizeCurriculumId('osakidetza_mantenimiento_instalaciones');
+// These three Osakidetza oppositions share one official-bibliography topic taxonomy
+// across the personalised test and the question bank. Others retain their prior grouping.
+const OFFICIAL_BIBLIOGRAPHY_CURRICULA = new Set([
+  'osakidetza_mantenimiento_instalaciones',
+  'osakidetza_tecnico_medio_administracion_gestion',
+  'osakidetza_tecnico_superior_mantenimiento_instalaciones',
+]);
+const usesOfficialBibliographyTopics = (curriculum: string) =>
+  OFFICIAL_BIBLIOGRAPHY_CURRICULA.has(canonicalizeCurriculumId(curriculum));
 
 const getQuestionBankTopicLabel = (curriculum: string, question: QuestionBankCacheRow): string | null => {
   // Specific questions use the original syllabus topic, never their legal/bibliographic reference.
-  if (isMediumMaintenanceCurriculum(curriculum) && question.syllabus === 'specific') {
+  if (usesOfficialBibliographyTopics(curriculum) && question.syllabus === 'specific') {
     const topic = String(question.topic ?? '').trim();
-    return /^Tema\s+\d+\s*[·.:-]/i.test(topic) ? topic : null;
+    // Includes combined official bibliography entries such as "Temas 16 y 21".
+    return /^Temas?\s+\d+(?:\s|[·.:-])/i.test(topic) ? topic : null;
   }
   return getCurriculumCategoryGroupLabel(curriculum, question.category);
 };
@@ -3178,7 +3183,7 @@ export const getQuestionBankTopicOptions = async (params: {
 }): Promise<CurriculumTopicOption[]> => {
   // Share the exact same source as 'A tu medida': one list of syllabus topics and
   // counts in both experiences. Keep the existing behavior for other oppositions.
-  if (isMediumMaintenanceCurriculum(params.curriculum)) {
+  if (usesOfficialBibliographyTopics(params.curriculum)) {
     return getCurriculumTopicOptionsWithCounts({
       curriculum: params.curriculum,
       questionScope: params.questionScope ?? 'all',
