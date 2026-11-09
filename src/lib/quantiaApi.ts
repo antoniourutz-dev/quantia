@@ -706,6 +706,16 @@ const buildQuestionContentDedupKey = (row: {
   ].join('|');
 };
 
+// La respuesta bibliográfica de una pregunta auditada solo se usa en el banco de estudio.
+// No modifica la clave de puntuación de los test ni la respuesta oficial original.
+const readQuestionBankBibliographyAnswer = (row: Record<string, unknown>): OptionKey | null => {
+  if (row.curriculum_key !== 'osakidetza_tecnico_superior_mantenimiento_instalaciones') return null;
+  const editorial = typeof row.explicacion_editorial === 'string' ? row.explicacion_editorial : '';
+  if (!editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]')) return null;
+  const match = editorial.match(/\[RESPUESTA_BIBLIOGRAFICA:([A-D])\]/i);
+  return match ? toOptionKey(match[1]) : null;
+};
+
 const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCacheRow | null => {
   const id = readText(row.id ?? row.question_id ?? row.uuid ?? row.slug);
   const correctAnswer = toOptionKey(
@@ -714,7 +724,7 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
       row.correct_option ??
       row.answer ??
       row.correct_answer_index,
-  );
+  ) ?? readQuestionBankBibliographyAnswer(row);
   const text = readFirstText(row, [
     'pregunta',
     'pregunta_texto',
@@ -3272,8 +3282,14 @@ export const getQuestionBankQuestionDetail = async (params: {
     if (!error && data) {
       const question = mapQuestion((data ?? null) as Record<string, unknown>);
       if (question) {
-        questionBankDetailCache.set(questionId, question);
-        return question;
+        const bibliographyAnswer = question.auditIncident
+          ? readQuestionBankBibliographyAnswer(data as Record<string, unknown>)
+          : null;
+        const bankQuestion = !question.correctAnswer && bibliographyAnswer
+          ? { ...question, correctAnswer: bibliographyAnswer }
+          : question;
+        questionBankDetailCache.set(questionId, bankQuestion);
+        return bankQuestion;
       }
       throw new Error('No se ha podido interpretar la pregunta seleccionada.');
     }
