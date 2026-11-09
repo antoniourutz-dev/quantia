@@ -546,7 +546,7 @@ export default function StudyQuestionBank({
                               ? 'border-amber-300 bg-amber-100 text-amber-900'
                               : 'border-slate-200 bg-slate-50 text-slate-900'
                           }`}>
-                            {toAnswerLabel(question.correctAnswer)}
+                            {question.auditIncident && !question.correctAnswer ? '?' : toAnswerLabel(question.correctAnswer)}
                           </div>
                         </div>
                       </button>
