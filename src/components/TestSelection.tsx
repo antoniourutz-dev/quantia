@@ -18,7 +18,7 @@ import type {
   CustomPracticeContentScope,
   CustomPracticeSupportMode,
 } from '../domain/customPractice/customPracticeTypes';
-import { getCurriculumTopicOptions } from '../lib/quantiaApi';
+import { getCurriculumTopicOptionsWithCounts, type CurriculumTopicOption } from '../lib/quantiaApi';
 import {
   PRACTICE_MODE_IDS,
   normalizePracticeModeIds,
@@ -172,7 +172,7 @@ export default function TestSelection({
   });
   const [customTopicMode, setCustomTopicMode] = useState<'all' | 'single'>(initialState?.customTopicMode ?? 'all');
   const [customTopic, setCustomTopic] = useState(initialState?.customTopic ?? '');
-  const [customTopics, setCustomTopics] = useState<string[]>([]);
+  const [customTopics, setCustomTopics] = useState<CurriculumTopicOption[]>([]);
   const [customTopicsLoading, setCustomTopicsLoading] = useState(false);
   const initialCustomSessionLength = initialState?.customSessionLength ?? 50;
   const [customSessionLength, setCustomSessionLength] = useState(initialCustomSessionLength);
@@ -355,10 +355,10 @@ export default function TestSelection({
           : 'all';
     setCustomTopicsLoading(true);
     setCustomError(null);
-    void getCurriculumTopicOptions({ curriculum, questionScope: scope })
+    void getCurriculumTopicOptionsWithCounts({ curriculum, questionScope: scope })
       .then((topics) => {
         setCustomTopics(topics);
-        if (customTopic && !topics.includes(customTopic)) {
+        if (customTopic && !topics.some(({ label }) => label === customTopic)) {
           setCustomTopic('');
         }
       })
@@ -1253,9 +1253,9 @@ export default function TestSelection({
                             ? 'Aukeratu gaia'
                             : 'Elige el tema'}
                       </option>
-                      {customTopics.map((topic) => (
-                        <option key={topic} value={topic}>
-                          {topic}
+                      {customTopics.map(({ label, count }) => (
+                        <option key={label} value={label}>
+                          {`${label} (${count} ${isBasque ? 'galdera' : count === 1 ? 'pregunta' : 'preguntas'})`}
                         </option>
                       ))}
                     </select>
@@ -1720,9 +1720,9 @@ export default function TestSelection({
                       ? 'Aukeratu gaia'
                       : 'Elige el tema'}
                 </option>
-                {customTopics.map((topic) => (
-                  <option key={topic} value={topic}>
-                    {topic}
+                {customTopics.map(({ label, count }) => (
+                  <option key={label} value={label}>
+                    {`${label} (${count} ${isBasque ? 'galdera' : count === 1 ? 'pregunta' : 'preguntas'})`}
                   </option>
                 ))}
               </select>

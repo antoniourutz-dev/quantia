@@ -2973,12 +2973,14 @@ export const getPracticeQuestionsByIds = async (params: {
   return ordered.slice(0, limit);
 };
 
-const topicOptionsCache = new Map<string, Promise<string[]>>();
+export type CurriculumTopicOption = { label: string; count: number };
 
-export const getCurriculumTopicOptions = async (params: {
+const topicOptionsCache = new Map<string, Promise<CurriculumTopicOption[]>>();
+
+export const getCurriculumTopicOptionsWithCounts = async (params: {
   curriculum: string;
   questionScope?: PracticeQuestionScopeFilter;
-}): Promise<string[]> => {
+}): Promise<CurriculumTopicOption[]> => {
   const curriculum = String(params.curriculum ?? '').trim() || DEFAULT_CURRICULUM;
   const scope = params.questionScope ?? 'all';
   const cacheKey = `${curriculum}::${scope}`;
@@ -2991,12 +2993,13 @@ export const getCurriculumTopicOptions = async (params: {
       maxQuestions: 5000,
       questionScope: scope,
     });
-    const topics = new Set<string>();
-    for (const q of snapshot) {
-      const label = getCurriculumCategoryGroupLabel(curriculum, q.category);
-      if (label) topics.add(label);
+    const topicCounts = new Map<string, number>();
+    for (const question of snapshot) {
+      const label = getCurriculumCategoryGroupLabel(curriculum, question.category);
+      if (label) topicCounts.set(label, (topicCounts.get(label) ?? 0) + 1);
     }
-    return Array.from(topics).sort((a, b) => a.localeCompare(b, 'es'));
+    return Array.from(topicCounts, ([label, count]) => ({ label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true }));
   })().catch((error) => {
     topicOptionsCache.delete(cacheKey);
     throw error;
@@ -3005,6 +3008,12 @@ export const getCurriculumTopicOptions = async (params: {
   topicOptionsCache.set(cacheKey, task);
   return task;
 };
+
+// Keep the original names-only API available for other consumers.
+export const getCurriculumTopicOptions = async (params: {
+  curriculum: string;
+  questionScope?: PracticeQuestionScopeFilter;
+}): Promise<string[]> => (await getCurriculumTopicOptionsWithCounts(params)).map(({ label }) => label);
 
 export const getCustomPracticeBatch = async (params: {
   curriculum: string;
