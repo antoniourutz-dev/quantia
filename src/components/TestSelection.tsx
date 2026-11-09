@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, ChevronDown, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal } from 'lucide-react';
+import { BookOpen, CheckCircle2, ChevronDown, ChevronRight, Hash, Zap, AlertCircle, Timer, SlidersHorizontal, Trophy } from 'lucide-react';
 import {
   SyllabusType,
   formatSyllabusLabel,
@@ -24,14 +24,18 @@ import {
   normalizePracticeModeIds,
   type PracticeModeVisibilityId,
 } from '../lib/practiceModeVisibility';
+import ChallengePanel from './ChallengePanel';
+import type { ChallengeScope } from '../lib/challenge';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
-type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom';
+type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom' | 'challenge';
 type StandardSyllabusSelection = 'mixed' | SyllabusType;
 type ReviewSource = 'all' | 'recent_tests' | 'last_day';
 
 export type TestSelectionStateSnapshot = {
   selectionMode: SelectionMode;
+  challengeScope?: ChallengeScope;
+  challengeRandomize?: boolean;
   selectedSyllabus: StandardSyllabusSelection;
   selectedLaw: string;
   questionCount: number;
@@ -65,6 +69,8 @@ interface TestSelectionProps {
       | { type: 'recent_tests'; count: number }
       | { type: 'last_day' },
   ) => void;
+  onStartChallenge?: (questions: Question[], title: string) => void;
+  syncingChallenge?: boolean;
   onStartLawTest: (law: string, count?: number) => void;
   onStartCustomTest: (params: { from: number; to: number; randomize: boolean; syllabus?: SyllabusType | null }) => void;
   onStartCustomPractice: (config: CustomPracticeConfig) => void;
@@ -108,6 +114,8 @@ export default function TestSelection({
   initialLaw = null,
   onStart,
   onStartLawTest,
+  onStartChallenge,
+  syncingChallenge = false,
   onStartCustomTest,
   onStartCustomPractice,
   initialSyllabus,
@@ -146,6 +154,8 @@ export default function TestSelection({
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialState?.selectionMode ?? 'standard');
+  const [challengeScope, setChallengeScope] = useState<ChallengeScope>(initialState?.challengeScope ?? 'common');
+  const [challengeRandomize, setChallengeRandomize] = useState(initialState?.challengeRandomize ?? false);
   const [selectedSyllabus, setSelectedSyllabus] = useState<StandardSyllabusSelection>(
     initialState?.selectedSyllabus ?? initialSyllabus ?? 'common',
   );
@@ -242,9 +252,9 @@ export default function TestSelection({
     activeGeneralLaw?.shortTitle ?? activeGeneralLaw?.title ?? selectedLaw;
 
   useEffect(() => {
-    if (visiblePracticeModeSet.has(selectionMode)) return;
+    if (selectionMode === 'challenge' ? Boolean(onStartChallenge) : visiblePracticeModeSet.has(selectionMode)) return;
     setSelectionMode(normalizedVisiblePracticeModeIds[0]);
-  }, [normalizedVisiblePracticeModeIds, selectionMode, visiblePracticeModeSet]);
+  }, [normalizedVisiblePracticeModeIds, onStartChallenge, selectionMode, visiblePracticeModeSet]);
   const selectedBlockCount = selectedGeneralLawBlockIds.length;
   const selectedArticleCount = selectedGeneralLawArticleIds.length;
   const publishedBlockCount = generalLawBlocks.length;
@@ -265,6 +275,8 @@ export default function TestSelection({
   useEffect(() => {
     onStateChange?.({
       selectionMode,
+      challengeScope,
+      challengeRandomize,
       selectedSyllabus,
       selectedLaw,
       questionCount,
@@ -283,6 +295,8 @@ export default function TestSelection({
       customShowNotes,
     });
   }, [
+    challengeRandomize,
+    challengeScope,
     customContentScope,
     customFrom,
     customOrder,
@@ -870,8 +884,21 @@ export default function TestSelection({
               </p>
             </div>
           </button> : null}
+          {onStartChallenge && (
+            <button type="button" onClick={() => setSelectionMode('challenge')} aria-pressed={selectionMode === 'challenge'}
+              className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left font-black text-slate-800 sm:p-4 ${selectionMode === 'challenge' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
+              <Trophy size={26} className="text-indigo-700" aria-hidden="true" />
+              {isBasque ? 'Erronka' : 'Desafío'}
+            </button>
+          )}
         </div>
       </div>
+
+      {selectionMode === 'challenge' && onStartChallenge && (
+        <ChallengePanel key={curriculum} curriculum={curriculum} userId={userId} isBasque={isBasque}
+          scope={challengeScope} onScopeChange={setChallengeScope} randomize={challengeRandomize} onRandomizeChange={setChallengeRandomize}
+          syncing={syncingChallenge} onStart={onStartChallenge} />
+      )}
 
       {modeNeedsConfig ? (
         <div className="lg:hidden rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
@@ -1736,7 +1763,7 @@ export default function TestSelection({
         </div>
       ) : null}
 
-      <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
+      {selectionMode !== 'challenge' && <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
         <button
           onClick={handleStart}
           disabled={selectionMode === 'standard' && usesLawSelection && !activeGeneralLaw && (!selectedLaw || lawOptions.length === 0)}
@@ -1755,7 +1782,7 @@ export default function TestSelection({
           {startLabel}
           <ChevronRight size={28} />
         </button>
-      </div>
+      </div>}
       <div className="h-[168px] lg:hidden" />
     </div>
   );

@@ -1465,6 +1465,26 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     setTestReturnTarget({ view: 'dashboard' });
   }, [activeSession, currentView, lastTestPayload, selectedLawFilter, selectedSyllabus, testSelectionState]);
 
+  const handleStartChallenge = useCallback((questions: Question[], title: string) => {
+    captureTestReturnTarget();
+    setDataError(null);
+    setPracticeEmptyState(null);
+    setActiveTestSupport(null);
+    setActiveSession({
+      id: createId(),
+      mode: 'custom',
+      title,
+      startedAt: new Date().toISOString(),
+      questions,
+      batchNumber: 1,
+      totalBatches: 1,
+      batchStartIndex: null,
+      nextStandardBatchStartIndex: null,
+      source: 'manual',
+    });
+    setCurrentView('test-active');
+  }, [captureTestReturnTarget]);
+
   const handleStartTest = useCallback(
     async (
       mode: PracticeMode,
@@ -3181,6 +3201,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               visiblePracticeModeIds={visiblePracticeModeIds}
               customSupportMode={customPracticeSupport}
               onStart={handleStartTest}
+              onStartChallenge={handleStartChallenge}
+              syncingChallenge={syncingSession}
               onStartLawTest={(law, count) =>
                 handleStartLawTest(
                   law,
