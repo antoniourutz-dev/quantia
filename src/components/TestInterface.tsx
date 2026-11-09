@@ -593,7 +593,7 @@ export default function TestInterface({
               </div>
 
               <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
-                {currentQuestion.auditIncident && <span aria-hidden="true" className="mr-1 text-amber-700">*</span>}
+                {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="mr-1 font-black text-amber-600">*</span>}
                 {showMarks ? (
                   <HighlightableText
                     text={currentQuestion.text}
@@ -607,7 +607,7 @@ export default function TestInterface({
                   currentQuestion.text
                 )}
               </h2>
-              {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galdera honek auditorian hautemandako gorabehera bat du.' : 'Esta pregunta presenta una incidencia detectada en la auditoría.'}</p>}
+              {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galdera honek hainbat erantzun edo akatsen bat izan ditzake. Ikusi azalpena.' : 'Esta pregunta puede admitir varias respuestas o contener un error. Consulta la explicación.'}</p>}
               {showNotes ? (
                 <div className="mt-3">
                   {(() => {
