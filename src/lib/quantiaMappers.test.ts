@@ -36,6 +36,21 @@ describe('mapQuestion', () => {
     expect(mapQuestion({ ...row, explicacion_editorial: 'Texto [INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]' })?.auditIncident).toBe(false);
     expect(mapQuestion({ ...row, explicacion_editorial: null })?.auditIncident).toBe(false);
   });
+  it('converts a [dudosa] label into an incident marker without exposing the prefix', () => {
+    const row = {
+      id: 7, pregunta: '[dudosa] Texto oficial',
+      opcion_a: 'Uno', opcion_b: 'Dos', opcion_c: 'Tres', opcion_d: 'Cuatro',
+      curriculum: 'osakidetza_mantenimiento_instalaciones',
+      grupo: 'especifico',
+      respuesta_correcta: 'C',
+    };
+    expect(mapQuestion(row)).toMatchObject({
+      id: '7', text: 'Texto oficial', auditIncident: true,
+      correctAnswer: 'c', syllabus: 'specific',
+    });
+    expect(mapQuestion({ ...row, pregunta: 'Texto oficial' })?.auditIncident).toBe(false);
+  });
+
   it('keeps a question without an assigned answer as unscored', () => {
     expect(mapQuestion({
       id: 1,
