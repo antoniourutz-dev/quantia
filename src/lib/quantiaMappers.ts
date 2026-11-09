@@ -195,6 +195,8 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
   const options = extractOptions(row);
   if (!statement || !options) return null;
 
+  const auditIncidentFromText = /^\[dudosa\](?:\s|$)/i.test(statement);
+  const visibleStatement = statement.replace(/^\[dudosa\]\s*/i, '').trim();
   const correctOption = extractCorrectOption(row, options);
 
   const questionScope =
@@ -213,11 +215,12 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
     number: toNullableNumber(
       row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
     ),
-    text: normalizeYearDots(statement),
-    auditIncident:
+    text: normalizeYearDots(visibleStatement),
+    auditIncident: auditIncidentFromText || (
       row.curriculum_key === 'osakidetza_tecnico_superior_mantenimiento_instalaciones' &&
       typeof row.explicacion_editorial === 'string' &&
-      row.explicacion_editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]'),
+      row.explicacion_editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]')
+    ),
     options: OPTION_KEYS.map((key) => ({ id: key, text: normalizeYearDots(options[key]) })),
     correctAnswer: correctOption,
     explanation:
