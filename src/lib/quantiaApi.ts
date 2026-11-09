@@ -3158,11 +3158,13 @@ export const getStudyQuestionsSlice = async (
 
 // The question-bank topic selector must use syllabus themes, not individual legal or
 // bibliographic references. Other curricula retain their existing category grouping.
+const isMediumMaintenanceCurriculum = (curriculum: string) =>
+  canonicalizeCurriculumId(curriculum) ===
+  canonicalizeCurriculumId('osakidetza_mantenimiento_instalaciones');
+
 const getQuestionBankTopicLabel = (curriculum: string, question: QuestionBankCacheRow): string | null => {
-  if (
-    canonicalizeCurriculumId(curriculum) ===
-    canonicalizeCurriculumId('osakidetza_mantenimiento_instalaciones')
-  ) {
+  // Specific questions use the original syllabus topic, never their legal/bibliographic reference.
+  if (isMediumMaintenanceCurriculum(curriculum) && question.syllabus === 'specific') {
     const topic = String(question.topic ?? '').trim();
     return /^Tema\s+\d+\s*[·.:-]/i.test(topic) ? topic : null;
   }
@@ -3174,6 +3176,15 @@ export const getQuestionBankTopicOptions = async (params: {
   questionScope?: PracticeQuestionScopeFilter;
   filters?: PracticeFilters | null;
 }): Promise<CurriculumTopicOption[]> => {
+  // Share the exact same source as 'A tu medida': one list of syllabus topics and
+  // counts in both experiences. Keep the existing behavior for other oppositions.
+  if (isMediumMaintenanceCurriculum(params.curriculum)) {
+    return getCurriculumTopicOptionsWithCounts({
+      curriculum: params.curriculum,
+      questionScope: params.questionScope ?? 'all',
+    });
+  }
+
   const rows = await getQuestionBankIndex(params.curriculum, params.questionScope ?? 'all', params.filters ?? null);
   const counts = new Map<string, number>();
   for (const row of rows) {
