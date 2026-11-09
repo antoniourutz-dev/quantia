@@ -546,7 +546,7 @@ export default function StudyQuestionBank({
                               ? 'border-amber-300 bg-amber-100 text-amber-900'
                               : 'border-slate-200 bg-slate-50 text-slate-900'
                           }`}>
-                            {question.auditIncident ? '?' : toAnswerLabel(question.correctAnswer)}
+                            {toAnswerLabel(question.correctAnswer)}
                           </div>
                         </div>
                       </button>
@@ -597,26 +597,35 @@ export default function StudyQuestionBank({
 
                 <div className="flex flex-col divide-y divide-slate-100 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white">
                   {selectedQuestion.options.map((option) => {
+                    const isReferenceAnswer = Boolean(selectedQuestion.auditIncident && option.id === selectedQuestion.correctAnswer);
                     const isCorrect = !selectedQuestion.auditIncident && option.id === selectedQuestion.correctAnswer;
 
                     return (
                       <div
                         key={option.id}
                         className={`relative flex items-start gap-4 p-4 sm:p-5 ${
-                          isCorrect ? 'bg-emerald-50/60' : 'bg-white'
+                          isCorrect ? 'bg-emerald-50/60' : isReferenceAnswer ? 'bg-amber-50/70' : 'bg-white'
                         }`}
                       >
                         <div
                           className={`mt-0.5 h-10 w-10 shrink-0 rounded-2xl border flex items-center justify-center font-black ${
                             isCorrect
                               ? 'border-emerald-200 bg-white text-emerald-700'
-                              : 'border-slate-200 bg-slate-50 text-slate-600'
+                              : isReferenceAnswer
+                                ? 'border-amber-300 bg-amber-100 text-amber-900'
+                                : 'border-slate-200 bg-slate-50 text-slate-600'
                           }`}
                         >
                           {option.id.toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1 text-sm sm:text-base font-bold leading-snug text-slate-700">
                           {option.text}
+                          {isReferenceAnswer && (
+                            <div className="mt-2 text-xs font-semibold text-amber-800">
+                              <span className="mr-1 text-amber-600">*</span>
+                              {t('Respuesta según bibliografía. Consulta la incidencia normativa.', 'Bibliografiaren araberako erantzuna. Ikusi araudiari buruzko oharra.')}
+                            </div>
+                          )}
                         </div>
                         {isCorrect ? <CheckCircle2 className="mt-1 h-6 w-6 text-emerald-600 shrink-0" /> : null}
                       </div>
