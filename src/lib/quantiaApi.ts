@@ -3162,7 +3162,7 @@ const OFFICIAL_BIBLIOGRAPHY_CURRICULA = new Set([
   'osakidetza_mantenimiento_instalaciones',
   'osakidetza_tecnico_medio_administracion_gestion',
   'osakidetza_tecnico_superior_mantenimiento_instalaciones',
-]);
+].map(canonicalizeCurriculumId));
 const usesOfficialBibliographyTopics = (curriculum: string) =>
   OFFICIAL_BIBLIOGRAPHY_CURRICULA.has(canonicalizeCurriculumId(curriculum));
 
