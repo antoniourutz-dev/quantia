@@ -98,6 +98,7 @@ type QuestionBankCacheRow = {
   syllabus: SyllabusType;
   text: string;
   category: string | null;
+  auditIncident: boolean;
   dedupeKey: string;
 };
 
@@ -752,6 +753,11 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
     syllabus,
     text,
     category,
+    auditIncident: /^\[dudosa\](?:\s|$)/i.test(text) || (
+      row.curriculum_key === 'osakidetza_tecnico_superior_mantenimiento_instalaciones' &&
+      typeof row.explicacion_editorial === 'string' &&
+      row.explicacion_editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]')
+    ),
     dedupeKey: buildQuestionBankDedupeKey({
       number,
       category,
@@ -3147,12 +3153,28 @@ export const getStudyQuestionsSlice = async (
   return getRandomPracticeBatch(limit, curriculum, 'all', filters);
 };
 
+export const getQuestionBankTopicOptions = async (params: {
+  curriculum: string;
+  questionScope?: PracticeQuestionScopeFilter;
+  filters?: PracticeFilters | null;
+}): Promise<CurriculumTopicOption[]> => {
+  const rows = await getQuestionBankIndex(params.curriculum, params.questionScope ?? 'all', params.filters ?? null);
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const label = getCurriculumCategoryGroupLabel(params.curriculum, row.category);
+    if (label) counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return Array.from(counts, ([label, count]) => ({ label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true }));
+};
+
 export const getQuestionBankPage = async (params: {
   curriculum: string;
   questionScope?: PracticeQuestionScopeFilter;
   page?: number;
   pageSize?: number;
   search?: string;
+  topic?: string | null;
   filters?: PracticeFilters | null;
 }): Promise<QuestionBankPage> => {
   const curriculum = params.curriculum;
@@ -3163,12 +3185,16 @@ export const getQuestionBankPage = async (params: {
   const start = page * pageSize;
   const end = start + pageSize;
   const index = await getQuestionBankIndex(curriculum, questionScope, params.filters ?? null);
+  const topic = String(params.topic ?? '').trim();
+  const topicFiltered = topic
+    ? index.filter((question) => getCurriculumCategoryGroupLabel(curriculum, question.category) === topic)
+    : index;
   const normalizedSearch = search.toLowerCase();
   const filtered = !normalizedSearch
-    ? index
+    ? topicFiltered
     : /^\d{1,6}$/.test(search)
-      ? index.filter((question) => question.number === Number(search))
-      : index.filter(
+      ? topicFiltered.filter((question) => question.number === Number(search))
+      : topicFiltered.filter(
           (question) =>
             question.text.toLowerCase().includes(normalizedSearch) ||
             String(question.category ?? '').toLowerCase().includes(normalizedSearch),
@@ -3181,6 +3207,7 @@ export const getQuestionBankPage = async (params: {
         number: row.number,
         correctAnswer: row.correctAnswer,
         syllabus: row.syllabus,
+        auditIncident: row.auditIncident,
       }),
     ),
     page,
