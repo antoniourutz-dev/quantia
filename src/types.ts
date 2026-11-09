@@ -182,6 +182,7 @@ export interface QuestionBankListItem {
   number: number | null;
   correctAnswer: OptionKey | null;
   syllabus: SyllabusType;
+  auditIncident?: boolean;
 }
 
 export interface QuestionBankPage {
