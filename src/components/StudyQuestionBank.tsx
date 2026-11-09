@@ -12,7 +12,7 @@ import {
   type QuestionBankListItem,
 } from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
-import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail } from '../lib/quantiaApi';
+import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail, getQuestionBankTopicOptions, type CurriculumTopicOption } from '../lib/quantiaApi';
 import EditorialExplanation from './EditorialExplanation';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 import { createId } from '../lib/id';
@@ -94,6 +94,9 @@ export default function StudyQuestionBank({
   const initialScope = usesOnlySpecificScope ? 'specific' : 'common';
 
   const [scope, setScope] = useState<StudyScope>(initialScope);
+  const [selectedTopic, setSelectedTopic] = useState('');
+  const [topicOptions, setTopicOptions] = useState<CurriculumTopicOption[]>([]);
+  const [topicOptionsLoading, setTopicOptionsLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +151,30 @@ export default function StudyQuestionBank({
   }, [scope, scopeLabels]);
 
   useEffect(() => {
+    setSelectedTopic('');
+  }, [curriculum, scope]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTopicOptionsLoading(true);
+    getQuestionBankTopicOptions({ curriculum, questionScope: scope, filters: questionFilters })
+      .then((options) => {
+        if (cancelled) return;
+        setTopicOptions(options);
+        setSelectedTopic((current) =>
+          current && !options.some(({ label }) => label === current) ? '' : current,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTopicOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTopicOptionsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [curriculum, scope, questionFilters]);
+
+  useEffect(() => {
     setPageIndex(0);
     setSelectedId(null);
     setSelectedQuestion(null);
@@ -155,7 +182,7 @@ export default function StudyQuestionBank({
     setPageItems([]);
     setHasNextPage(false);
     setError(null);
-  }, [curriculum, scope, searchKey]);
+  }, [curriculum, scope, searchKey, selectedTopic]);
 
   useEffect(() => {
     if (!userId || !selectedQuestion) return;
@@ -184,6 +211,7 @@ export default function StudyQuestionBank({
       page: pageIndex,
       pageSize,
       search: searchTerm,
+      topic: selectedTopic,
       filters: questionFilters,
     })
       .then((page) => {
@@ -205,7 +233,7 @@ export default function StudyQuestionBank({
     return () => {
       cancelled = true;
     };
-  }, [curriculum, listErrorMessage, pageIndex, pageSize, questionFilters, scope, searchTerm]);
+  }, [curriculum, listErrorMessage, pageIndex, pageSize, questionFilters, scope, searchTerm, selectedTopic]);
 
   useEffect(() => {
     if (pageItems.length === 0) {
@@ -375,6 +403,23 @@ export default function StudyQuestionBank({
                 </button>
               ))}
             </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <label htmlFor="question-bank-topic" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                {t('Tema', 'Gaia')}
+              </label>
+              <select
+                id="question-bank-topic"
+                value={selectedTopic}
+                onChange={(event) => setSelectedTopic(event.target.value)}
+                disabled={topicOptionsLoading}
+                className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 disabled:opacity-60"
+              >
+                <option value="">{topicOptionsLoading ? t('Cargando temas...', 'Gaiak kargatzen...') : t('Todos los temas', 'Gai guztiak')}</option>
+                {topicOptions.map(({ label, count }) => (
+                  <option value={label} key={label}>{`${label} (${count})`}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 sm:items-end">
@@ -446,6 +491,12 @@ export default function StudyQuestionBank({
               {questionCountLabel}
             </div>
 
+            {pageItems.some((item) => item.auditIncident) ? (
+              <p className="mb-3 text-xs font-semibold text-amber-800">
+                <span className="mr-1 font-black text-amber-600">*</span>
+                {t('Pregunta con incidencia: consulta la explicación.', 'Gorabehera duen galdera: ikusi azalpena.')}
+              </p>
+            ) : null}
             <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-4 sm:p-5">
               {listLoading ? (
                 <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
@@ -472,18 +523,30 @@ export default function StudyQuestionBank({
                           setSelectedId(question.id);
                           setExplanationOpen(false);
                         }}
-                        className={`relative aspect-square min-h-12 rounded-2xl border bg-white shadow-sm transition-all ${
-                          isSelected
-                            ? 'border-indigo-400 bg-indigo-50 shadow-indigo-200/30'
-                            : 'border-slate-200 hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-200/20'
+                        aria-label={`${t('Pregunta', 'Galdera')} ${displayNumber}${question.auditIncident ? t(', con incidencia', ', gorabeherarekin') : ''}`}
+                        className={`relative aspect-square min-h-12 rounded-2xl border shadow-sm transition-all ${
+                          question.auditIncident
+                            ? isSelected
+                              ? 'border-amber-500 bg-amber-100 ring-2 ring-amber-400/40'
+                              : 'border-amber-300 bg-amber-50 hover:border-amber-500'
+                            : isSelected
+                              ? 'border-indigo-400 bg-indigo-50 shadow-indigo-200/30'
+                              : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-200/20'
                         }`}
                       >
-                        <div className="absolute left-2 top-2 text-[10px] font-black leading-none text-slate-400">
+                        <div className={`absolute left-2 top-2 text-[10px] font-black leading-none ${question.auditIncident ? 'text-amber-800' : 'text-slate-400'}`}>
                           {displayNumber}
                         </div>
+                        {question.auditIncident ? (
+                          <span className="absolute right-2 top-1 text-lg font-black text-amber-600" aria-hidden="true">*</span>
+                        ) : null}
                         <div className="flex h-full items-center justify-center">
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-[13px] font-black leading-none text-slate-900">
-                            {toAnswerLabel(question.correctAnswer)}
+                          <div className={`rounded-xl border px-2.5 py-2 text-[13px] font-black leading-none ${
+                            question.auditIncident
+                              ? 'border-amber-300 bg-amber-100 text-amber-900'
+                              : 'border-slate-200 bg-slate-50 text-slate-900'
+                          }`}>
+                            {question.auditIncident ? '?' : toAnswerLabel(question.correctAnswer)}
                           </div>
                         </div>
                       </button>
@@ -516,10 +579,10 @@ export default function StudyQuestionBank({
                         {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}
                       </div>
                       <h2 className="mt-2 text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
-                        {selectedQuestion.auditIncident && <span aria-hidden="true" className="mr-1 text-amber-700">*</span>}
+                        {selectedQuestion.auditIncident && <span role="img" aria-label={t('Pregunta con incidencia', 'Gorabehera duen galdera')} className="mr-1 font-black text-amber-600">*</span>}
                         {selectedQuestion.text}
                       </h2>
-                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{t('Esta pregunta presenta una incidencia detectada en la auditoría.', 'Galdera honek auditorian hautemandako gorabehera bat du.')}</p>}
+                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{t('Esta pregunta puede admitir varias respuestas o contener un error. Consulta la explicación.', 'Galderak hainbat erantzun izan ditzake edo akatsen bat eduki. Ikusi azalpena.')}</p>}
                       {selectedQuestion.category ? (
                         <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                           {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ??
@@ -534,7 +597,7 @@ export default function StudyQuestionBank({
 
                 <div className="flex flex-col divide-y divide-slate-100 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white">
                   {selectedQuestion.options.map((option) => {
-                    const isCorrect = option.id === selectedQuestion.correctAnswer;
+                    const isCorrect = !selectedQuestion.auditIncident && option.id === selectedQuestion.correctAnswer;
 
                     return (
                       <div
