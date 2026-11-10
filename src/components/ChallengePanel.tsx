@@ -1,20 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Trophy, Zap } from 'lucide-react';
+import { Trophy } from 'lucide-react';
 import { CHALLENGE_OPTIONS, loadChallengeQuestions, shuffleChallengeQuestions, type ChallengeResult, type ChallengeScope } from '../lib/challenge';
 import { getChallengeRanking } from '../lib/challengeRanking';
 import { getQuestionBankSnapshot } from '../lib/quantiaApi';
-import ChallengeTopics from './ChallengeTopics';
 import type { Question } from '../types';
-
-export type ChallengeSelection = ChallengeScope | 'topics';
 
 type Props = {
   curriculum: string;
   userId: string | null;
   isBasque: boolean;
   syncing: boolean;
-  scope: ChallengeSelection;
-  onScopeChange: (scope: ChallengeSelection) => void;
+  scope: ChallengeScope;
+  onScopeChange: (scope: ChallengeScope) => void;
   randomize: boolean;
   onRandomizeChange: (randomize: boolean) => void;
   onStart: (questions: Question[], title: string) => void;
@@ -40,14 +37,8 @@ export default function ChallengePanel({ scope, onScopeChange, ...props }: Props
             </button>
           );
         })}
-        <button type="button" aria-pressed={scope === 'topics'} onClick={() => onScopeChange('topics')}
-          className={`flex items-center gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-bold ${scope === 'topics' ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-700'}`}>
-          <Zap size={16} aria-hidden="true" />{isBasque ? 'Gaika' : 'Por temas'}
-        </button>
       </fieldset>
-      {scope === 'topics'
-        ? <ChallengeTopics key={JSON.stringify([props.curriculum, props.userId])} {...props} />
-        : <FullChallenge {...props} scope={scope} />}
+      <FullChallenge {...props} scope={scope} />
     </section>
   );
 }
