@@ -204,6 +204,20 @@ export default function TestSelection({
   );
   const usesLawSelection = useMemo(() => isLawSelectionCurriculum(curriculum), [curriculum]);
   const usesSingleScope = useMemo(() => isSingleScopeCurriculum(curriculum), [curriculum]);
+  const practiceModes = {
+    topics: { Icon: Zap, label: isBasque ? 'Gaiak' : 'Temas' },
+    challenge: { Icon: Trophy, label: isBasque ? 'Erronka' : 'Desafío' },
+    custom: { Icon: SlidersHorizontal, label: isBasque ? 'Zure neurrira' : 'A tu medida' },
+    errors: { Icon: AlertCircle, label: isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos' },
+    standard: {
+      Icon: BookOpen,
+      label: usesLawSelection
+        ? (isBasque ? 'Lege bidezko testa' : 'Test por ley')
+        : usesSingleScope ? (isBasque ? 'Testa' : 'Test') : (isBasque ? 'Temario bidezko testa' : 'Test por temario'),
+    },
+    quick: { Icon: Zap, label: isBasque ? 'Bloke laburra' : 'Bloque corto' },
+    simulacro: { Icon: Timer, label: isBasque ? 'Simulakroa' : 'Simulacro' },
+  } satisfies Record<PracticeModeVisibilityId, { Icon: typeof Zap; label: string }>;
   const modeNeedsConfig =
     selectionMode === 'standard' ||
     selectionMode === 'errors' ||
@@ -786,121 +800,28 @@ export default function TestSelection({
           {isBasque ? 'Praktika modua' : 'Modo de práctica'}
         </h2>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] lg:gap-3">
-          {visiblePracticeModeSet.has('standard') ? <button
-            onClick={() => setSelectionMode('standard')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
-              selectionMode === 'standard'
-                ? 'border-indigo-600 bg-indigo-50 shadow-xl shadow-indigo-100 ring-4 ring-indigo-500/10'
-                : 'border-slate-50 bg-white hover:border-indigo-100 hover:bg-slate-50'
-            }`}
-          >
-            <div className={`p-3 sm:p-4 lg:p-2 rounded-2xl ${selectionMode === 'standard' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <BookOpen size={26} />
-            </div>
-            <div>
-              <p className="font-black text-sm sm:text-xl lg:text-base text-slate-800 leading-tight">
-                {usesLawSelection
-                  ? isBasque
-                    ? 'Lege bidezko testa'
-                    : 'Test por ley'
-                  : usesSingleScope
-                    ? isBasque
-                      ? 'Testa'
-                      : 'Test'
-                  : isBasque
-                    ? 'Temario bidezko testa'
-                    : 'Test por temario'}
-              </p>
-            </div>
-          </button> : null}
-
-          {visiblePracticeModeSet.has('quick') ? <button
-            onClick={() => setSelectionMode('quick')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
-              selectionMode === 'quick'
-                ? 'border-amber-500 bg-amber-50 shadow-xl shadow-amber-100 ring-4 ring-amber-500/10'
-                : 'border-slate-50 bg-white hover:border-amber-100 hover:bg-slate-50'
-            }`}
-          >
-            <div className={`p-3 sm:p-4 lg:p-2 rounded-2xl ${selectionMode === 'quick' ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <Zap size={26} />
-            </div>
-            <div>
-              <p className="font-black text-sm sm:text-xl lg:text-base text-slate-800 leading-tight">{isBasque ? 'Bloke laburra' : 'Bloque corto'}</p>
-            </div>
-          </button> : null}
-
-          {visiblePracticeModeSet.has('errors') ? <button
-            onClick={() => setSelectionMode('errors')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
-              selectionMode === 'errors'
-                ? 'border-rose-500 bg-rose-50 shadow-xl shadow-rose-100 ring-4 ring-rose-500/10'
-                : 'border-slate-50 bg-white hover:border-rose-100 hover:bg-slate-50'
-            }`}
-          >
-            <div className={`p-3 sm:p-4 lg:p-2 rounded-2xl ${selectionMode === 'errors' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <AlertCircle size={26} />
-            </div>
-            <div>
-              <p className="font-black text-sm sm:text-xl lg:text-base text-slate-800 leading-tight">{isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos'}</p>
-            </div>
-          </button> : null}
-
-          {visiblePracticeModeSet.has('simulacro') ? <button
-            onClick={() => setSelectionMode('simulacro')}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
-              selectionMode === 'simulacro'
-                ? 'border-slate-700 bg-slate-50 shadow-xl shadow-slate-200 ring-4 ring-slate-900/10'
-                : 'border-slate-50 bg-white hover:border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            <div
-              className={`p-3 sm:p-4 lg:p-2 rounded-2xl ${
-                selectionMode === 'simulacro' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400'
-              }`}
-            >
-              <Timer size={26} />
-            </div>
-            <div>
-              <p className="font-black text-sm sm:text-xl lg:text-base text-slate-800 leading-tight">{isBasque ? 'Simulakroa' : 'Simulacro'}</p>
-            </div>
-          </button> : null}
-
-          {visiblePracticeModeSet.has('custom') ? <button
-            onClick={() => {
-              setSelectionMode('custom');
-              setCustomError(null);
-            }}
-            className={`flex flex-col items-center gap-3 rounded-[2rem] border-2 p-4 text-center transition-all duration-500 sm:gap-4 sm:p-7 lg:flex-row lg:justify-center lg:gap-3 lg:rounded-2xl lg:p-3 ${
-              selectionMode === 'custom'
-                ? 'border-violet-600 bg-violet-50 shadow-xl shadow-violet-100 ring-4 ring-violet-500/10'
-                : 'border-slate-50 bg-white hover:border-violet-100 hover:bg-slate-50'
-            }`}
-          >
-            <div className={`p-3 sm:p-4 lg:p-2 rounded-2xl ${selectionMode === 'custom' ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
-              <SlidersHorizontal size={26} />
-            </div>
-            <div>
-              <p className="font-black text-sm sm:text-xl lg:text-base text-slate-800 leading-tight">
-                {isBasque ? 'Zure neurrira' : 'A tu medida'}
-              </p>
-            </div>
-          </button> : null}
-          {visiblePracticeModeSet.has('challenge') && (
-            <button type="button" onClick={() => setSelectionMode('challenge')} aria-pressed={selectionMode === 'challenge'}
-              className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left font-black text-slate-800 sm:p-4 ${selectionMode === 'challenge' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
-              <Trophy size={26} className="text-indigo-700" aria-hidden="true" />
-              {isBasque ? 'Erronka' : 'Desafío'}
-            </button>
-          )}
-          {visiblePracticeModeSet.has('topics') && (
-            <button type="button" onClick={() => setSelectionMode('topics')} aria-pressed={selectionMode === 'topics'}
-              className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left font-black text-slate-800 sm:p-4 ${selectionMode === 'topics' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
-              <Zap size={26} className="text-indigo-700" aria-hidden="true" />
-              {isBasque ? 'Gaiak' : 'Temas'}
-            </button>
-          )}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
+          {normalizedVisiblePracticeModeIds.map(mode => {
+            const { Icon, label } = practiceModes[mode];
+            const selected = selectionMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setSelectionMode(mode);
+                  if (mode === 'custom') setCustomError(null);
+                }}
+                className={`flex min-h-16 min-w-0 items-center gap-2 rounded-2xl border-2 p-2.5 text-left text-sm font-bold leading-tight text-slate-800 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 sm:gap-3 sm:p-3 ${selected ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 bg-white hover:border-indigo-200 hover:bg-slate-50'}`}
+              >
+                <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl sm:size-10 ${selected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                  <Icon size={21} aria-hidden="true" />
+                </span>
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
