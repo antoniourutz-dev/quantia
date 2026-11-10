@@ -248,7 +248,7 @@ export default function StudyInterface({
               onRemoveHighlight={handleRemoveHighlight}
             />
           </div>
-          {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galdera honek hainbat erantzun edo akatsen bat izan ditzake. Ikusi azalpena.' : 'Esta pregunta puede admitir varias respuestas o contener un error. Consulta la explicación.'}</p>}
+          {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galderak auditoria-gorabehera du: gordetako gakoa mantendu da. Ikusi araudiari buruzko azalpena.' : 'Pregunta con incidencia: se conserva la clave registrada. Consulta la explicación normativa.'}</p>}
         </div>
 
         {currentQuestion.correctAnswer == null ? (
