@@ -1,20 +1,14 @@
-export const PRACTICE_MODE_IDS = ['standard', 'quick', 'errors', 'simulacro', 'custom', 'challenge', 'topics'] as const;
+export const PRACTICE_MODE_IDS = ['topics', 'challenge', 'custom', 'errors', 'standard', 'quick', 'simulacro'] as const;
 
 export type PracticeModeVisibilityId = (typeof PRACTICE_MODE_IDS)[number];
 
 const STORAGE_PREFIX = 'quantia.visible-practice-modes.v2';
 const LEGACY_STORAGE_PREFIX = 'quantia.visible-practice-modes.v1';
-const validIds = new Set<string>(PRACTICE_MODE_IDS);
 
 export const normalizePracticeModeIds = (values: unknown): PracticeModeVisibilityId[] => {
   if (!Array.isArray(values)) return [];
-  return Array.from(
-    new Set(
-      values.filter(
-        (value): value is PracticeModeVisibilityId => typeof value === 'string' && validIds.has(value),
-      ),
-    ),
-  );
+  const visible = new Set(values);
+  return PRACTICE_MODE_IDS.filter(id => visible.has(id));
 };
 
 const storageKey = (userId: string, prefix = STORAGE_PREFIX) => `${prefix}:${encodeURIComponent(userId.trim())}`;

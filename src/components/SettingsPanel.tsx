@@ -79,6 +79,26 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
 
   const practiceModeOptions: Array<{ id: PracticeModeVisibilityId; label: string; description: string }> = [
     {
+      id: 'topics',
+      label: isBasque ? 'Gaiak' : 'Temas',
+      description: isBasque ? 'Ikusi gaien energia eta landu huts gehienak.' : 'Consulta tu progreso por tema y repasa las preguntas más falladas.',
+    },
+    {
+      id: 'challenge',
+      label: isBasque ? 'Erronka' : 'Desafío',
+      description: isBasque ? 'Egin proba osoak eta gainditu zure marka.' : 'Completa tests de bloque y supera tu mejor marca.',
+    },
+    {
+      id: 'custom',
+      label: isBasque ? 'Zure neurrira' : 'A tu medida',
+      description: isBasque ? 'Aukeratu edukia, gaia eta luzera.' : 'Elige contenido, tema y longitud.',
+    },
+    {
+      id: 'errors',
+      label: isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos',
+      description: isBasque ? 'Gehien kostatzen direnak errepasatu.' : 'Repasa las preguntas que más cuestan.',
+    },
+    {
       id: 'standard',
       label: isBasque ? 'Temario bidezko testa' : 'Test por temario',
       description: isBasque ? 'Aukeratu landu nahi duzun blokea.' : 'Elige el bloque que quieres trabajar.',
@@ -89,29 +109,9 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
       description: isBasque ? 'Bost galderako saio azkarra.' : 'Una sesión rápida de cinco preguntas.',
     },
     {
-      id: 'errors',
-      label: isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos',
-      description: isBasque ? 'Gehien kostatzen direnak errepasatu.' : 'Repasa las preguntas que más cuestan.',
-    },
-    {
       id: 'simulacro',
       label: isBasque ? 'Simulakroa' : 'Simulacro',
       description: isBasque ? 'Erantzunak amaieran ikusi.' : 'Responde sin ver el resultado hasta el final.',
-    },
-    {
-      id: 'custom',
-      label: isBasque ? 'Zure neurrira' : 'A tu medida',
-      description: isBasque ? 'Aukeratu edukia, gaia eta luzera.' : 'Elige contenido, tema y longitud.',
-    },
-    {
-      id: 'challenge',
-      label: isBasque ? 'Erronka' : 'Desafío',
-      description: isBasque ? 'Egin proba osoak eta gainditu zure marka.' : 'Completa tests de bloque y supera tu mejor marca.',
-    },
-    {
-      id: 'topics',
-      label: isBasque ? 'Gaiak' : 'Temas',
-      description: isBasque ? 'Ikusi gaien energia eta landu huts gehienak.' : 'Consulta tu progreso por tema y repasa las preguntas más falladas.',
     },
   ];
   const allPracticeModesSelected = selectedPracticeModeIds.length === PRACTICE_MODE_IDS.length;
