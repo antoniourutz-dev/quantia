@@ -24,8 +24,7 @@ import {
   normalizePracticeModeIds,
   type PracticeModeVisibilityId,
 } from '../lib/practiceModeVisibility';
-import ChallengePanel from './ChallengePanel';
-import type { ChallengeScope } from '../lib/challenge';
+import ChallengePanel, { type ChallengeSelection } from './ChallengePanel';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
 type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom' | 'challenge';
@@ -34,7 +33,7 @@ type ReviewSource = 'all' | 'recent_tests' | 'last_day';
 
 export type TestSelectionStateSnapshot = {
   selectionMode: SelectionMode;
-  challengeScope?: ChallengeScope;
+  challengeScope?: ChallengeSelection;
   challengeRandomize?: boolean;
   selectedSyllabus: StandardSyllabusSelection;
   selectedLaw: string;
@@ -154,7 +153,7 @@ export default function TestSelection({
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialState?.selectionMode ?? 'standard');
-  const [challengeScope, setChallengeScope] = useState<ChallengeScope>(initialState?.challengeScope ?? 'common');
+  const [challengeScope, setChallengeScope] = useState<ChallengeSelection>(initialState?.challengeScope ?? 'common');
   const [challengeRandomize, setChallengeRandomize] = useState(initialState?.challengeRandomize ?? false);
   const [selectedSyllabus, setSelectedSyllabus] = useState<StandardSyllabusSelection>(
     initialState?.selectedSyllabus ?? initialSyllabus ?? 'common',

@@ -1,23 +1,58 @@
 import { useEffect, useState } from 'react';
-import { Trophy } from 'lucide-react';
+import { Trophy, Zap } from 'lucide-react';
 import { CHALLENGE_OPTIONS, loadChallengeQuestions, shuffleChallengeQuestions, type ChallengeResult, type ChallengeScope } from '../lib/challenge';
 import { getChallengeRanking } from '../lib/challengeRanking';
 import { getQuestionBankSnapshot } from '../lib/quantiaApi';
+import ChallengeTopics from './ChallengeTopics';
 import type { Question } from '../types';
+
+export type ChallengeSelection = ChallengeScope | 'topics';
 
 type Props = {
   curriculum: string;
   userId: string | null;
   isBasque: boolean;
   syncing: boolean;
-  scope: ChallengeScope;
-  onScopeChange: (scope: ChallengeScope) => void;
+  scope: ChallengeSelection;
+  onScopeChange: (scope: ChallengeSelection) => void;
   randomize: boolean;
   onRandomizeChange: (randomize: boolean) => void;
   onStart: (questions: Question[], title: string) => void;
 };
 
-export default function ChallengePanel({ curriculum, userId, isBasque, syncing, scope, onScopeChange, randomize, onRandomizeChange, onStart }: Props) {
+export default function ChallengePanel({ scope, onScopeChange, ...props }: Props) {
+  const { isBasque } = props;
+  return (
+    <section className="space-y-6 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
+      <div>
+        <h3 className="text-xl font-black text-slate-900">{isBasque ? 'Erronka' : 'Desafío'}</h3>
+        <p className="mt-1 text-sm text-slate-600">{isBasque ? 'Egin proba osoa eta gainditu zure marka.' : 'Completa el bloque entero y supera tu mejor marca.'}</p>
+      </div>
+      <fieldset className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <legend className="mb-2 text-sm font-bold text-slate-800">{isBasque ? 'Gai-zerrenda' : 'Temario'}</legend>
+        {(Object.keys(CHALLENGE_OPTIONS) as ChallengeScope[]).map((key) => {
+          const item = CHALLENGE_OPTIONS[key];
+          return (
+            <button key={key} type="button" aria-pressed={scope === key}
+              onClick={() => onScopeChange(key)}
+              className={`rounded-xl border-2 px-4 py-3 text-left text-sm font-bold ${scope === key ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-700'}`}>
+              {isBasque ? item.labelEu : item.label} · {item.count}
+            </button>
+          );
+        })}
+        <button type="button" aria-pressed={scope === 'topics'} onClick={() => onScopeChange('topics')}
+          className={`flex items-center gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-bold ${scope === 'topics' ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-700'}`}>
+          <Zap size={16} aria-hidden="true" />{isBasque ? 'Gaika' : 'Por temas'}
+        </button>
+      </fieldset>
+      {scope === 'topics'
+        ? <ChallengeTopics key={JSON.stringify([props.curriculum, props.userId])} {...props} />
+        : <FullChallenge {...props} scope={scope} />}
+    </section>
+  );
+}
+
+function FullChallenge({ curriculum, userId, isBasque, syncing, scope, randomize, onRandomizeChange, onStart }: Omit<Props, 'scope' | 'onScopeChange'> & { scope: ChallengeScope }) {
   const bankKey = JSON.stringify([curriculum, scope]);
   const [bank, setBank] = useState<{ key: string; questions: Question[]; error: boolean } | null>(null);
   const currentBank = bank?.key === bankKey ? bank : null;
@@ -52,24 +87,7 @@ export default function ChallengePanel({ curriculum, userId, isBasque, syncing, 
   }, [curriculum, gradedTotal, rankingKey, scope, syncing, userId]);
 
   return (
-    <section className="space-y-6 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
-      <div>
-        <h3 className="text-xl font-black text-slate-900">{isBasque ? 'Erronka' : 'Desafío'}</h3>
-        <p className="mt-1 text-sm text-slate-600">{isBasque ? 'Egin proba osoa eta gainditu zure marka.' : 'Completa el bloque entero y supera tu mejor marca.'}</p>
-      </div>
-      <fieldset className="grid gap-2 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-bold text-slate-800">{isBasque ? 'Gai-zerrenda' : 'Temario'}</legend>
-        {(Object.keys(CHALLENGE_OPTIONS) as ChallengeScope[]).map((key) => {
-          const item = CHALLENGE_OPTIONS[key];
-          return (
-            <button key={key} type="button" aria-pressed={scope === key}
-              onClick={() => onScopeChange(key)}
-              className={`rounded-xl border-2 px-4 py-3 text-left text-sm font-bold ${scope === key ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-700'}`}>
-              {isBasque ? item.labelEu : item.label} · {item.count}
-            </button>
-          );
-        })}
-      </fieldset>
+    <>
       <label className="flex flex-wrap items-center gap-3 text-sm font-bold text-slate-800">
         {isBasque ? 'Galderen ordena' : 'Orden de las preguntas'}
         <select value={randomize ? 'random' : 'sequence'} onChange={(event) => onRandomizeChange(event.target.value === 'random')}
@@ -101,6 +119,6 @@ export default function ChallengePanel({ curriculum, userId, isBasque, syncing, 
               </li>)}
             </ol>}
       </div>}
-    </section>
+    </>
   );
 }
