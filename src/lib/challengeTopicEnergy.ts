@@ -31,3 +31,17 @@ export function summarizeTopicEnergy(questions: Question[], energy: ReadonlyMap<
   }
   return { practiced, gradable, rate: attempts ? Math.round(100 * correct / attempts) : null };
 }
+
+export function rankTopicMistakes(questions: Question[], energy: ReadonlyMap<string, QuestionEnergy>) {
+  const ranked = questions.flatMap(question => {
+    const result = energy.get(question.id);
+    if (question.correctAnswer == null || !result || result.correct >= result.attempts) return [];
+    return [{ question, attempts: result.attempts, failures: result.attempts - result.correct }];
+  });
+  return ranked.sort((a, b) =>
+    b.failures * a.attempts - a.failures * b.attempts ||
+    b.failures - a.failures ||
+    (a.question.number ?? Infinity) - (b.question.number ?? Infinity) ||
+    a.question.id.localeCompare(b.question.id),
+  ).map(({ question }) => question);
+}

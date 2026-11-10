@@ -24,16 +24,18 @@ import {
   normalizePracticeModeIds,
   type PracticeModeVisibilityId,
 } from '../lib/practiceModeVisibility';
-import ChallengePanel, { type ChallengeSelection } from './ChallengePanel';
+import ChallengePanel from './ChallengePanel';
+import ChallengeTopics from './ChallengeTopics';
+import type { ChallengeScope } from '../lib/challenge';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 
-type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom' | 'challenge';
+type SelectionMode = 'standard' | 'quick' | 'errors' | 'simulacro' | 'custom' | 'challenge' | 'topics';
 type StandardSyllabusSelection = 'mixed' | SyllabusType;
 type ReviewSource = 'all' | 'recent_tests' | 'last_day';
 
 export type TestSelectionStateSnapshot = {
   selectionMode: SelectionMode;
-  challengeScope?: ChallengeSelection;
+  challengeScope?: ChallengeScope | 'topics';
   challengeRandomize?: boolean;
   selectedSyllabus: StandardSyllabusSelection;
   selectedLaw: string;
@@ -152,8 +154,8 @@ export default function TestSelection({
 }: TestSelectionProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialState?.selectionMode ?? 'standard');
-  const [challengeScope, setChallengeScope] = useState<ChallengeSelection>(initialState?.challengeScope ?? 'common');
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(() => initialState?.selectionMode === 'challenge' && initialState.challengeScope === 'topics' ? 'topics' : initialState?.selectionMode ?? 'standard');
+  const [challengeScope, setChallengeScope] = useState<ChallengeScope>(initialState?.challengeScope === 'topics' ? 'common' : initialState?.challengeScope ?? 'common');
   const [challengeRandomize, setChallengeRandomize] = useState(initialState?.challengeRandomize ?? false);
   const [selectedSyllabus, setSelectedSyllabus] = useState<StandardSyllabusSelection>(
     initialState?.selectedSyllabus ?? initialSyllabus ?? 'common',
@@ -251,7 +253,7 @@ export default function TestSelection({
     activeGeneralLaw?.shortTitle ?? activeGeneralLaw?.title ?? selectedLaw;
 
   useEffect(() => {
-    if (selectionMode === 'challenge' ? Boolean(onStartChallenge) : visiblePracticeModeSet.has(selectionMode)) return;
+    if (selectionMode === 'challenge' || selectionMode === 'topics' ? Boolean(onStartChallenge) : visiblePracticeModeSet.has(selectionMode)) return;
     setSelectionMode(normalizedVisiblePracticeModeIds[0]);
   }, [normalizedVisiblePracticeModeIds, onStartChallenge, selectionMode, visiblePracticeModeSet]);
   const selectedBlockCount = selectedGeneralLawBlockIds.length;
@@ -890,6 +892,13 @@ export default function TestSelection({
               {isBasque ? 'Erronka' : 'Desafío'}
             </button>
           )}
+          {onStartChallenge && (
+            <button type="button" onClick={() => setSelectionMode('topics')} aria-pressed={selectionMode === 'topics'}
+              className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left font-black text-slate-800 sm:p-4 ${selectionMode === 'topics' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
+              <Zap size={26} className="text-indigo-700" aria-hidden="true" />
+              {isBasque ? 'Gaiak' : 'Temas'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -897,6 +906,11 @@ export default function TestSelection({
         <ChallengePanel key={curriculum} curriculum={curriculum} userId={userId} isBasque={isBasque}
           scope={challengeScope} onScopeChange={setChallengeScope} randomize={challengeRandomize} onRandomizeChange={setChallengeRandomize}
           syncing={syncingChallenge} onStart={onStartChallenge} />
+      )}
+
+      {selectionMode === 'topics' && onStartChallenge && (
+        <ChallengeTopics key={JSON.stringify([curriculum, userId])} curriculum={curriculum}
+          userId={userId} isBasque={isBasque} syncing={syncingChallenge} onStart={onStartChallenge} />
       )}
 
       {modeNeedsConfig ? (
@@ -1762,7 +1776,7 @@ export default function TestSelection({
         </div>
       ) : null}
 
-      {selectionMode !== 'challenge' && <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
+      {selectionMode !== 'challenge' && selectionMode !== 'topics' && <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
         <button
           onClick={handleStart}
           disabled={selectionMode === 'standard' && usesLawSelection && !activeGeneralLaw && (!selectedLaw || lawOptions.length === 0)}

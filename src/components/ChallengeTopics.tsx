@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, Zap } from 'lucide-react';
+import { ChevronRight, Info, Zap } from 'lucide-react';
+import TopicQuestionBattery from './TopicQuestionBattery';
 import type { Question } from '../types';
 import { getCurriculumCategoryGroupLabel, getQuestionBankSnapshot } from '../lib/quantiaApi';
 import { getChallengeTopicEnergy, summarizeTopicEnergy, type QuestionEnergy } from '../lib/challengeTopicEnergy';
@@ -18,6 +19,7 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
   const [bankError, setBankError] = useState(false);
   const [energy, setEnergy] = useState<Map<string, QuestionEnergy> | null>(null);
   const [energyError, setEnergyError] = useState(false);
+  const [openTopic, setOpenTopic] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,14 +72,15 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
       {energyError ? <p role="status" className="text-sm text-rose-700">{isBasque ? 'Ezin izan da energia kargatu.' : 'No se ha podido cargar la energía. Puedes hacer los tests igualmente.'}</p>
         : userId && (syncing || !energy) ? <p role="status" className="text-sm text-slate-600">{isBasque ? 'Energia eguneratzen…' : 'Actualizando energía…'}</p> : null}
       <ul className="grid gap-3 lg:grid-cols-2">
-        {topics.map(({ label, questions }) => {
+        {topics.map(({ label, questions }, index) => {
           const progress = energy && !energyError ? summarizeTopicEnergy(questions, energy) : null;
           const rate = progress?.rate ?? null;
           const status = rate != null ? `${rate}%` : (energyError || (!energy && userId)) ? '—' : isBasque ? 'Entrenatu gabe' : 'Sin entrenar';
           return (
-            <li key={label}>
-              <button type="button" onClick={() => onStart(questions, `Desafío · ${label}`)}
-                className="group flex h-full w-full items-center gap-3 rounded-2xl border border-indigo-100 bg-white p-4 text-left shadow-sm transition hover:border-indigo-400 hover:bg-indigo-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 motion-reduce:transition-none">
+            <li key={label} className={openTopic === label ? "lg:col-span-2" : undefined}>
+              <div className="relative rounded-2xl border border-indigo-100 bg-white shadow-sm">
+              <button type="button" onClick={() => onStart(questions, `Temas · ${label}`)}
+                className="group flex h-full w-full items-center gap-3 rounded-2xl p-4 pr-16 text-left transition hover:bg-indigo-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 motion-reduce:transition-none">
                 <span className="min-w-0 flex-1 space-y-2">
                   <span className="block text-sm font-bold text-slate-900 sm:text-base">{label}</span>
                   <span className="flex flex-wrap items-center justify-between gap-x-3 text-xs text-slate-600">
@@ -94,6 +97,18 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
                 </span>
                 <ChevronRight size={20} className="shrink-0 text-indigo-700" aria-hidden="true" />
               </button>
+                <button type="button" aria-expanded={openTopic === label}
+                  aria-controls={openTopic === label ? `topic-details-${index}` : undefined}
+                  aria-label={isBasque ? `${label}: galderen xehetasunak` : `${label}: detalle de las preguntas`}
+                  onClick={() => setOpenTopic(current => current === label ? null : label)}
+                  className="absolute right-3 top-3 inline-flex size-10 items-center justify-center rounded-full border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600">
+                  <Info size={18} aria-hidden="true" />
+                </button>
+              </div>
+              {openTopic === label && <div id={`topic-details-${index}`} className="mt-2">
+                <TopicQuestionBattery questions={questions} energy={energyError ? null : energy} isBasque={isBasque}
+                  onStart={selected => onStart(selected, `Temas · Más falladas · ${label}`)} />
+              </div>}
             </li>
           );
         })}
