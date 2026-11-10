@@ -422,7 +422,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       primaryHandle = requestIdle(() => {
         void Promise.allSettled([
           loadTestSelection(),
-          loadStudyExplorer(),
+          loadStudyQuestionBank(),
           loadSettingsPanel(),
         ]);
 
@@ -2441,13 +2441,13 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     currentView === 'admin-questions' ||
     currentView === 'admin-catalogs' ||
     currentView === 'admin-quality';
-  const showMobileTopBar =
-    !isTesting && !isAdminView && currentView !== 'telemetry' && currentView !== 'study-bank';
+  const isStudyView = currentView === 'study' || currentView === 'study-bank';
+  const showMobileTopBar = !isTesting && !isAdminView && currentView !== 'telemetry';
   const showMobileBottomNav = showMobileTopBar && currentView !== 'test-results';
   const activeMobileTab = (() => {
     if (currentView === 'test-selection' || currentView === 'test-results') return 'test-selection';
     if (currentView === 'stats') return 'stats';
-    if (currentView === 'study') return 'study';
+    if (isStudyView) return 'study';
     if (currentView === 'settings') return 'settings';
     return hasManagementAccess ? 'dashboard' : 'test-selection';
   })();
@@ -2455,7 +2455,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   const mobileTitle =
     currentView === 'dashboard'
       ? t('Inicio', 'Hasiera')
-      : currentView === 'study'
+      : isStudyView
         ? t('Estudio', 'Ikasketa')
         : currentView === 'test-selection'
           ? t('Test', 'Test')
@@ -2472,9 +2472,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (currentView === 'dashboard') {
       return t('Direccion clara y siguiente paso', 'Norabide argia eta hurrengo pausoa');
     }
-    if (currentView === 'study') {
-      return t('Explora sin perder el hilo', 'Arakatu haria galdu gabe');
-    }
+    if (currentView === 'study-bank') return t('Banco de preguntas', 'Galdera-bankua');
+    if (currentView === 'study') return t('Sesiones de estudio', 'Ikasketa-saioak');
     if (currentView === 'test-selection') {
       return t('Prepara el bloque exacto que quieres hacer', 'Prestatu egin nahi duzun bloke zehatza');
     }
@@ -2817,16 +2816,16 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 </button>
                 <button
                   onClick={() => {
-                    setCurrentView('study');
+                    setCurrentView('study-bank');
                     setSidebarOpen(false);
                   }}
                   className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
-                    currentView === 'study'
+                    isStudyView
                       ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-950/50 font-bold scale-[1.02]'
                       : 'text-slate-400 hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <BookOpen size={22} className={currentView === 'study' ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
+                  <BookOpen size={22} className={isStudyView ? 'text-white' : 'group-hover:text-indigo-400 transition-colors'} />
                   <span className="text-lg [@media(max-height:800px)]:text-base [@media(max-height:700px)]:text-sm">{t('Estudio', 'Ikasketa')}</span>
                 </button>
               </>
@@ -2922,7 +2921,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         {!isTesting && (
           <header
             className={`hidden lg:flex flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000 ${
-              isTestSelectionView ? 'mb-5 [@media(max-height:800px)]:mb-3' : 'mb-10 lg:mb-16'
+              isTestSelectionView || currentView === 'study-bank' ? 'mb-5 [@media(max-height:800px)]:mb-3' : 'mb-10 lg:mb-16'
             }`}
           >
             <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
@@ -2936,6 +2935,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               <div>
               <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
                 {currentView === 'dashboard' && `${t('Hola', 'Kaixo')}, ${session.user.email?.split('@')[0]}`}
+                {currentView === 'study-bank' && t('Estudio', 'Ikasketa')}
                 {currentView === 'study' && t('Estudio guiado', 'Ikasketa gidatua')}
                 {currentView === 'test-selection' && t('Configuracion de entrenamiento', 'Entrenamenduaren konfigurazioa')}
                 {currentView === 'stats' && t('Inteligencia de datos', 'Datuen adimena')}
@@ -3288,7 +3288,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               onSelectGeneralLawArticleGroup={selectGeneralLawArticleGroup}
               onClearGeneralLawArticleGroup={clearGeneralLawArticleGroup}
               onStartOfficialPractice={handleStartOfficialPractice}
-              onBack={() => setCurrentView('study')}
+              onOpenGuidedStudy={() => setCurrentView('study')}
             />
           </Suspense>
         ) : null}
@@ -3495,7 +3495,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         <MobileTabBar
           active={activeMobileTab}
           onChange={(next) => {
-            setCurrentView(next);
+            setCurrentView(next === 'study' ? 'study-bank' : next);
             setSidebarOpen(false);
           }}
           showDashboard={hasManagementAccess}

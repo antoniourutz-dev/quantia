@@ -148,7 +148,7 @@ export default function RestrictedQuestionBankShell({ session, assignedKeys }: {
         </div>
 
         <div className="px-4 sm:px-6 pt-6">
-          <StudyQuestionBank curriculum={curriculum} onBack={null} />
+          <StudyQuestionBank curriculum={curriculum} />
         </div>
       </div>
     </LocaleProvider>

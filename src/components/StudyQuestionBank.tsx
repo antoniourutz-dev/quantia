@@ -20,8 +20,8 @@ import { recordQuestionView } from '../lib/questionActivity';
 
 type StudyScope = PracticeQuestionScopeFilter;
 
-const DEFAULT_PAGE_SIZE = 50;
-const PAGE_SIZE_OPTIONS = [50, 100] as const;
+const DEFAULT_PAGE_SIZE = 100;
+const PAGE_SIZE_OPTIONS = [100, 50] as const;
 
 const toAnswerLabel = (value: QuestionBankListItem['correctAnswer']) => value?.toUpperCase() ?? '—';
 
@@ -57,7 +57,7 @@ export default function StudyQuestionBank({
   onSelectGeneralLawArticleGroup,
   onClearGeneralLawArticleGroup,
   onStartOfficialPractice,
-  onBack,
+  onOpenGuidedStudy,
 }: {
   curriculum: string;
   generalLaw?: GeneralLaw | null;
@@ -85,7 +85,7 @@ export default function StudyQuestionBank({
   onSelectGeneralLawArticleGroup?: (articleIds: string[]) => void;
   onClearGeneralLawArticleGroup?: (articleIds: string[]) => void;
   onStartOfficialPractice?: (questions: Question[], title: string) => void;
-  onBack?: (() => void) | null;
+  onOpenGuidedStudy?: (() => void) | null;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -112,6 +112,8 @@ export default function StudyQuestionBank({
   const deferredSearchInput = useDeferredValue(searchInput);
   const searchTerm = deferredSearchInput.trim();
   const searchKey = searchTerm.toLowerCase();
+  const gridRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
   const detailCacheRef = useRef(new Map<string, Question>());
   const activitySessionIdRef = useRef(`question-bank-${createId()}`);
   const viewOccurrencesRef = useRef(new Map<string, number>());
@@ -321,29 +323,26 @@ export default function StudyQuestionBank({
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex items-start justify-between gap-6 flex-wrap">
+    <div className="mx-auto max-w-7xl space-y-5 pb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4 sm:p-5">
         <div>
-          <div className="flex items-center gap-3 text-slate-400">
-            <BookOpen size={18} />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">{t('Banco de preguntas', 'Galdera-bankua')}</span>
-          </div>
-          <h2 className="mt-3 text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
-            {t('Todas las preguntas, con respuesta y explicación', 'Galdera guztiak, erantzuna eta azalpenarekin')}
+          <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-slate-900 sm:text-2xl">
+            <BookOpen size={21} className="text-indigo-600" aria-hidden="true" />
+            {t('Banco de preguntas', 'Galdera-bankua')}
           </h2>
-          <p className="mt-2 text-slate-500 text-lg font-medium">
-            {t('Elige temario común o específico y abre cualquier pregunta.', 'Aukeratu orokorra edo espezifikoa eta ireki edozein galdera.')}
+          <p className="mt-1 text-sm text-slate-600">
+            {t('Filtra por temario o tema y abre una pregunta para consultar su respuesta y explicación.', 'Iragazi gai-zerrendaren edo gaiaren arabera, eta ireki galdera bat erantzuna eta azalpena ikusteko.')}
           </p>
         </div>
 
-        {onBack ? (
+        {onOpenGuidedStudy ? (
           <button
             type="button"
-            onClick={onBack}
+            onClick={onOpenGuidedStudy}
             className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50 transition-all"
           >
-            <ChevronLeft className="h-4 w-4" />
-            {t('Volver a Estudio', 'Ikasketara itzuli')}
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            {t('Estudio guiado', 'Ikasketa gidatua')}
           </button>
         ) : null}
       </div>
@@ -381,8 +380,8 @@ export default function StudyQuestionBank({
         </div>
       ) : null}
 
-      <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm p-4 sm:p-8 space-y-8">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-5 space-y-5">
+        <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
               {t('Temario', 'Gai-zerrenda')}
@@ -393,6 +392,7 @@ export default function StudyQuestionBank({
                   key={value}
                   type="button"
                   onClick={() => setScope(value)}
+                  aria-pressed={scope === value}
                   className={`px-5 py-3 rounded-2xl border-2 font-black text-xs transition-all ${
                     scope === value
                       ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
@@ -426,6 +426,8 @@ export default function StudyQuestionBank({
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
+                type="search"
+                aria-label={t('Buscar preguntas', 'Galderak bilatu')}
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 className="w-full sm:w-[320px] rounded-2xl border border-slate-200 bg-slate-50 px-11 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
@@ -453,7 +455,8 @@ export default function StudyQuestionBank({
                 <button
                   type="button"
                   onClick={() => setPageIndex((prev) => Math.max(0, prev - 1))}
-                  disabled={pageIndex === 0}
+                  aria-label={t('Página anterior', 'Aurreko orria')}
+                  disabled={pageIndex === 0 || listLoading}
                   className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
                 >
                   <ChevronLeft size={18} />
@@ -464,7 +467,8 @@ export default function StudyQuestionBank({
                 <button
                   type="button"
                   onClick={() => setPageIndex((prev) => prev + 1)}
-                  disabled={!hasNextPage}
+                  aria-label={t('Página siguiente', 'Hurrengo orria')}
+                  disabled={!hasNextPage || listLoading}
                   className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
                 >
                   <ChevronRight size={18} />
@@ -485,8 +489,8 @@ export default function StudyQuestionBank({
           </div>
         ) : null}
 
-        <div className="space-y-6">
-          <div>
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div ref={gridRef} className="scroll-mt-24 xl:scroll-mt-4">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">
               {questionCountLabel}
             </div>
@@ -497,7 +501,7 @@ export default function StudyQuestionBank({
                 {t('Pregunta con incidencia: consulta la explicación.', 'Gorabehera duen galdera: ikusi azalpena.')}
               </p>
             ) : null}
-            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-4 sm:p-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-3">
               {listLoading ? (
                 <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
                   {t('Cargando preguntas...', 'Galderak kargatzen...')}
@@ -510,7 +514,7 @@ export default function StudyQuestionBank({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-[repeat(5,minmax(0,1fr))] sm:grid-cols-[repeat(10,minmax(0,1fr))] md:grid-cols-[repeat(12,minmax(0,1fr))] lg:grid-cols-[repeat(18,minmax(0,1fr))] xl:grid-cols-[repeat(20,minmax(0,1fr))] gap-2.5 sm:gap-1.5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-1.5">
                   {pageItems.map((question, index) => {
                     const isSelected = selectedId === question.id;
                     const displayNumber = getDisplayNumber(question, index);
@@ -518,13 +522,19 @@ export default function StudyQuestionBank({
                     return (
                       <button
                         key={question.id}
+                        id={`question-bank-tile-${question.id}`}
                         type="button"
+                        aria-pressed={isSelected}
                         onClick={() => {
                           setSelectedId(question.id);
                           setExplanationOpen(false);
+                          if (!window.matchMedia('(min-width: 1280px)').matches) {
+                            detailRef.current?.focus({ preventScroll: true });
+                            detailRef.current?.scrollIntoView({ block: 'start' });
+                          }
                         }}
                         aria-label={`${t('Pregunta', 'Galdera')} ${displayNumber}${question.auditIncident ? t(', con incidencia', ', gorabeherarekin') : ''}`}
-                        className={`relative aspect-square min-h-12 rounded-2xl border shadow-sm transition-all ${
+                        className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl border py-1 shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${
                           question.auditIncident
                             ? isSelected
                               ? 'border-amber-500 bg-amber-100 ring-2 ring-amber-400/40'
@@ -534,20 +544,18 @@ export default function StudyQuestionBank({
                               : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-200/20'
                         }`}
                       >
-                        <div className={`absolute left-2 top-2 text-[10px] font-black leading-none ${question.auditIncident ? 'text-amber-800' : 'text-slate-400'}`}>
+                        <div className={`text-[11px] font-semibold tabular-nums ${question.auditIncident ? 'text-amber-800' : 'text-slate-400'}`}>
                           {displayNumber}
                         </div>
                         {question.auditIncident ? (
-                          <span className="absolute right-2 top-1 text-lg font-black text-amber-600" aria-hidden="true">*</span>
+                          <span className="absolute right-1 top-0.5 text-sm font-black text-amber-600" aria-hidden="true">*</span>
                         ) : null}
-                        <div className="flex h-full items-center justify-center">
-                          <div className={`rounded-xl border px-2.5 py-2 text-[13px] font-black leading-none ${
+                        <div className={`rounded-md border px-1.5 py-0.5 text-xs font-black leading-none ${
                             question.auditIncident
                               ? 'border-amber-300 bg-amber-100 text-amber-900'
                               : 'border-slate-200 bg-slate-50 text-slate-900'
                           }`}>
                             {question.auditIncident && !question.correctAnswer ? '?' : toAnswerLabel(question.correctAnswer)}
-                          </div>
                         </div>
                       </button>
                     );
@@ -557,12 +565,19 @@ export default function StudyQuestionBank({
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">
-              {t('Detalle de la pregunta', 'Galderaren xehetasuna')}
+          <div ref={detailRef} tabIndex={-1} className="scroll-mt-24 focus:outline-none xl:scroll-mt-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-slate-700">{t('Detalle de la pregunta', 'Galderaren xehetasuna')}</h3>
+              <button type="button" className="text-xs font-bold text-indigo-700 hover:underline xl:hidden"
+                onClick={() => {
+                  if (selectedId) document.getElementById(`question-bank-tile-${selectedId}`)?.focus({ preventScroll: true });
+                  gridRef.current?.scrollIntoView({ block: 'start' });
+                }}>
+                {t('Volver a la cuadrícula', 'Saretara itzuli')}
+              </button>
             </div>
 
-            <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-4 sm:p-6">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
               {!selectedId ? (
                 <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
                   {t('Selecciona una pregunta para verla.', 'Hautatu galdera bat ikusteko.')}
