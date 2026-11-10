@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, CheckCircle2, Info, Search } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, CheckCircle2, Info, Search, X } from 'lucide-react';
 import {
   formatSyllabusLabel,
   type GeneralLaw,
@@ -98,7 +98,7 @@ export default function StudyQuestionBank({
   const [topicOptions, setTopicOptions] = useState<CurriculumTopicOption[]>([]);
   const [topicOptionsLoading, setTopicOptionsLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pageItems, setPageItems] = useState<QuestionBankListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -113,7 +113,7 @@ export default function StudyQuestionBank({
   const searchTerm = deferredSearchInput.trim();
   const searchKey = searchTerm.toLowerCase();
   const gridRef = useRef<HTMLDivElement>(null);
-  const detailRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDialogElement>(null);
   const detailCacheRef = useRef(new Map<string, Question>());
   const activitySessionIdRef = useRef(`question-bank-${createId()}`);
   const viewOccurrencesRef = useRef(new Map<string, number>());
@@ -238,24 +238,8 @@ export default function StudyQuestionBank({
   }, [curriculum, listErrorMessage, pageIndex, pageSize, questionFilters, scope, searchTerm, selectedTopic]);
 
   useEffect(() => {
-    if (pageItems.length === 0) {
-      setSelectedId(null);
-      setExplanationOpen(false);
-      return;
-    }
-
-    if (selectedId && pageItems.some((item) => item.id === selectedId)) {
-      return;
-    }
-
-    setSelectedId(pageItems[0].id);
-    setExplanationOpen(false);
-  }, [pageItems, selectedId]);
-
-  useEffect(() => {
     if (!selectedId) {
       setSelectedQuestion(null);
-      setDetailLoading(false);
       setExplanationOpen(false);
       return;
     }
@@ -263,13 +247,11 @@ export default function StudyQuestionBank({
     const cached = detailCacheRef.current.get(selectedId);
     if (cached) {
       setSelectedQuestion(cached);
-      setDetailLoading(false);
       setExplanationOpen(false);
       return;
     }
 
     let cancelled = false;
-    setDetailLoading(true);
     setExplanationOpen(false);
 
     getQuestionBankQuestionDetail({
@@ -284,12 +266,8 @@ export default function StudyQuestionBank({
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : detailErrorMessage);
+        setDetailError(err instanceof Error ? err.message : detailErrorMessage);
         setSelectedQuestion(null);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setDetailLoading(false);
       });
 
     return () => {
@@ -297,25 +275,18 @@ export default function StudyQuestionBank({
     };
   }, [curriculum, detailErrorMessage, scope, selectedId]);
 
-  const questionCountLabel = useMemo(() => {
-    if (listLoading) return t('Cargando...', 'Kargatzen...');
-    if (searchKey) {
-      return `${t('Resultados', 'Emaitzak')}: ${pageItems.length}${hasNextPage ? '+' : ''}`;
-    }
-    return `${t('Página', 'Orria')} ${pageIndex + 1}`;
-  }, [hasNextPage, listLoading, pageIndex, pageItems.length, searchKey, t]);
+  const firstResult = pageIndex * pageSize + 1;
+  const lastResult = firstResult + pageItems.length - 1;
+  const pageSummary = listLoading
+    ? t('Cargando preguntas…', 'Galderak kargatzen…')
+    : pageItems.length
+      ? `${t('Resultados', 'Emaitzak')} ${firstResult}–${lastResult}`
+      : t('Sin resultados', 'Emaitzarik ez');
 
-  const paginationHint = useMemo(() => {
-    if (listLoading) return t('Cargando página...', 'Orria kargatzen...');
-    if (pageItems.length === 0) return null;
-
-    const from = pageIndex * pageSize + 1;
-    const to = from + pageItems.length - 1;
-
-    return `${t('Página', 'Orria')} ${pageIndex + 1} · ${from}-${to} · ${pageSize} ${t('preguntas por página', 'galdera orriko')} · ${
-      hasNextPage ? t('Hay más páginas', 'Orrialde gehiago daude') : t('Última página', 'Azken orria')
-    }`;
-  }, [hasNextPage, listLoading, pageIndex, pageItems.length, pageSize, t]);
+  const changePage = (delta: number) => {
+    setPageIndex(page => Math.max(0, page + delta));
+    gridRef.current?.scrollIntoView({ block: 'nearest' });
+  };
 
   const getDisplayNumber = (question: QuestionBankListItem, indexInPage: number) => {
     if (typeof question.number === 'number' && Number.isFinite(question.number)) return question.number;
@@ -381,106 +352,35 @@ export default function StudyQuestionBank({
       ) : null}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-5 space-y-5">
-        <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-3">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              {t('Temario', 'Gai-zerrenda')}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {scopeLabels.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setScope(value)}
-                  aria-pressed={scope === value}
-                  className={`px-5 py-3 rounded-2xl border-2 font-black text-xs transition-all ${
-                    scope === value
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-100 bg-white text-slate-500 hover:border-indigo-100'
-                  }`}
-                >
+        <div className="grid gap-3 border-b border-slate-200 pb-4 sm:grid-cols-2 xl:grid-cols-[auto_minmax(0,1.25fr)_minmax(0,1fr)] xl:items-end">
+          <fieldset className="min-w-0">
+            <legend className="mb-1.5 text-xs font-semibold text-slate-700">{t('Temario', 'Gai-zerrenda')}</legend>
+            <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+              {scopeLabels.map(value => (
+                <button key={value} type="button" onClick={() => setScope(value)} aria-pressed={scope === value}
+                  className={`min-h-9 flex-1 rounded-lg px-3 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${scope === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-indigo-700'}`}>
                   {formatScopeLabel(value, locale, curriculum)}
                 </button>
               ))}
             </div>
-            <div className="mt-4 flex flex-col gap-2">
-              <label htmlFor="question-bank-topic" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-                {t('Tema', 'Gaia')}
-              </label>
-              <select
-                id="question-bank-topic"
-                value={selectedTopic}
-                onChange={(event) => setSelectedTopic(event.target.value)}
-                disabled={topicOptionsLoading}
-                className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 disabled:opacity-60"
-              >
-                <option value="">{topicOptionsLoading ? t('Cargando temas...', 'Gaiak kargatzen...') : t('Todos los temas', 'Gai guztiak')}</option>
-                {topicOptions.map(({ label, count }) => (
-                  <option value={label} key={label}>{`${label} (${count})`}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:items-end">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="search"
-                aria-label={t('Buscar preguntas', 'Galderak bilatu')}
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                className="w-full sm:w-[320px] rounded-2xl border border-slate-200 bg-slate-50 px-11 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white"
-                placeholder={t('Buscar por número o texto...', 'Zenbakiz edo testuz bilatu...')}
-              />
-            </div>
-            <div className="flex flex-col items-start sm:items-end gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-500">
-                  <span>{t('Por página', 'Orriko')}</span>
-                  <select
-                    value={pageSize}
-                    onChange={(event) => {
-                      setPageSize(Number(event.target.value));
-                      setPageIndex(0);
-                    }}
-                    className="bg-transparent text-slate-700 outline-none"
-                    aria-label={t('Preguntas por página', 'Galderak orriko')}
-                  >
-                    {PAGE_SIZE_OPTIONS.map((value) => (
-                      <option key={value} value={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setPageIndex((prev) => Math.max(0, prev - 1))}
-                  aria-label={t('Página anterior', 'Aurreko orria')}
-                  disabled={pageIndex === 0 || listLoading}
-                  className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <div className="px-4 py-3 rounded-2xl border border-slate-200 bg-white text-xs font-black text-slate-600">
-                  {pageIndex + 1}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPageIndex((prev) => prev + 1)}
-                  aria-label={t('Página siguiente', 'Hurrengo orria')}
-                  disabled={!hasNextPage || listLoading}
-                  className="h-11 w-11 rounded-2xl border border-slate-200 bg-white flex items-center justify-center text-slate-600 disabled:opacity-50"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-              {paginationHint ? (
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-left sm:text-right">
-                  {paginationHint}
-                </div>
-              ) : null}
-            </div>
-          </div>
+          </fieldset>
+          <label className="min-w-0 space-y-1.5 text-xs font-semibold text-slate-700">
+            <span className="block">{t('Tema', 'Gaia')}</span>
+            <select value={selectedTopic} onChange={event => setSelectedTopic(event.target.value)} disabled={topicOptionsLoading}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:border-indigo-500 disabled:opacity-60">
+              <option value="">{topicOptionsLoading ? t('Cargando temas…', 'Gaiak kargatzen…') : t('Todos los temas', 'Gai guztiak')}</option>
+              {topicOptions.map(({ label, count }) => <option value={label} key={label}>{label} ({count})</option>)}
+            </select>
+          </label>
+          <label className="min-w-0 space-y-1.5 text-xs font-semibold text-slate-700 sm:col-span-2 xl:col-span-1">
+            <span className="block">{t('Buscar', 'Bilatu')}</span>
+            <span className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+              <input type="search" value={searchInput} onChange={event => setSearchInput(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-800 focus:border-indigo-500"
+                placeholder={t('Número o texto', 'Zenbakia edo testua')} />
+            </span>
+          </label>
         </div>
 
         {error ? (
@@ -489,10 +389,10 @@ export default function StudyQuestionBank({
           </div>
         ) : null}
 
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-          <div ref={gridRef} className="scroll-mt-24 xl:scroll-mt-4">
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">
-              {questionCountLabel}
+        <div ref={gridRef} className="scroll-mt-24 space-y-3 xl:scroll-mt-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-sm font-bold text-slate-800">{t('Preguntas', 'Galderak')}</h3>
+              <p aria-live="polite" className="text-xs tabular-nums text-slate-600">{pageSummary}</p>
             </div>
 
             {pageItems.some((item) => item.auditIncident) ? (
@@ -514,7 +414,7 @@ export default function StudyQuestionBank({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-1.5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(3rem,1fr))] gap-2">
                   {pageItems.map((question, index) => {
                     const isSelected = selectedId === question.id;
                     const displayNumber = getDisplayNumber(question, index);
@@ -522,16 +422,14 @@ export default function StudyQuestionBank({
                     return (
                       <button
                         key={question.id}
-                        id={`question-bank-tile-${question.id}`}
                         type="button"
-                        aria-pressed={isSelected}
+                        aria-haspopup="dialog"
                         onClick={() => {
-                          setSelectedId(question.id);
+                          setSelectedQuestion(null);
+                          setDetailError(null);
                           setExplanationOpen(false);
-                          if (!window.matchMedia('(min-width: 1280px)').matches) {
-                            detailRef.current?.focus({ preventScroll: true });
-                            detailRef.current?.scrollIntoView({ block: 'start' });
-                          }
+                          setSelectedId(question.id);
+                          detailRef.current?.showModal();
                         }}
                         aria-label={`${t('Pregunta', 'Galdera')} ${displayNumber}${question.auditIncident ? t(', con incidencia', ', gorabeherarekin') : ''}`}
                         className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl border py-1 shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${
@@ -563,37 +461,57 @@ export default function StudyQuestionBank({
                 </div>
               )}
             </div>
-          </div>
-
-          <div ref={detailRef} tabIndex={-1} className="scroll-mt-24 focus:outline-none xl:scroll-mt-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-slate-700">{t('Detalle de la pregunta', 'Galderaren xehetasuna')}</h3>
-              <button type="button" className="text-xs font-bold text-indigo-700 hover:underline xl:hidden"
-                onClick={() => {
-                  if (selectedId) document.getElementById(`question-bank-tile-${selectedId}`)?.focus({ preventScroll: true });
-                  gridRef.current?.scrollIntoView({ block: 'start' });
-                }}>
-                {t('Volver a la cuadrícula', 'Saretara itzuli')}
+          <nav aria-label={t('Paginación del banco', 'Bankuaren orrialdeak')} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              {t('Por página', 'Orriko')}
+              <select value={pageSize} onChange={event => {
+                setPageSize(Number(event.target.value));
+                setPageIndex(0);
+              }} className="h-10 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                {PAGE_SIZE_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => changePage(-1)} aria-label={t('Página anterior', 'Aurreko orria')}
+                disabled={pageIndex === 0 || listLoading}
+                className="flex size-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-indigo-50 disabled:opacity-40">
+                <ChevronLeft size={18} aria-hidden="true" />
+              </button>
+              <span className="px-2 text-sm font-bold tabular-nums text-slate-800">{t('Página', 'Orria')} {pageIndex + 1}</span>
+              <button type="button" onClick={() => changePage(1)} aria-label={t('Página siguiente', 'Hurrengo orria')}
+                disabled={!hasNextPage || listLoading}
+                className="flex size-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-indigo-50 disabled:opacity-40">
+                <ChevronRight size={18} aria-hidden="true" />
               </button>
             </div>
+          </nav>
+        </div>
+      </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
-              {!selectedId ? (
-                <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
-                  {t('Selecciona una pregunta para verla.', 'Hautatu galdera bat ikusteko.')}
-                </div>
-              ) : detailLoading || !selectedQuestion ? (
-                <div className="rounded-[1.5rem] border border-slate-100 bg-white p-6 text-slate-500 font-bold">
-                  {t('Cargando detalle de la pregunta...', 'Galderaren xehetasuna kargatzen...')}
-                </div>
-              ) : (
+      <dialog ref={detailRef} aria-labelledby="question-bank-detail-title"
+        onClose={() => setSelectedId(null)}
+        onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close(); }}
+        className="m-auto max-h-[min(90dvh,52rem)] w-[calc(100%_-_1.5rem)] max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-slate-950/50">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <h3 id="question-bank-detail-title" className="text-sm font-bold text-slate-800">{t('Detalle de la pregunta', 'Galderaren xehetasuna')}</h3>
+          <button type="button" onClick={() => detailRef.current?.close()} aria-label={t('Cerrar detalle', 'Xehetasuna itxi')}
+            className="flex size-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100">
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="p-4 sm:p-6">
+          {selectedId && (detailError ? (
+            <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{detailError}</p>
+          ) : !selectedQuestion ? (
+            <p role="status" className="py-6 text-sm text-slate-600">{t('Cargando detalle de la pregunta…', 'Galderaren xehetasuna kargatzen…')}</p>
+          ) : (
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="min-w-0">
                       <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
                         {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}
                       </div>
-                      <h2 className="mt-2 text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg max-h-[35vh] overflow-y-auto pr-1">
+                      <h2 className="mt-2 text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg">
                         {selectedQuestion.auditIncident && <span role="img" aria-label={t('Pregunta con incidencia', 'Gorabehera duen galdera')} className="mr-1 font-black text-amber-600">*</span>}
                         {selectedQuestion.text}
                       </h2>
@@ -679,11 +597,9 @@ export default function StudyQuestionBank({
                     </div>
                   )}
               </div>
-            )}
-            </div>
-          </div>
+          ))}
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }
