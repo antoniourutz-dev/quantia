@@ -111,6 +111,7 @@ export default function StudyQuestionBank({
 
   const deferredSearchInput = useDeferredValue(searchInput);
   const searchTerm = deferredSearchInput.trim();
+  const searchKey = searchTerm.toLowerCase();
   const gridRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDialogElement>(null);
   const detailCacheRef = useRef(new Map<string, Question>());
