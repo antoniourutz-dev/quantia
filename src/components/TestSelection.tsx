@@ -193,9 +193,11 @@ export default function TestSelection({
   const [customShowMarks] = useState(customSupportMode.showMarks);
   const [customShowNotes] = useState(customSupportMode.showNotes);
   const normalizedVisiblePracticeModeIds = useMemo(() => {
-    const normalized = normalizePracticeModeIds(visiblePracticeModeIds);
-    return normalized.length > 0 ? normalized : [...PRACTICE_MODE_IDS];
-  }, [visiblePracticeModeIds]);
+    const available = (id: PracticeModeVisibilityId) =>
+      Boolean(onStartChallenge) || (id !== 'challenge' && id !== 'topics');
+    const normalized = normalizePracticeModeIds(visiblePracticeModeIds).filter(available);
+    return normalized.length > 0 ? normalized : PRACTICE_MODE_IDS.filter(available);
+  }, [onStartChallenge, visiblePracticeModeIds]);
   const visiblePracticeModeSet = useMemo(
     () => new Set<PracticeModeVisibilityId>(normalizedVisiblePracticeModeIds),
     [normalizedVisiblePracticeModeIds],
@@ -253,9 +255,9 @@ export default function TestSelection({
     activeGeneralLaw?.shortTitle ?? activeGeneralLaw?.title ?? selectedLaw;
 
   useEffect(() => {
-    if (selectionMode === 'challenge' || selectionMode === 'topics' ? Boolean(onStartChallenge) : visiblePracticeModeSet.has(selectionMode)) return;
+    if (visiblePracticeModeSet.has(selectionMode)) return;
     setSelectionMode(normalizedVisiblePracticeModeIds[0]);
-  }, [normalizedVisiblePracticeModeIds, onStartChallenge, selectionMode, visiblePracticeModeSet]);
+  }, [normalizedVisiblePracticeModeIds, selectionMode, visiblePracticeModeSet]);
   const selectedBlockCount = selectedGeneralLawBlockIds.length;
   const selectedArticleCount = selectedGeneralLawArticleIds.length;
   const publishedBlockCount = generalLawBlocks.length;
@@ -885,14 +887,14 @@ export default function TestSelection({
               </p>
             </div>
           </button> : null}
-          {onStartChallenge && (
+          {visiblePracticeModeSet.has('challenge') && (
             <button type="button" onClick={() => setSelectionMode('challenge')} aria-pressed={selectionMode === 'challenge'}
               className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left font-black text-slate-800 sm:p-4 ${selectionMode === 'challenge' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
               <Trophy size={26} className="text-indigo-700" aria-hidden="true" />
               {isBasque ? 'Erronka' : 'Desafío'}
             </button>
           )}
-          {onStartChallenge && (
+          {visiblePracticeModeSet.has('topics') && (
             <button type="button" onClick={() => setSelectionMode('topics')} aria-pressed={selectionMode === 'topics'}
               className={`flex items-center gap-3 rounded-2xl border-2 p-3 text-left font-black text-slate-800 sm:p-4 ${selectionMode === 'topics' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
               <Zap size={26} className="text-indigo-700" aria-hidden="true" />
@@ -902,13 +904,13 @@ export default function TestSelection({
         </div>
       </div>
 
-      {selectionMode === 'challenge' && onStartChallenge && (
+      {selectionMode === 'challenge' && visiblePracticeModeSet.has('challenge') && onStartChallenge && (
         <ChallengePanel key={curriculum} curriculum={curriculum} userId={userId} isBasque={isBasque}
           scope={challengeScope} onScopeChange={setChallengeScope} randomize={challengeRandomize} onRandomizeChange={setChallengeRandomize}
           syncing={syncingChallenge} onStart={onStartChallenge} />
       )}
 
-      {selectionMode === 'topics' && onStartChallenge && (
+      {selectionMode === 'topics' && visiblePracticeModeSet.has('topics') && onStartChallenge && (
         <ChallengeTopics key={JSON.stringify([curriculum, userId])} curriculum={curriculum}
           userId={userId} isBasque={isBasque} syncing={syncingChallenge} onStart={onStartChallenge} />
       )}

@@ -1,8 +1,9 @@
-export const PRACTICE_MODE_IDS = ['standard', 'quick', 'errors', 'simulacro', 'custom'] as const;
+export const PRACTICE_MODE_IDS = ['standard', 'quick', 'errors', 'simulacro', 'custom', 'challenge', 'topics'] as const;
 
 export type PracticeModeVisibilityId = (typeof PRACTICE_MODE_IDS)[number];
 
-const STORAGE_PREFIX = 'quantia.visible-practice-modes.v1';
+const STORAGE_PREFIX = 'quantia.visible-practice-modes.v2';
+const LEGACY_STORAGE_PREFIX = 'quantia.visible-practice-modes.v1';
 const validIds = new Set<string>(PRACTICE_MODE_IDS);
 
 export const normalizePracticeModeIds = (values: unknown): PracticeModeVisibilityId[] => {
@@ -16,15 +17,19 @@ export const normalizePracticeModeIds = (values: unknown): PracticeModeVisibilit
   );
 };
 
-const storageKey = (userId: string) => `${STORAGE_PREFIX}:${encodeURIComponent(userId.trim())}`;
+const storageKey = (userId: string, prefix = STORAGE_PREFIX) => `${prefix}:${encodeURIComponent(userId.trim())}`;
 
 export const readVisiblePracticeModeIds = (userId: string): PracticeModeVisibilityId[] => {
   if (!userId.trim()) return [...PRACTICE_MODE_IDS];
   try {
     const raw = window.localStorage.getItem(storageKey(userId));
-    if (!raw) return [...PRACTICE_MODE_IDS];
-    const ids = normalizePracticeModeIds(JSON.parse(raw));
-    return ids.length > 0 ? ids : [...PRACTICE_MODE_IDS];
+    if (raw !== null) {
+      const ids = normalizePracticeModeIds(JSON.parse(raw));
+      return ids.length > 0 ? ids : [...PRACTICE_MODE_IDS];
+    }
+    const legacy = window.localStorage.getItem(storageKey(userId, LEGACY_STORAGE_PREFIX));
+    const ids = normalizePracticeModeIds(legacy ? JSON.parse(legacy) : null);
+    return ids.length > 0 ? normalizePracticeModeIds([...ids, 'challenge', 'topics']) : [...PRACTICE_MODE_IDS];
   } catch {
     return [...PRACTICE_MODE_IDS];
   }
