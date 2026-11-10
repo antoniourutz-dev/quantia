@@ -217,7 +217,6 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
     ),
     text: normalizeYearDots(visibleStatement),
     auditIncident: auditIncidentFromText || (
-      row.curriculum_key === 'osakidetza_tecnico_superior_mantenimiento_instalaciones' &&
       typeof row.explicacion_editorial === 'string' &&
       row.explicacion_editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]')
     ),
