@@ -103,6 +103,16 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
       label: isBasque ? 'Zure neurrira' : 'A tu medida',
       description: isBasque ? 'Aukeratu edukia, gaia eta luzera.' : 'Elige contenido, tema y longitud.',
     },
+    {
+      id: 'challenge',
+      label: isBasque ? 'Erronka' : 'Desafío',
+      description: isBasque ? 'Egin proba osoak eta gainditu zure marka.' : 'Completa tests de bloque y supera tu mejor marca.',
+    },
+    {
+      id: 'topics',
+      label: isBasque ? 'Gaiak' : 'Temas',
+      description: isBasque ? 'Ikusi gaien energia eta landu huts gehienak.' : 'Consulta tu progreso por tema y repasa las preguntas más falladas.',
+    },
   ];
   const allPracticeModesSelected = selectedPracticeModeIds.length === PRACTICE_MODE_IDS.length;
 
