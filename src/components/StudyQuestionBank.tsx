@@ -582,7 +582,7 @@ export default function StudyQuestionBank({
                         {selectedQuestion.auditIncident && <span role="img" aria-label={t('Pregunta con incidencia', 'Gorabehera duen galdera')} className="mr-1 font-black text-amber-600">*</span>}
                         {selectedQuestion.text}
                       </h2>
-                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{t('Esta pregunta puede admitir varias respuestas o contener un error. Consulta la explicación.', 'Galderak hainbat erantzun izan ditzake edo akatsen bat eduki. Ikusi azalpena.')}</p>}
+                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{t('Esta pregunta tiene una incidencia de auditoría. Se conservan el enunciado y la clave original; consulta la explicación.', 'Galdera honek auditoria-ohar bat du. Jatorrizko enuntziatua eta erantzun-gakoa mantendu dira; ikusi azalpena.')}</p>}
                       {selectedQuestion.category ? (
                         <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                           {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ??
@@ -623,7 +623,7 @@ export default function StudyQuestionBank({
                           {isReferenceAnswer && (
                             <div className="mt-2 text-xs font-semibold text-amber-800">
                               <span className="mr-1 text-amber-600">*</span>
-                              {t('Respuesta según bibliografía. Consulta la incidencia normativa.', 'Bibliografiaren araberako erantzuna. Ikusi araudiari buruzko oharra.')}
+                              {t('Respuesta registrada en el banco, no necesariamente válida sin reservas. Consulta la incidencia.', 'Bankuan gordetako erantzuna, ez nahitaez zalantzarik gabe baliozkoa. Ikusi gorabehera.')}
                             </div>
                           )}
                         </div>
