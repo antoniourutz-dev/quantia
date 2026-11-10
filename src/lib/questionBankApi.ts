@@ -83,6 +83,15 @@ const CURRICULUM_ALIAS_GROUPS = [
     ],
   },
   {
+    key: 'osakidetza-tecnico-superior-organizacion',
+    aliases: [
+      'osakidetza_tecnico_superior_organizacion',
+      'osakidetza-tecnico-superior-organizacion',
+      'tecnico superior organizacion',
+      'técnico superior organización',
+    ],
+  },
+  {
     key: 'goi-teknikaria',
     aliases: ['goi-teknikaria', 'goi_teknikaria', 'goi-teknikaria-eu', 'goi_teknikaria_eu'],
   },
@@ -116,6 +125,10 @@ const SHARED_QUESTION_SOURCES: Record<
     common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
   'osakidetza-tecnico-superior-mantenimiento-instalaciones': {
+    all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+    common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+  },
+  'osakidetza-tecnico-superior-organizacion': {
     all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
     common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },

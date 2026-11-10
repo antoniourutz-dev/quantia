@@ -97,3 +97,32 @@ describe('Técnico Superior de Mantenimiento curriculum', () => {
     expect(getSharedCurriculumSources(curriculum, 'specific')).toEqual([]);
   });
 });
+
+describe('Técnico Superior Organización curriculum', () => {
+  const curriculum = 'osakidetza_tecnico_superior_organizacion';
+  const shared = { curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' };
+
+  it('usa exactamente el nombre solicitado en el catálogo', () => {
+    expect(buildFallbackCurriculumOptions()).toContainEqual({
+      id: curriculum,
+      label: 'Técnico Superior Organización',
+    });
+  });
+
+  it.each([
+    curriculum,
+    'osakidetza-tecnico-superior-organizacion',
+    'Técnico Superior Organización',
+  ])('unifica el nombre de la oposición para %s', (value) => {
+    expect(formatCurriculumLabel(value)).toBe('Técnico Superior Organización');
+  });
+
+  it('comparte las mismas 200 preguntas comunes que Mantenimiento sin duplicarlas', () => {
+    expect(getSharedCurriculumSources(curriculum, 'common')).toEqual([shared]);
+    expect(getSharedCurriculumSources(curriculum, 'all')).toEqual([shared]);
+    expect(getSharedCurriculumSources(curriculum, 'specific')).toEqual([]);
+    expect(getSharedCurriculumSources(
+      'osakidetza_tecnico_superior_mantenimiento_instalaciones', 'common',
+    )).toEqual([shared]);
+  });
+});

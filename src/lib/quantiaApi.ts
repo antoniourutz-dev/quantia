@@ -119,6 +119,10 @@ const FALLBACK_CURRICULUM_OPTIONS: CurriculumOption[] = [
     label: 'Técnico/a Medio Administración y Gestión',
   },
   {
+    id: 'osakidetza_tecnico_superior_organizacion',
+    label: 'Técnico Superior Organización',
+  },
+  {
     id: 'tecnico_superior_administracion_y_gestion',
     label: 'Técnico/a Superior Administración y Gestión',
   },
@@ -274,6 +278,16 @@ const CURRICULUM_ALIAS_GROUPS = [
     ],
   },
   {
+    key: 'osakidetza-tecnico-superior-organizacion',
+    label: 'Técnico Superior Organización',
+    aliases: [
+      'osakidetza_tecnico_superior_organizacion',
+      'osakidetza-tecnico-superior-organizacion',
+      'tecnico superior organizacion',
+      'técnico superior organización',
+    ],
+  },
+  {
     key: 'osakidetza-tecnico-medio-administracion-gestion',
     label: 'Técnico/a Medio Administración y Gestión',
     aliases: [
@@ -327,6 +341,10 @@ const CURRICULUM_SHARED_QUESTION_SOURCES: Record<
     common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
   'osakidetza-tecnico-superior-mantenimiento-instalaciones': {
+    all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+    common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
+  },
+  'osakidetza-tecnico-superior-organizacion': {
     all: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
     common: [{ curriculum: 'tecnico_superior_administracion_y_gestion', scope: 'common' }],
   },
@@ -1700,7 +1718,10 @@ const extractCurriculumOption = (row: Record<string, unknown>): CurriculumOption
 
   return {
     id,
-    label: readFirstText(sourceRow, CURRICULUM_LABEL_ALIASES) ?? formatCurriculumLabel(id),
+    label:
+      canonicalizeCurriculumId(id) === 'osakidetza-tecnico-superior-organizacion'
+        ? formatCurriculumLabel(id)
+        : readFirstText(sourceRow, CURRICULUM_LABEL_ALIASES) ?? formatCurriculumLabel(id),
     questionCount: readOptionalNumber(
       sourceRow.question_count ??
         sourceRow.total_questions ??
