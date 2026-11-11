@@ -1,5 +1,5 @@
 /** Presentational audit metadata; never changes official alternatives or grading keys. */
-export type QuestionAuditSeverity = 'conflict' | 'warning' | null;
+export type QuestionAuditSeverity = 'conflict' | 'warning' | 'pending' | null;
 
 const AUDIT_TAG = String.raw`\[(?:dudosa|pendiente\s+(?:de\s+)?auditor[ií]a)\]`;
 const PREFIX = new RegExp(String.raw`^\s*` + AUDIT_TAG + String.raw`\s*`, 'i');
@@ -17,6 +17,8 @@ export function readQuestionAuditPresentation(statement: string, editorial: unkn
     ? null
     : explicit && note.includes('[AUDITORIA_TMAG_20261111:ADVERTENCIA]')
       ? 'warning'
-      : 'conflict';
+      : explicit && note.includes('[AUDITORIA_TMAG_20261111:PENDIENTE]')
+        ? 'pending'
+        : 'conflict';
   return { text, incident, severity };
 }
