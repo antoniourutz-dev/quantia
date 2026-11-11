@@ -1,4 +1,5 @@
 import { getSafeSupabaseSession, supabase } from './supabaseClient';
+import { readQuestionAuditPresentation } from './questionAuditPresentation';
 import { supabaseAnonKey, supabaseUrl } from './supabaseConfig';
 import { createId } from './id';
 import {
@@ -100,6 +101,7 @@ type QuestionBankCacheRow = {
   category: string | null;
   topic: string | null;
   auditIncident: boolean;
+  auditSeverity: 'conflict' | 'warning' | null;
   dedupeKey: string;
 };
 
@@ -758,6 +760,7 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
 
   if (!id || !text) return null;
 
+  const audit = readQuestionAuditPresentation(text, row.explicacion_editorial);
   const number = readOptionalNumber(
     row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
   );
@@ -781,17 +784,15 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
     number,
     correctAnswer,
     syllabus,
-    text,
+    text: audit.text,
     category,
     topic,
-    auditIncident: /^\[dudosa\](?:\s|$)/i.test(text) || (
-      typeof row.explicacion_editorial === 'string' &&
-      row.explicacion_editorial.startsWith('[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]')
-    ),
+    auditIncident: audit.incident,
+    auditSeverity: audit.severity,
     dedupeKey: buildQuestionBankDedupeKey({
       number,
       category,
-      text,
+      text: audit.text,
       correctAnswer,
     }),
   };
@@ -3270,6 +3271,7 @@ export const getQuestionBankPage = async (params: {
         correctAnswer: row.correctAnswer,
         syllabus: row.syllabus,
         auditIncident: row.auditIncident,
+        auditSeverity: row.auditSeverity,
       }),
     ),
     page,
