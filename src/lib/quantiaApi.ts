@@ -101,7 +101,7 @@ type QuestionBankCacheRow = {
   category: string | null;
   topic: string | null;
   auditIncident: boolean;
-  auditSeverity: 'conflict' | 'warning' | null;
+  auditSeverity: 'conflict' | 'warning' | 'pending' | null;
   dedupeKey: string;
 };
 
