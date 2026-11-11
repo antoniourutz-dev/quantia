@@ -60,7 +60,7 @@ export interface Question {
   number: number | null;
   text: string;
   auditIncident?: boolean;
-  auditSeverity?: 'conflict' | 'warning' | null;
+  auditSeverity?: 'conflict' | 'warning' | 'pending' | null;
   options: Option[];
   correctAnswer: OptionKey | null;
   explanation: string;
@@ -184,7 +184,7 @@ export interface QuestionBankListItem {
   correctAnswer: OptionKey | null;
   syllabus: SyllabusType;
   auditIncident?: boolean;
-  auditSeverity?: 'conflict' | 'warning' | null;
+  auditSeverity?: 'conflict' | 'warning' | 'pending' | null;
 }
 
 export interface QuestionBankPage {
