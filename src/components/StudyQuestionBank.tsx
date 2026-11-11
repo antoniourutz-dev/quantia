@@ -398,7 +398,7 @@ export default function StudyQuestionBank({
             {pageItems.some((item) => item.auditIncident) ? (
               <p className="mb-3 text-xs font-semibold text-amber-800">
                 <span className="mr-1 font-black text-amber-600">*</span>
-                {t('Pregunta con incidencia: consulta la explicación.', 'Gorabehera duen galdera: ikusi azalpena.')}
+                {t('El asterisco señala una incidencia o un matiz normativo. Consulta la explicación.', 'Izartxoak araudi-gorabehera edo ñabardura adierazten du. Ikusi azalpena.')}
               </p>
             ) : null}
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 sm:p-3">
@@ -515,7 +515,7 @@ export default function StudyQuestionBank({
                         {selectedQuestion.auditIncident && <span role="img" aria-label={t('Pregunta con incidencia', 'Gorabehera duen galdera')} className="mr-1 font-black text-amber-600">*</span>}
                         {selectedQuestion.text}
                       </h2>
-                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{t('Esta pregunta tiene una incidencia de auditoría. Se conservan el enunciado y la clave original; consulta la explicación.', 'Galdera honek auditoria-ohar bat du. Jatorrizko enuntziatua eta erantzun-gakoa mantendu dira; ikusi azalpena.')}</p>}
+                      {selectedQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{selectedQuestion.auditSeverity === 'warning' ? t('Respuesta validada con advertencia normativa. Consulta el matiz de la explicación.', 'Erantzun balioztatua araudi-oharrarekin. Ikusi azalpena.') : t('Pregunta conflictiva: la letra registrada no es una solución jurídica indiscutible. Consulta la explicación.', 'Galdera gatazkatsua: bankuko erantzuna ez da zalantzarik gabekoa. Ikusi azalpena.')}</p>}
                       {selectedQuestion.category ? (
                         <div className="mt-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
                           {getCurriculumCategoryGroupLabel(curriculum, selectedQuestion.category) ??
@@ -530,8 +530,8 @@ export default function StudyQuestionBank({
 
                 <div className="flex flex-col divide-y divide-slate-100 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white">
                   {selectedQuestion.options.map((option) => {
-                    const isReferenceAnswer = Boolean(selectedQuestion.auditIncident && option.id === selectedQuestion.correctAnswer);
-                    const isCorrect = !selectedQuestion.auditIncident && option.id === selectedQuestion.correctAnswer;
+                    const isReferenceAnswer = Boolean(selectedQuestion.auditIncident && selectedQuestion.auditSeverity !== 'warning' && option.id === selectedQuestion.correctAnswer);
+                    const isCorrect = (!selectedQuestion.auditIncident || selectedQuestion.auditSeverity === 'warning') && option.id === selectedQuestion.correctAnswer;
 
                     return (
                       <div
