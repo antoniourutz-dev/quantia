@@ -607,7 +607,7 @@ export default function TestInterface({
                   currentQuestion.text
                 )}
               </h2>
-              {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galderak auditoria-gorabehera du: gordetako gakoa mantendu da. Ikusi araudiari buruzko azalpena.' : 'Pregunta con incidencia: se conserva la clave registrada. Consulta la explicación normativa.'}</p>}
+              {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{currentQuestion.auditSeverity === 'warning' ? (isBasque ? 'Erantzun balioztatua araudi-oharrarekin. Ikusi azalpena.' : 'Respuesta validada con advertencia normativa. Consulta la explicación.') : (isBasque ? 'Galdera gatazkatsua: bankuko erantzuna ez da zalantzarik gabekoa.' : 'Pregunta conflictiva: la clave registrada es operativa y puede no ser jurídicamente inequívoca. Consulta la explicación.')}</p>}
               {showNotes ? (
                 <div className="mt-3">
                   {(() => {
