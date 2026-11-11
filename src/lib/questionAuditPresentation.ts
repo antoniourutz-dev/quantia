@@ -12,7 +12,10 @@ export function readQuestionAuditPresentation(statement: string, editorial: unkn
   const text = raw.replace(PREFIX, '').replace(SUFFIX, '').trim();
   const note = typeof editorial === 'string' ? editorial.trim() : '';
   const explicit = note.startsWith(EDITORIAL_MARKER);
-  const incident = hadTag || explicit;
+  // A reviewed, approved legacy item may still contain an archival [pendiente de auditoría]
+  // suffix. Keep the database text immutable; suppress only its stale UI warning.
+  const validated = note.startsWith('[AUDITORIA_TMAG_20261111:VALIDADA]');
+  const incident = !validated && (hadTag || explicit);
   const severity: QuestionAuditSeverity = !incident
     ? null
     : explicit && note.includes('[AUDITORIA_TMAG_20261111:ADVERTENCIA]')
