@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -35,6 +35,7 @@ import {
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
+  topicReview?: ReactNode;
   questions: Question[];
   mode: PracticeMode;
   curriculum: string;
@@ -53,6 +54,7 @@ interface PostTestStatsProps {
 
 export default function PostTestStats({
   payload,
+  topicReview,
   questions,
   mode,
   curriculum,
@@ -271,6 +273,7 @@ export default function PostTestStats({
           {null}
         </div>
 
+        {topicReview}
         <div className="mt-4">
           <button
             onClick={() => {

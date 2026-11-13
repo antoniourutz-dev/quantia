@@ -11,6 +11,7 @@ import {
   type GeneralLawTrainingSelection,
   type Question,
   type ActivePracticeSession,
+  type TopicPracticeContext,
 } from '../types';
 import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from '../lib/locale';
 import type {
@@ -37,6 +38,7 @@ export type TestSelectionStateSnapshot = {
   selectionMode: SelectionMode;
   challengeScope?: ChallengeScope | 'topics';
   challengeRandomize?: boolean;
+  topicRandomize?: boolean;
   selectedSyllabus: StandardSyllabusSelection;
   selectedLaw: string;
   questionCount: number;
@@ -70,7 +72,7 @@ interface TestSelectionProps {
       | { type: 'recent_tests'; count: number }
       | { type: 'last_day' },
   ) => void;
-  onStartChallenge?: (questions: Question[], title: string) => void;
+  onStartChallenge?: (questions: Question[], title: string, topic?: TopicPracticeContext) => void;
   syncingChallenge?: boolean;
   onStartLawTest: (law: string, count?: number) => void;
   onStartCustomTest: (params: { from: number; to: number; randomize: boolean; syllabus?: SyllabusType | null }) => void;
@@ -156,6 +158,7 @@ export default function TestSelection({
   const isBasque = locale === 'eu';
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(() => initialState?.selectionMode === 'challenge' && initialState.challengeScope === 'topics' ? 'topics' : initialState?.selectionMode ?? 'standard');
   const [challengeScope, setChallengeScope] = useState<ChallengeScope>(initialState?.challengeScope === 'topics' ? 'common' : initialState?.challengeScope ?? 'common');
+  const [topicRandomize, setTopicRandomize] = useState(initialState?.topicRandomize ?? false);
   const [challengeRandomize, setChallengeRandomize] = useState(initialState?.challengeRandomize ?? false);
   const [selectedSyllabus, setSelectedSyllabus] = useState<StandardSyllabusSelection>(
     initialState?.selectedSyllabus ?? initialSyllabus ?? 'common',
@@ -294,6 +297,7 @@ export default function TestSelection({
       selectionMode,
       challengeScope,
       challengeRandomize,
+      topicRandomize,
       selectedSyllabus,
       selectedLaw,
       questionCount,
@@ -314,6 +318,7 @@ export default function TestSelection({
   }, [
     challengeRandomize,
     challengeScope,
+    topicRandomize,
     customContentScope,
     customFrom,
     customOrder,
@@ -833,7 +838,8 @@ export default function TestSelection({
 
       {selectionMode === 'topics' && visiblePracticeModeSet.has('topics') && onStartChallenge && (
         <ChallengeTopics key={JSON.stringify([curriculum, userId])} curriculum={curriculum}
-          userId={userId} isBasque={isBasque} syncing={syncingChallenge} onStart={onStartChallenge} />
+          userId={userId} isBasque={isBasque} syncing={syncingChallenge}
+          randomize={topicRandomize} onRandomizeChange={setTopicRandomize} onStart={onStartChallenge} />
       )}
 
       {modeNeedsConfig ? (

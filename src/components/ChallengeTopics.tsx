@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, Info, Zap } from 'lucide-react';
 import TopicQuestionBattery from './TopicQuestionBattery';
-import type { Question } from '../types';
+import { orderTopicQuestions } from '../lib/challenge';
+import type { Question, TopicPracticeContext } from '../types';
 import { getCurriculumCategoryGroupLabel, getQuestionBankSnapshot } from '../lib/quantiaApi';
 import { getChallengeTopicEnergy, summarizeTopicEnergy, type QuestionEnergy } from '../lib/challengeTopicEnergy';
 
@@ -10,11 +11,13 @@ type Props = {
   userId: string | null;
   syncing: boolean;
   isBasque: boolean;
-  onStart: (questions: Question[], title: string) => void;
+  randomize: boolean;
+  onRandomizeChange: (value: boolean) => void;
+  onStart: (questions: Question[], title: string, topic: TopicPracticeContext) => void;
 };
 type Topic = { label: string; questions: Question[] };
 
-export default function ChallengeTopics({ curriculum, userId, syncing, isBasque, onStart }: Props) {
+export default function ChallengeTopics({ curriculum, userId, syncing, isBasque, randomize, onRandomizeChange, onStart }: Props) {
   const [topics, setTopics] = useState<Topic[] | null>(null);
   const [bankError, setBankError] = useState(false);
   const [energy, setEnergy] = useState<Map<string, QuestionEnergy> | null>(null);
@@ -63,23 +66,36 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
   if (!topics) return <p role="status" className="text-sm text-slate-600">{isBasque ? 'Gaiak kargatzen…' : 'Cargando temario específico…'}</p>;
   if (!topics.length) return <p className="text-sm text-slate-600">{isBasque ? 'Oposizio honek ez du gai ofizialik esleituta.' : 'Esta oposición aún no tiene preguntas agrupadas por temas oficiales.'}</p>;
 
+  const startTopic = (questions: Question[], topic: TopicPracticeContext) => {
+    onStart(orderTopicQuestions(questions, topic.randomize), `Temas · ${topic.label}`, topic);
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-900 p-5 text-white">
         <h4 className="flex items-center gap-2 text-lg font-black"><Zap size={20} className="text-amber-300" aria-hidden="true" />{isBasque ? 'Gaien energia' : 'Energía por temas'}</h4>
         <p className="mt-2 text-sm text-indigo-100">{isBasque ? 'Energia galdera bakoitzeko azken hiru erantzunek ematen dute. Sakatu gai bat proba osoa hasteko.' : 'La energía refleja tus aciertos en las últimas tres respuestas de cada pregunta. Toca un tema para hacer el test completo.'}</p>
       </div>
+      <label className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-800">
+        {isBasque ? 'Galderen ordena' : 'Orden de las preguntas'}
+        <select value={randomize ? 'random' : 'sequence'} onChange={event => onRandomizeChange(event.target.value === 'random')}
+          className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600">
+          <option value="sequence">{isBasque ? 'Ordenan' : 'En orden'}</option>
+          <option value="random">{isBasque ? 'Ausaz' : 'Aleatorio'}</option>
+        </select>
+      </label>
       {energyError ? <p role="status" className="text-sm text-rose-700">{isBasque ? 'Ezin izan da energia kargatu.' : 'No se ha podido cargar la energía. Puedes hacer los tests igualmente.'}</p>
         : userId && (syncing || !energy) ? <p role="status" className="text-sm text-slate-600">{isBasque ? 'Energia eguneratzen…' : 'Actualizando energía…'}</p> : null}
       <ul className="grid gap-3 lg:grid-cols-2">
         {topics.map(({ label, questions }, index) => {
+          const topic = { label, questions, randomize };
           const progress = energy && !energyError ? summarizeTopicEnergy(questions, energy) : null;
           const rate = progress?.rate ?? null;
           const status = rate != null ? `${rate}%` : (energyError || (!energy && userId)) ? '—' : isBasque ? 'Entrenatu gabe' : 'Sin entrenar';
           return (
             <li key={label} className={openTopic === label ? "lg:col-span-2" : undefined}>
               <div className="relative rounded-2xl border border-indigo-100 bg-white shadow-sm">
-              <button type="button" onClick={() => onStart(questions, `Temas · ${label}`)}
+              <button type="button" onClick={() => startTopic(questions, topic)}
                 className="group flex h-full w-full items-center gap-3 rounded-2xl p-4 pr-16 text-left transition hover:bg-indigo-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 motion-reduce:transition-none">
                 <span className="min-w-0 flex-1 space-y-2">
                   <span className="block text-sm font-bold text-slate-900 sm:text-base">{label}</span>
@@ -107,7 +123,7 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
               </div>
               {openTopic === label && <div id={`topic-details-${index}`} className="mt-2">
                 <TopicQuestionBattery questions={questions} energy={energyError ? null : energy} isBasque={isBasque}
-                  onStart={selected => onStart(selected, `Temas · Más falladas · ${label}`)} />
+                  onStart={selected => onStart(orderTopicQuestions(selected, randomize), `Temas · Más falladas · ${label}`, topic)} />
               </div>}
             </li>
           );

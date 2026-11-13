@@ -20,6 +20,9 @@ import Check from 'lucide-react/dist/esm/icons/check';
 import X from 'lucide-react/dist/esm/icons/x';
 import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2';
 import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
+import { orderTopicQuestions } from '../../lib/challenge';
+import TopicReviewAction from '../TopicReviewAction';
+import type { TopicPracticeContext } from '../../types';
 import type { TestSelectionStateSnapshot } from '../TestSelection';
 import {
   GOI_TEKNIKARIA_FALLBACK_OPTION,
@@ -1465,8 +1468,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     setTestReturnTarget({ view: 'dashboard' });
   }, [activeSession, currentView, lastTestPayload, selectedLawFilter, selectedSyllabus, testSelectionState]);
 
-  const handleStartChallenge = useCallback((questions: Question[], title: string) => {
-    captureTestReturnTarget();
+  const handleStartChallenge = useCallback((questions: Question[], title: string, topicPractice?: TopicPracticeContext) => {
+    if (currentView !== 'test-results' || !topicPractice) captureTestReturnTarget();
     setDataError(null);
     setPracticeEmptyState(null);
     setActiveTestSupport(null);
@@ -1476,6 +1479,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       title,
       startedAt: new Date().toISOString(),
       questions,
+      topicPractice,
       batchNumber: 1,
       totalBatches: 1,
       batchStartIndex: null,
@@ -1483,7 +1487,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       source: 'manual',
     });
     setCurrentView('test-active');
-  }, [captureTestReturnTarget]);
+  }, [captureTestReturnTarget, currentView]);
 
   const handleStartTest = useCallback(
     async (
@@ -1997,13 +2001,13 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     async (payload: FinishedTestPayload) => {
       if (!activeSession) return;
 
+      setSyncingSession(true);
       setLastTestPayload(payload);
       setCurrentView('test-results');
       setDataError(null);
 
       // Defer side effects to prioritize UI transition
       setTimeout(() => {
-        setSyncingSession(true);
         void (async () => {
           try {
             trackEffect({
@@ -3434,6 +3438,19 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               username={bundle?.identity.current_username ?? session?.user.email ?? null}
               coachContext={activeSession.coach ?? null}
               homeVariant={hasManagementAccess ? 'dashboard' : 'test-selection'}
+              topicReview={activeSession.topicPractice && (
+                <TopicReviewAction key={activeSession.id} questions={activeSession.topicPractice.questions}
+                  syncing={syncingSession} syncFailed={Boolean(dataError)} isBasque={isBasque}
+                  onStart={questions => {
+                    const topic = activeSession.topicPractice;
+                    if (!topic) return;
+                    handleStartChallenge(
+                      orderTopicQuestions(questions, topic.randomize),
+                      `Temas · Repaso · ${topic.label}`,
+                      topic,
+                    );
+                  }} />
+              )}
               onStartNextSession={({ mode, questionCount, syllabus }) => {
                 if (selectedLawFilter) {
                   void handleStartLawTest(

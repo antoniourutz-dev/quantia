@@ -40,3 +40,10 @@ export function shuffleChallengeQuestions(questions: Question[]): Question[] {
   }
   return result;
 }
+
+export function orderTopicQuestions(questions: Question[], randomize: boolean): Question[] {
+  if (randomize) return shuffleChallengeQuestions(questions);
+  return [...questions].sort((first, second) =>
+    (first.number ?? Infinity) - (second.number ?? Infinity) || first.id.localeCompare(second.id),
+  );
+}

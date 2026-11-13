@@ -380,7 +380,14 @@ export interface CloudPracticeState {
   pressureInsightsV2: PracticePressureInsightsV2 | null;
 }
 
+export interface TopicPracticeContext {
+  label: string;
+  questions: Question[];
+  randomize: boolean;
+}
+
 export interface ActivePracticeSession {
+  topicPractice?: TopicPracticeContext;
   id: string;
   mode: PracticeMode;
   title: string;
