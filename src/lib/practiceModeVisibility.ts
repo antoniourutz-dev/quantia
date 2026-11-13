@@ -7,8 +7,8 @@ const LEGACY_STORAGE_PREFIX = 'quantia.visible-practice-modes.v1';
 
 export const normalizePracticeModeIds = (values: unknown): PracticeModeVisibilityId[] => {
   if (!Array.isArray(values)) return [];
-  const visible = new Set(values);
-  return PRACTICE_MODE_IDS.filter(id => visible.has(id));
+  const allowedIds = new Set<unknown>(PRACTICE_MODE_IDS);
+  return [...new Set(values.filter((value): value is PracticeModeVisibilityId => allowedIds.has(value)))];
 };
 
 const storageKey = (userId: string, prefix = STORAGE_PREFIX) => `${prefix}:${encodeURIComponent(userId.trim())}`;

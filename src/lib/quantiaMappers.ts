@@ -35,6 +35,9 @@ export const normalizeQuestionScope = (value: unknown) => parseSyllabusType(valu
 
 const normalizeYearDots = (value: string) => value.replace(/\b2\.(018|022)\b/g, '2$1');
 
+const TARGETED_EDITORIAL_AUDIT_CURRICULUM = 'osakidetza_tecnico_superior_mantenimiento_instalaciones';
+const QUESTION_AUDIT_TAG = /^\s*\[(?:dudosa|pendiente\s+(?:de\s+)?auditor[ií]a)\]|\[(?:dudosa|pendiente\s+(?:de\s+)?auditor[ií]a)\]\s*$/i;
+
 export const mapPracticeMode = (value: unknown): PracticeSessionSummary['mode'] => {
   const normalized = String(value ?? '').trim().toLowerCase();
   switch (normalized) {
@@ -198,6 +201,10 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
 
   const audit = readQuestionAuditPresentation(statement, row.explicacion_editorial);
   const visibleStatement = audit.text;
+  const auditIncident = audit.incident && (
+    QUESTION_AUDIT_TAG.test(statement) ||
+    readText(row.curriculum_key) === TARGETED_EDITORIAL_AUDIT_CURRICULUM
+  );
   const correctOption = extractCorrectOption(row, options);
 
   const questionScope =
@@ -217,8 +224,8 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
       row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
     ),
     text: normalizeYearDots(visibleStatement),
-    auditIncident: audit.incident,
-    auditSeverity: audit.severity,
+    auditIncident,
+    auditSeverity: auditIncident ? audit.severity : null,
     options: OPTION_KEYS.map((key) => ({ id: key, text: normalizeYearDots(options[key]) })),
     correctAnswer: correctOption,
     explanation:

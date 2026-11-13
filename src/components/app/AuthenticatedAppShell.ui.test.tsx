@@ -63,5 +63,25 @@ describe('AuthenticatedAppShell (student)', () => {
     expect(screen.getByText(/Realizar test/i)).toBeInTheDocument();
     expect(screen.queryByText(/Dashboard/i)).not.toBeInTheDocument();
   });
+
+  it('expone nombres accesibles para el menú móvil', () => {
+    const session = {
+      user: {
+        email: 'student@example.com',
+        id: 'user_1',
+        app_metadata: {},
+        user_metadata: {},
+      },
+    } as unknown as Session;
+
+    render(<AuthenticatedAppShell session={session} />);
+
+    expect(screen.getByRole('complementary', { name: 'Navegación principal' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir menú de navegación' })).toHaveAttribute(
+      'aria-controls',
+      'primary-navigation',
+    );
+    expect(screen.getAllByRole('button', { name: 'Cerrar menú de navegación' })).toHaveLength(2);
+  });
 });
 
