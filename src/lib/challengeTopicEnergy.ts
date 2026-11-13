@@ -45,3 +45,10 @@ export function rankTopicMistakes(questions: Question[], energy: ReadonlyMap<str
     a.question.id.localeCompare(b.question.id),
   ).map(({ question }) => question);
 }
+
+export function getTopicQuestionsBelowPerfect(questions: Question[], energy: ReadonlyMap<string, QuestionEnergy>) {
+  return questions.filter(question => {
+    const row = energy.get(question.id);
+    return question.correctAnswer != null && row != null && row.attempts > 0 && row.correct < row.attempts;
+  });
+}
