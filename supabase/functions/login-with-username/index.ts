@@ -7,148 +7,18 @@ type LoginRequest = {
 };
 
 type Json = Record<string, unknown>;
-type ProfileSource = {
-  schema: 'public' | 'app';
-  table: string;
-  userIdColumn: string;
-  nameColumns: string[];
-};
+
+const USERNAME_ATTEMPT_LIMIT = 8;
+const IP_ATTEMPT_LIMIT = 60;
+const RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
 
 const readText = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
-
 const getSupabaseUrl = () => Deno.env.get('SUPABASE_URL') ?? '';
 const getAnonKey = () => Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const getServiceRoleKey = () =>
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
   Deno.env.get('SERVICE_ROLE_KEY') ??
   '';
-
-const readMetaUsernames = (value: unknown) => {
-  if (!value || typeof value !== 'object') return [] as string[];
-  const record = value as Record<string, unknown>;
-  const candidates = [record.current_username, record.username, record.preferred_username];
-  return candidates.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
-};
-
-const readEmailUsername = (value: unknown) => {
-  const email = readText(value).toLowerCase();
-  if (!email || !email.includes('@')) return '';
-  return email.split('@')[0]?.trim() ?? '';
-};
-
-const matchUsername = (candidate: unknown, normalized: string) => {
-  const raw = readText(candidate).toLowerCase();
-  if (!raw) return false;
-  return raw === normalized;
-};
-
-const getTableColumns = async (service: ReturnType<typeof createClient>, schema: string, table: string) => {
-  try {
-    const { data, error } = await service
-      .schema('information_schema')
-      .from('columns')
-      .select('column_name')
-      .eq('table_schema', schema)
-      .eq('table_name', table);
-    if (error || !Array.isArray(data)) return [];
-    return data.map((row) => String((row as Record<string, unknown>).column_name));
-  } catch {
-    return [];
-  }
-};
-
-const pickNameColumns = (columns: string[]) => {
-  const preferred = ['display_name', 'full_name', 'name', 'current_username', 'username'];
-  return preferred.filter((key) => columns.includes(key));
-};
-
-const resolveProfileSource = async (
-  service: ReturnType<typeof createClient>,
-): Promise<ProfileSource | null> => {
-  const candidates = [
-    { schema: 'public', table: 'profiles' },
-    { schema: 'app', table: 'user_profiles' },
-  ] as const;
-
-  for (const candidate of candidates) {
-    const columns = await getTableColumns(service, candidate.schema, candidate.table);
-    if (columns.length === 0) continue;
-
-    const userIdColumn = columns.includes('user_id') ? 'user_id' : columns.includes('id') ? 'id' : null;
-    const nameColumns = pickNameColumns(columns);
-    if (userIdColumn && nameColumns.length > 0) {
-      return {
-        schema: candidate.schema,
-        table: candidate.table,
-        userIdColumn,
-        nameColumns,
-      };
-    }
-  }
-
-  return null;
-};
-
-const resolveEmailFromProfiles = async (
-  service: ReturnType<typeof createClient>,
-  normalized: string,
-) => {
-  const source = await resolveProfileSource(service);
-  if (!source) return null;
-
-  const client = source.schema === 'app' ? service.schema('app') : service.schema('public');
-
-  for (const nameColumn of source.nameColumns) {
-    const { data, error } = await client
-      .from(source.table)
-      .select(`${source.userIdColumn},${nameColumn}`)
-      .ilike(nameColumn, normalized)
-      .limit(10);
-
-    if (error || !Array.isArray(data)) continue;
-
-    const match = (data as Array<Record<string, unknown>>).find((row) =>
-      matchUsername(row[nameColumn], normalized),
-    );
-    const userId = match ? readText(match[source.userIdColumn]) : '';
-    if (!userId) continue;
-
-    const { data: authUser, error: authUserError } = await service.auth.admin.getUserById(userId);
-    if (authUserError || !authUser.user) continue;
-
-    const email = readText(authUser.user.email).toLowerCase();
-    if (email) return email;
-  }
-
-  return null;
-};
-
-const resolveEmailForUsername = async (service: ReturnType<typeof createClient>, username: string) => {
-  const normalized = readText(username).toLowerCase();
-  if (!normalized) return null;
-
-  // If user typed an email, use it directly.
-  if (normalized.includes('@')) return normalized;
-
-  for (let page = 1; page <= 5; page += 1) {
-    const result = await service.auth.admin.listUsers({ page, perPage: 200 });
-    if (result.error) throw result.error;
-    const users = (result.data?.users ?? []) as Array<Record<string, unknown>>;
-
-    const match = users.find((u) => {
-      if (readMetaUsernames(u.user_metadata).some((candidate) => matchUsername(candidate, normalized))) return true;
-      if (readMetaUsernames(u.app_metadata).some((candidate) => matchUsername(candidate, normalized))) return true;
-      if (matchUsername(readEmailUsername(u.email), normalized)) return true;
-      return false;
-    });
-
-    const email = match ? readText(match.email).toLowerCase() : '';
-    if (email) return email;
-    if (users.length < 200) break;
-  }
-
-  return await resolveEmailFromProfiles(service, normalized);
-};
 
 const jsonResponse = (payload: Json, init: ResponseInit) =>
   new Response(JSON.stringify(payload), {
@@ -158,6 +28,54 @@ const jsonResponse = (payload: Json, init: ResponseInit) =>
       ...(init.headers ?? {}),
     },
   });
+
+const hashRateLimitKey = async (secret: string, value: string) => {
+  const bytes = new TextEncoder().encode(`${secret}:${value}`);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+const getClientIp = (req: Request) => {
+  const forwarded = readText(req.headers.get('x-forwarded-for'));
+  return forwarded.split(',')[0]?.trim() || readText(req.headers.get('cf-connecting-ip')) || 'unknown';
+};
+
+const consumeRateLimit = async (
+  service: ReturnType<typeof createClient>,
+  keyHash: string,
+  limit: number,
+) => {
+  const { data, error } = await service.rpc('consume_login_rate_limit', {
+    p_key_hash: keyHash,
+    p_limit: limit,
+    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+  });
+
+  if (error) throw error;
+  return data === true;
+};
+
+const resolveEmailForUsername = async (
+  service: ReturnType<typeof createClient>,
+  username: string,
+) => {
+  const normalized = username.toLowerCase();
+  if (normalized.includes('@')) return normalized;
+
+  const { data: indexedUsername, error: indexError } = await service
+    .from('login_usernames')
+    .select('user_id')
+    .eq('username', normalized)
+    .maybeSingle();
+
+  if (indexError) throw indexError;
+  const userId = readText(indexedUsername?.user_id);
+  if (!userId) return null;
+
+  const { data: authUser, error: authUserError } = await service.auth.admin.getUserById(userId);
+  if (authUserError) throw authUserError;
+  return readText(authUser.user?.email).toLowerCase() || null;
+};
 
 Deno.serve(async (req) => {
   const preflight = corsPreflightResponse(req);
@@ -177,13 +95,12 @@ Deno.serve(async (req) => {
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResponse(
-      { message: 'Supabase env missing.' },
-      { status: 500, headers: { ...corsHeaders } },
+      { message: 'El servicio de acceso no está disponible.' },
+      { status: 503, headers: { ...corsHeaders } },
     );
   }
 
-  // Lightweight gateway so the endpoint isn't wide-open.
-  const apiKeyHeader = readText(req.headers.get('apikey') ?? '');
+  const apiKeyHeader = readText(req.headers.get('apikey'));
   if (!apiKeyHeader || apiKeyHeader !== anonKey) {
     return jsonResponse(
       { message: 'Unauthorized.' },
@@ -195,9 +112,9 @@ Deno.serve(async (req) => {
   const username = readText(body?.username);
   const password = readText(body?.password);
 
-  if (!username || !password) {
+  if (!username || !password || username.length > 254 || password.length > 512) {
     return jsonResponse(
-      { message: 'Missing username/password.' },
+      { message: 'Solicitud de acceso no válida.' },
       { status: 400, headers: { ...corsHeaders } },
     );
   }
@@ -205,32 +122,59 @@ Deno.serve(async (req) => {
   const service = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const normalizedUsername = username.toLowerCase();
+
+  try {
+    const [usernameKey, ipKey] = await Promise.all([
+      hashRateLimitKey(serviceRoleKey, `username:${normalizedUsername}`),
+      hashRateLimitKey(serviceRoleKey, `ip:${getClientIp(req)}`),
+    ]);
+    const [usernameAllowed, ipAllowed] = await Promise.all([
+      consumeRateLimit(service, usernameKey, USERNAME_ATTEMPT_LIMIT),
+      consumeRateLimit(service, ipKey, IP_ATTEMPT_LIMIT),
+    ]);
+
+    if (!usernameAllowed || !ipAllowed) {
+      return jsonResponse(
+        { message: 'Demasiados intentos. Inténtalo de nuevo más tarde.' },
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            'Retry-After': String(RATE_LIMIT_WINDOW_SECONDS),
+          },
+        },
+      );
+    }
+  } catch {
+    return jsonResponse(
+      { message: 'El servicio de acceso no está disponible.' },
+      { status: 503, headers: { ...corsHeaders } },
+    );
+  }
 
   let email: string | null = null;
   try {
-    email = await resolveEmailForUsername(service, username);
-  } catch (error) {
+    email = await resolveEmailForUsername(service, normalizedUsername);
+  } catch {
     return jsonResponse(
-      {
-        message: 'Unable to resolve username.',
-        error: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500, headers: { ...corsHeaders } },
+      { message: 'El servicio de acceso no está disponible.' },
+      { status: 503, headers: { ...corsHeaders } },
     );
   }
 
   if (!email) {
     return jsonResponse(
-      { message: 'Usuario no encontrado.' },
-      { status: 404, headers: { ...corsHeaders } },
+      { message: 'Usuario o contraseña incorrectos.' },
+      { status: 401, headers: { ...corsHeaders } },
     );
   }
 
   const client = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-
   const { data, error } = await client.auth.signInWithPassword({ email, password });
+
   if (error || !data?.session) {
     return jsonResponse(
       { message: 'Usuario o contraseña incorrectos.' },

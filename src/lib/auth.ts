@@ -13,6 +13,11 @@ const getLoginFunctionUrl = () =>
   import.meta.env.VITE_LOGIN_WITH_USERNAME_FUNCTION_URL ||
   `${supabaseUrl}/functions/v1/login-with-username`;
 
+const isLegacyFallbackEnabled = () =>
+  ['1', 'true'].includes(
+    String(import.meta.env.VITE_ENABLE_LEGACY_USERNAME_LOGIN_FALLBACK ?? '').trim().toLowerCase(),
+  );
+
 const signInWithLegacyEmail = async (username: string, password: string) => {
   let lastMessage = 'No se ha podido iniciar sesion. Intentalo de nuevo.';
 
@@ -35,6 +40,10 @@ const signInWithLegacyEmail = async (username: string, password: string) => {
 };
 
 const tryLegacyFallback = async (username: string, password: string, prefixMessage?: string) => {
+  if (!isLegacyFallbackEnabled()) {
+    throw new Error(prefixMessage || 'No se ha podido iniciar sesion. Intentalo de nuevo.');
+  }
+
   try {
     return await signInWithLegacyEmail(username, password);
   } catch (legacyError) {
@@ -71,7 +80,11 @@ export const loginWithUsername = async (username: string, password: string) => {
       | (Partial<LoginFunctionResponse> & { message?: string })
       | null;
 
-    if (response.status === 404) {
+    if (response.status === 429) {
+      throw new Error('Demasiados intentos. Intentalo de nuevo mas tarde.');
+    }
+
+    if (response.status === 404 && isLegacyFallbackEnabled()) {
       return await tryLegacyFallback(
         normalizedUsername,
         password,
@@ -80,12 +93,10 @@ export const loginWithUsername = async (username: string, password: string) => {
     }
 
     if (!response.ok || !payload?.access_token || !payload.refresh_token) {
-      return await tryLegacyFallback(
-        normalizedUsername,
-        password,
-        payload?.message
-          ? `${payload.message} El acceso directo tambien ha fallado:`
-          : 'El acceso por usuario no se ha podido resolver. El acceso directo tambien ha fallado:',
+      throw new Error(
+        response.status === 401
+          ? 'Usuario o contrasena incorrectos. Revisa tus datos.'
+          : payload?.message || 'No se ha podido iniciar sesion. Intentalo de nuevo.',
       );
     }
 

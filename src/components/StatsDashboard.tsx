@@ -1145,16 +1145,26 @@ export default function StatsDashboard({
             <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-6 [@media(max-height:800px)]:gap-4">
               <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-5 [@media(max-height:800px)]:p-4">
                 <div className="flex items-center justify-between mb-5 [@media(max-height:800px)]:mb-4">
-                  <button onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} className="w-10 h-10 rounded-xl border border-slate-100 bg-white flex items-center justify-center text-slate-600">
-                    <ChevronLeft size={18} />
-                  </button>
+<button
+  type="button"
+  onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+  className="w-10 h-10 rounded-xl border border-slate-100 bg-white flex items-center justify-center text-slate-600"
+  aria-label={t('Mes anterior', 'Aurreko hilabetea')}
+>
+  <ChevronLeft aria-hidden="true" size={18} />
+  </button>
                   <div className="text-center">
                     <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">{t('Calendario', 'Egutegia')}</div>
                     <div className="text-lg [@media(max-height:800px)]:text-base font-black text-slate-900">{calendarLabel}</div>
                   </div>
-                  <button onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} className="w-10 h-10 rounded-xl border border-slate-100 bg-white flex items-center justify-center text-slate-600">
-                    <ChevronRight size={18} />
-                  </button>
+<button
+  type="button"
+  onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+  className="w-10 h-10 rounded-xl border border-slate-100 bg-white flex items-center justify-center text-slate-600"
+  aria-label={t('Mes siguiente', 'Hurrengo hilabetea')}
+>
+  <ChevronRight aria-hidden="true" size={18} />
+  </button>
                 </div>
                 <div className="grid grid-cols-7 gap-2 mb-3 [@media(max-height:800px)]:mb-2">
                   {weekdayLabels.map((day) => (

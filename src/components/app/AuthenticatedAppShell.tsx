@@ -2548,8 +2548,13 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   }, [currentView]);
 
   const screenLoader = (
-    <div className="flex min-h-[40vh] items-center justify-center py-16 text-slate-500">
-      <Loader2 className="h-7 w-7 animate-spin" />
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-[40vh] items-center justify-center py-16 text-slate-500"
+    >
+      <Loader2 aria-hidden="true" className="h-7 w-7 animate-spin" />
+      <span className="sr-only">{t('Cargando contenido', 'Edukia kargatzen')}</span>
     </div>
   );
 
@@ -2564,9 +2569,12 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             className={`lg:hidden fixed inset-0 z-40 bg-black/40 transition-opacity ${
               sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
-            aria-hidden="true"
+            aria-label={t('Cerrar menú de navegación', 'Nabigazio-menua itxi')}
+            tabIndex={sidebarOpen ? 0 : -1}
           />
           <aside
+            id="primary-navigation"
+            aria-label={t('Navegación principal', 'Nabigazio nagusia')}
             className={`w-72 bg-[#0a0a1a] text-white flex flex-col p-8 [@media(max-height:800px)]:p-5 shadow-2xl border-r border-white/5 fixed lg:relative inset-y-0 left-0 z-50 lg:z-20 transition-transform duration-300 ${
               sidebarOpen ? 'translate-x-0' : '-translate-x-full'
             } lg:translate-x-0 overflow-y-auto`}
@@ -2576,8 +2584,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               type="button"
               onClick={() => setSidebarOpen(false)}
               className="p-2 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
+              aria-label={t('Cerrar menú de navegación', 'Nabigazio-menua itxi')}
             >
-              <X className="h-5 w-5 text-white" />
+              <X aria-hidden="true" className="h-5 w-5 text-white" />
             </button>
           </div>
           <div ref={curriculumMenuRef} className="relative z-50 mb-12 [@media(max-height:800px)]:mb-6 px-2">
@@ -2929,13 +2938,16 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             }`}
           >
             <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden mt-1 p-3 rounded-2xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 transition-all"
-              >
-                <Menu className="h-5 w-5 text-slate-700" />
-              </button>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden mt-1 p-3 rounded-2xl border border-slate-200 bg-white shadow-sm hover:bg-slate-50 transition-all"
+            aria-label={t('Abrir menú de navegación', 'Nabigazio-menua ireki')}
+            aria-controls="primary-navigation"
+            aria-expanded={sidebarOpen}
+          >
+            <Menu aria-hidden="true" className="h-5 w-5 text-slate-700" />
+          </button>
               <div>
               <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
                 {currentView === 'dashboard' && `${t('Hola', 'Kaixo')}, ${session.user.email?.split('@')[0]}`}
