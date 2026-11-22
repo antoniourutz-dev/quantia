@@ -303,17 +303,28 @@ export default function StatsDashboard({
 
   const actionSummary = [statsCopy.line1, statsCopy.line2].filter(Boolean).join(' ');
 
-  // Memory DNA breakdown
+  // Memory DNA breakdown (prefer attempt-based telemetry when present so high-accuracy practice is not misclassified as fragile)
   const memorySummary = useMemo(() => {
+    const telemetryMem = statsTelemetry?.memorySummary;
+    const telemetrySeen = telemetryMem
+      ? telemetryMem.mastered + telemetryMem.solid + telemetryMem.consolidating + telemetryMem.fragile
+      : 0;
+
     const totalQ = Math.max(
       learningV2?.totalQuestions ?? 0,
       bundle?.questionsCount ?? 0,
+      telemetryMem?.totalQuestions ?? 0,
     );
-    const mastered = learningV2?.masteredCount ?? 0;
-    const solid = learningV2?.solidCount ?? 0;
-    const consolidating = learningV2?.consolidatingCount ?? 0;
-    const fragile = learningV2?.fragileCount ?? 0;
-    const seen = Math.max(learningV2?.seenQuestions ?? 0, mastered + solid + consolidating + fragile);
+
+    const mastered = telemetrySeen > 0 ? telemetryMem!.mastered : (learningV2?.masteredCount ?? 0);
+    const solid = telemetrySeen > 0 ? telemetryMem!.solid : (learningV2?.solidCount ?? 0);
+    const consolidating =
+      telemetrySeen > 0 ? telemetryMem!.consolidating : (learningV2?.consolidatingCount ?? 0);
+    const fragile = telemetrySeen > 0 ? telemetryMem!.fragile : (learningV2?.fragileCount ?? 0);
+    const seen =
+      telemetrySeen > 0
+        ? telemetrySeen
+        : Math.max(learningV2?.seenQuestions ?? 0, mastered + solid + consolidating + fragile);
     const unseen = Math.max(0, totalQ - seen);
     const tracked = Math.max(1, totalQ || seen);
     return {
@@ -325,7 +336,7 @@ export default function StatsDashboard({
       unseen,
       tracked,
     };
-  }, [bundle?.questionsCount, learningV2]);
+  }, [bundle?.questionsCount, learningV2, statsTelemetry?.memorySummary]);
 
   // Topic & Syllabus Insights
   const topicInsights = useMemo(

@@ -307,4 +307,34 @@ describe('StatsDashboard', () => {
     expect(screen.getByText(/Egoera orokorra/i)).toBeInTheDocument();
     expect(screen.getByText(/Zure gaien mapa osoa/i)).toBeInTheDocument();
   });
+
+  it('usa el estado real de aciertos cuando learningV2 devuelve todo en frágiles', () => {
+    const skewedBundle = buildBundle();
+    skewedBundle.practiceState.learningDashboardV2!.fragileCount = 130;
+    skewedBundle.practiceState.learningDashboardV2!.masteredCount = 0;
+    skewedBundle.practiceState.learningDashboardV2!.solidCount = 0;
+    skewedBundle.practiceState.learningDashboardV2!.consolidatingCount = 0;
+    skewedBundle.statsTelemetry!.memorySummary = {
+      mastered: 75,
+      solid: 35,
+      consolidating: 15,
+      fragile: 5,
+      unseen: 70,
+      totalQuestions: 200,
+    };
+
+    render(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={results}
+          bundle={skewedBundle}
+          curriculum="osakidetza_mantenimiento_instalaciones"
+        />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByText(/Dominadas \+ Sólidas: 110/i)).toBeInTheDocument();
+    expect(screen.getByTitle('Dominadas: 75')).toBeInTheDocument();
+    expect(screen.getByTitle('Frágiles: 5')).toBeInTheDocument();
+  });
 });

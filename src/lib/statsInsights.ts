@@ -20,6 +20,18 @@ export type PracticeModalityKind =
   | 'anti_trap'
   | 'simulacro';
 
+export type MemoryCounts = {
+  mastered: number;
+  solid: number;
+  consolidating: number;
+  fragile: number;
+};
+
+export type MemoryBreakdownSummary = MemoryCounts & {
+  unseen: number;
+  totalQuestions: number;
+};
+
 export type TopicAttemptEvolution = {
   topicKey: string;
   scope: SyllabusType | 'unknown';
@@ -29,6 +41,7 @@ export type TopicAttemptEvolution = {
   priorAccuracy: number | null;
   deltaPp: number | null;
   checkpoints: number[];
+  memory?: MemoryCounts;
 };
 
 export type ErrorRecoverySummary = {
@@ -62,6 +75,8 @@ export type StatsAttemptTelemetry = {
   errorRecovery: ErrorRecoverySummary;
   scopedDaily: ScopedDailyMetrics;
   behavior: BehaviorTelemetrySummary;
+  memorySummary?: MemoryBreakdownSummary;
+  scopeMemory?: Record<SyllabusType, MemoryCounts>;
 };
 
 export type TelemetryBankItem = {
@@ -414,6 +429,86 @@ export const buildStatsAttemptTelemetry = (
     }
   }
 
+  const emptyMemoryCounts = (): MemoryCounts => ({
+    mastered: 0,
+    solid: 0,
+    consolidating: 0,
+    fragile: 0,
+  });
+
+  const classifyQuestionMemory = (
+    events: Array<{ ts: number; isCorrect: boolean }>,
+  ): keyof MemoryCounts => {
+    const sorted = [...events].sort((a, b) => a.ts - b.ts);
+    const total = sorted.length;
+    const correctCount = sorted.filter((item) => item.isCorrect).length;
+    const accuracy = total > 0 ? correctCount / total : 0;
+    const lastResult = sorted[total - 1]?.isCorrect ?? false;
+
+    let consecutiveCorrect = 0;
+    for (let index = total - 1; index >= 0; index -= 1) {
+      if (sorted[index].isCorrect) consecutiveCorrect += 1;
+      else break;
+    }
+
+    if (!lastResult) return 'fragile';
+    if (consecutiveCorrect >= 3 && accuracy >= 0.8) return 'mastered';
+    if (consecutiveCorrect >= 2 || (total >= 2 && accuracy >= 0.75)) return 'solid';
+    if (total >= 3 && accuracy < 0.5) return 'fragile';
+    return 'consolidating';
+  };
+
+  const memorySummary: MemoryBreakdownSummary = {
+    mastered: 0,
+    solid: 0,
+    consolidating: 0,
+    fragile: 0,
+    unseen: 0,
+    totalQuestions: bank.length,
+  };
+  const scopeMemory: Record<SyllabusType, MemoryCounts> = {
+    common: emptyMemoryCounts(),
+    specific: emptyMemoryCounts(),
+  };
+  const topicMemoryMap = new Map<string, MemoryCounts>();
+  const questionMetaById = new Map<
+    string,
+    { scope: SyllabusType | 'unknown'; topicKey: string }
+  >();
+  for (const item of bank) {
+    const rawCat = item.category ?? item.topic ?? null;
+    const resolved = resolveCategoryLabel ? resolveCategoryLabel(rawCat) : rawCat;
+    const topicKey = normalizeTopicKey(resolved ?? rawCat);
+    if (item.id) {
+      questionMetaById.set(item.id, { scope: item.scope, topicKey });
+    }
+  }
+
+  for (const [questionKey, events] of byQuestion.entries()) {
+    const state = classifyQuestionMemory(events);
+    memorySummary[state] += 1;
+    const bankItem = bankById.get(questionKey) ?? bankByDedupeKey.get(questionKey);
+    const meta = bankItem ? questionMetaById.get(bankItem.id) : undefined;
+    if (meta?.scope === 'common' || meta?.scope === 'specific') {
+      scopeMemory[meta.scope][state] += 1;
+    }
+    if (meta?.topicKey) {
+      const composite = `${meta.scope}:${meta.topicKey}`;
+      const bucket = topicMemoryMap.get(composite) ?? emptyMemoryCounts();
+      bucket[state] += 1;
+      topicMemoryMap.set(composite, bucket);
+      if (!topicMemoryMap.has(meta.topicKey)) {
+        topicMemoryMap.set(meta.topicKey, bucket);
+      }
+    }
+  }
+  const seenInTelemetry =
+    memorySummary.mastered +
+    memorySummary.solid +
+    memorySummary.consolidating +
+    memorySummary.fragile;
+  memorySummary.unseen = Math.max(0, bank.length - seenInTelemetry);
+
   // Topic evolution
   const topicEvolution: Record<string, TopicAttemptEvolution> = {};
   for (const [topicKey, group] of byTopic.entries()) {
@@ -454,6 +549,9 @@ export const buildStatsAttemptTelemetry = (
       }
     }
 
+    const mem =
+      topicMemoryMap.get(`${group.scope}:${topicKey}`) ?? topicMemoryMap.get(topicKey);
+
     topicEvolution[`${group.scope}:${topicKey}`] = {
       topicKey,
       scope: group.scope,
@@ -463,6 +561,7 @@ export const buildStatsAttemptTelemetry = (
       priorAccuracy,
       deltaPp,
       checkpoints,
+      memory: mem,
     };
     if (!topicEvolution[topicKey]) {
       topicEvolution[topicKey] = topicEvolution[`${group.scope}:${topicKey}`];
@@ -542,6 +641,8 @@ export const buildStatsAttemptTelemetry = (
       fastErrorRate,
       changedToWrongRate,
     },
+    memorySummary,
+    scopeMemory,
   };
 };
 
@@ -699,10 +800,19 @@ export const mergeTopicInsights = (params: {
         ? Math.max(0, Math.round(riskItem.excessRisk * 100))
         : null;
 
-    const fragileCount = topic.fragileCount ?? 0;
-    const consolidatingCount = topic.consolidatingCount ?? 0;
-    const solidCount = topic.solidCount ?? 0;
-    const masteredCount = topic.masteredCount ?? 0;
+    const fallbackScopeMem =
+      normalizeTopicKey(label) === 'parte común' || normalizeTopicKey(label) === 'parte comun'
+        ? telemetry?.scopeMemory?.[scope] ?? null
+        : null;
+    const evoMemory = evo?.memory ?? fallbackScopeMem;
+    const evoMemoryTotal = evoMemory
+      ? evoMemory.mastered + evoMemory.solid + evoMemory.consolidating + evoMemory.fragile
+      : 0;
+
+    const fragileCount = evoMemoryTotal > 0 ? evoMemory!.fragile : (topic.fragileCount ?? 0);
+    const consolidatingCount = evoMemoryTotal > 0 ? evoMemory!.consolidating : (topic.consolidatingCount ?? 0);
+    const solidCount = evoMemoryTotal > 0 ? evoMemory!.solid : (topic.solidCount ?? 0);
+    const masteredCount = evoMemoryTotal > 0 ? evoMemory!.mastered : (topic.masteredCount ?? 0);
     const deltaPp = evo?.deltaPp ?? null;
 
     let status: TopicInsightStatus = 'solid';

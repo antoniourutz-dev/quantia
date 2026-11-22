@@ -189,4 +189,65 @@ describe('buildEvolutionChartData & mergeTopicInsights', () => {
     expect(syllabi[0]).toMatchObject({ scope: 'common', coveragePct: 75, accuracyPct: 80 });
     expect(syllabi[1]).toMatchObject({ scope: 'specific', coveragePct: 60, riskTopicCount: 1 });
   });
+
+  it('classifies mastered, solid, consolidating and fragile questions from real attempts including Parte común', () => {
+    const bank = [
+      { id: 'c1', number: 1, scope: 'common' as const, category: 'Constitución' },
+      { id: 's1', number: 1, scope: 'specific' as const, category: 'Tema 1' },
+      { id: 's2', number: 2, scope: 'specific' as const, category: 'Tema 1' },
+      { id: 's3', number: 3, scope: 'specific' as const, category: 'Tema 1' },
+    ];
+    const attempts = [
+      // c1: 3 consecutive correct -> mastered
+      { eventId: 'c1-1', questionId: 'c1', questionNumber: 1, scope: 'common' as const, answeredAt: '2026-11-01T10:00:00.000Z', isCorrect: true },
+      { eventId: 'c1-2', questionId: 'c1', questionNumber: 1, scope: 'common' as const, answeredAt: '2026-11-05T10:00:00.000Z', isCorrect: true },
+      { eventId: 'c1-3', questionId: 'c1', questionNumber: 1, scope: 'common' as const, answeredAt: '2026-11-10T10:00:00.000Z', isCorrect: true },
+      // s1: 2 consecutive correct -> solid
+      { eventId: 's1-1', questionId: 's1', questionNumber: 1, scope: 'specific' as const, answeredAt: '2026-11-02T10:00:00.000Z', isCorrect: true },
+      { eventId: 's1-2', questionId: 's1', questionNumber: 1, scope: 'specific' as const, answeredAt: '2026-11-08T10:00:00.000Z', isCorrect: true },
+      // s2: 1 correct -> consolidating
+      { eventId: 's2-1', questionId: 's2', questionNumber: 2, scope: 'specific' as const, answeredAt: '2026-11-09T10:00:00.000Z', isCorrect: true },
+      // s3: last wrong -> fragile
+      { eventId: 's3-1', questionId: 's3', questionNumber: 3, scope: 'specific' as const, answeredAt: '2026-11-09T10:00:00.000Z', isCorrect: true },
+      { eventId: 's3-2', questionId: 's3', questionNumber: 3, scope: 'specific' as const, answeredAt: '2026-11-12T10:00:00.000Z', isCorrect: false },
+    ];
+
+    const telemetry = buildStatsAttemptTelemetry(bank, attempts);
+    expect(telemetry.memorySummary).toEqual({
+      mastered: 1,
+      solid: 1,
+      consolidating: 1,
+      fragile: 1,
+      unseen: 0,
+      totalQuestions: 4,
+    });
+    expect(telemetry.scopeMemory?.common).toEqual({
+      mastered: 1,
+      solid: 0,
+      consolidating: 0,
+      fragile: 0,
+    });
+
+    const insights = mergeTopicInsights({
+      topicBreakdown: [
+        {
+          topicLabel: 'Parte común',
+          scope: 'common',
+          attempts: 3,
+          questionCount: 1,
+          unseenCount: 0,
+          correctAttempts: 3,
+          accuracyRate: 1,
+        },
+      ],
+      weakCategories: [],
+      telemetry,
+    });
+
+    expect(insights[0]).toMatchObject({
+      label: 'Parte común',
+      masteredCount: 1,
+      fragileCount: 0,
+    });
+  });
 });
