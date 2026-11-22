@@ -86,6 +86,9 @@ interface StatsDashboardProps {
   onStartRecommended?: () => void;
   onPracticeTopic?: (topicLabel: string, scope: SyllabusType) => void;
   onPracticeBlock?: (start: number, end: number, scope: SyllabusType) => void;
+  onPracticeReviewMistakes?: () => void;
+  onPracticeMixed?: () => void;
+  onPracticeLaw?: (lawReference: string) => void;
 }
 
 type TopicStatusFilter = 'all' | 'risk' | 'improving' | 'unexplored';
@@ -105,7 +108,7 @@ const toIsoDate = (date: Date) => {
 
 function TopicSparkline({ values, color }: { values: number[]; color: string }) {
   if (values.length < 2) {
-    return <span className="text-xs font-bold text-slate-300">—</span>;
+    return <span className="text-xs font-bold text-slate-400">—</span>;
   }
   const width = 68;
   const height = 22;
@@ -120,19 +123,26 @@ function TopicSparkline({ values, color }: { values: number[]; color: string }) 
   });
   const polyline = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const last = points[points.length - 1];
+  const firstVal = values[0];
+  const lastVal = values[values.length - 1];
 
   return (
-    <svg width={width} height={height} className="overflow-visible shrink-0" aria-hidden="true">
-      <polyline
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={polyline}
-      />
-      <circle cx={last.x} cy={last.y} r={2.8} fill={color} />
-    </svg>
+    <span className="inline-flex items-center">
+      <svg width={width} height={height} className="overflow-visible shrink-0" aria-hidden="true">
+        <polyline
+          fill="none"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={polyline}
+        />
+        <circle cx={last.x} cy={last.y} r={2.8} fill={color} />
+      </svg>
+      <span className="sr-only">
+        {firstVal}% → {lastVal}%
+      </span>
+    </span>
   );
 }
 
@@ -148,6 +158,9 @@ export default function StatsDashboard({
   onStartRecommended,
   onPracticeTopic,
   onPracticeBlock,
+  onPracticeReviewMistakes,
+  onPracticeMixed,
+  onPracticeLaw,
 }: StatsDashboardProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -181,6 +194,7 @@ export default function StatsDashboard({
   // Interactive UI State
   const [evolutionWindow, setEvolutionWindow] = useState<EvolutionWindowDays>(14);
   const [evolutionLens, setEvolutionLens] = useState<EvolutionLens>('all');
+  const [pinnedEvolutionDate, setPinnedEvolutionDate] = useState<string | null>(null);
 
   const [topicScopeFilter, setTopicScopeFilter] = useState<'all' | SyllabusType>('all');
   const [topicStatusFilter, setTopicStatusFilter] = useState<TopicStatusFilter>('all');
@@ -762,8 +776,132 @@ export default function StatsDashboard({
     );
   };
 
+  const hasAnyPracticeData = useMemo(() => {
+    const telemetrySeen =
+      (statsTelemetry?.memorySummary?.mastered ?? 0) +
+      (statsTelemetry?.memorySummary?.solid ?? 0) +
+      (statsTelemetry?.memorySummary?.consolidating ?? 0) +
+      (statsTelemetry?.memorySummary?.fragile ?? 0);
+    return (
+      sessions.length > 0 ||
+      (learningV2?.seenQuestions ?? 0) > 0 ||
+      telemetrySeen > 0 ||
+      questionBlocks.some((b) => b.attempts > 0)
+    );
+  }, [learningV2?.seenQuestions, questionBlocks, sessions.length, statsTelemetry?.memorySummary]);
+
+  const activeEvolutionPoints = useMemo(
+    () => evolutionData.points.filter((point) => point.questions > 0),
+    [evolutionData.points],
+  );
+
+  const pinnedEvolutionPoint = useMemo(() => {
+    if (pinnedEvolutionDate) {
+      const exact = evolutionData.points.find((point) => point.iso === pinnedEvolutionDate);
+      if (exact) return exact;
+    }
+    return activeEvolutionPoints[activeEvolutionPoints.length - 1] ?? null;
+  }, [activeEvolutionPoints, evolutionData.points, pinnedEvolutionDate]);
+
+  if (!hydrating && !hasAnyPracticeData) {
+    const startAction = onStartRecommended ?? onPracticeMixed;
+    return (
+      <section
+        aria-labelledby="stats-onboarding-heading"
+        className="space-y-5 pb-12 sm:space-y-6 lg:pb-20"
+      >
+        {telemetryError ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900"
+          >
+            <span>
+              {t(
+                'No se pudo cargar toda la telemetría detallada. Mostrando datos disponibles.',
+                'Ezin izan da telemetria zehatz guztia kargatu. Eskuragarri dauden datuak erakusten.',
+              )}
+            </span>
+            {onRetryTelemetry ? (
+              <button
+                type="button"
+                onClick={onRetryTelemetry}
+                className="min-h-[44px] rounded-xl bg-amber-700 px-4 py-2 text-xs font-black text-white transition hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1"
+              >
+                {t('Reintentar', 'Berriro saiatu')}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="relative overflow-hidden rounded-[2.25rem] border border-white/10 bg-[#0a0a1a] p-6 text-white sm:p-8 space-y-6">
+          <div className="absolute right-0 top-0 -mr-20 -mt-20 h-[260px] w-[260px] rounded-full bg-indigo-600/30 blur-[100px]" />
+          <div className="relative z-10 space-y-4 max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-indigo-300">
+              <Zap size={14} />
+              {t('Tu panel de evolución', 'Zure bilakaera-panela')}
+            </div>
+            <h2
+              id="stats-onboarding-heading"
+              className="text-2xl sm:text-3xl font-black tracking-tight"
+            >
+              {t(
+                'Completa tu primer test para activar tus estadísticas',
+                'Osatu zure lehen testa estatistikak aktibatzeko',
+              )}
+            </h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              {t(
+                'No necesitas hacer simulacros completos: cualquier test por temas, Desafío o bloque corto construirá tu mapa real de progreso.',
+                'Ez duzu simulakro osorik egin behar: gaikako edozein testek, Erronkak edo bloke laburrek zure benetako aurrerapen-mapa sortuko dute.',
+              )}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              {[
+                {
+                  title: t('1. Pulso y evolución', '1. Egoera eta bilakaera'),
+                  desc: t('Acierto diario, tendencia y ritmo semanal.', 'Eguneko doitasuna, joera eta asteroko erritmoa.'),
+                },
+                {
+                  title: t('2. Memoria por tema', '2. Gaikako memoria'),
+                  desc: t('Qué dominas, qué está sólido y qué debes repasar.', 'Zer menderatzen duzun eta zer errepasatu.'),
+                },
+                {
+                  title: t('3. Recuperación de fallos', '3. Akatsen berreskurapena'),
+                  desc: t('Seguimiento automático de tus preguntas falladas.', 'Huts egindako galderen jarraipen automatikoa.'),
+                },
+              ].map((step) => (
+                <div
+                  key={step.title}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-1"
+                >
+                  <div className="text-xs font-black text-indigo-200">{step.title}</div>
+                  <p className="text-xs text-slate-300 leading-relaxed">{step.desc}</p>
+                </div>
+              ))}
+            </div>
+            {startAction ? (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={startAction}
+                  className="min-h-[44px] rounded-2xl bg-indigo-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-indigo-900/40 transition hover:bg-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a1a]"
+                >
+                  {t('Empezar mi primer test', 'Hasi nire lehen testa')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <div className="space-y-5 pb-12 sm:space-y-6 lg:pb-20 animate-in fade-in slide-in-from-bottom-6 duration-500">
+    <div className="space-y-5 pb-12 sm:space-y-6 lg:pb-20">
+      <h1 className="sr-only">
+        {t('Estadísticas de evolución y progreso', 'Bilakaera eta aurrerapen estatistikak')}
+      </h1>
+
       {hydrating && !statsTelemetry ? (
         <div
           role="status"
@@ -801,7 +939,7 @@ export default function StatsDashboard({
             <button
               type="button"
               onClick={onRetryTelemetry}
-              className="rounded-xl bg-amber-700 px-3 py-1.5 text-xs font-black text-white transition hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1"
+              className="min-h-[44px] rounded-xl bg-amber-700 px-3.5 py-2 text-xs font-black text-white transition hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1"
             >
               {t('Reintentar', 'Berriro saiatu')}
             </button>
@@ -842,9 +980,9 @@ export default function StatsDashboard({
 
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
               <div>
-                <div className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-200/80">
+                <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-200/80">
                   {readinessStateLabel}
-                </div>
+                </h2>
                 <div className="mt-1 flex items-baseline gap-3">
                   <span className="text-4xl sm:text-5xl font-black tracking-tight tabular-nums">
                     {readiness}%
@@ -889,7 +1027,14 @@ export default function StatsDashboard({
 
             {/* Readiness Gauge with Confidence Band (CI band above base bar so ciLow is always visible) */}
             <div className="space-y-1.5">
-              <div className="relative h-3.5 w-full rounded-full bg-white/10 overflow-hidden">
+              <div
+                role="progressbar"
+                aria-label={t('Preparación estimada', 'Estimaziozko prestaketa')}
+                aria-valuenow={readiness}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="relative h-3.5 w-full rounded-full bg-white/10 overflow-hidden"
+              >
                 <div
                   className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400"
                   style={{ width: `${Math.max(2, Math.min(100, readiness))}%` }}
@@ -918,7 +1063,16 @@ export default function StatsDashboard({
                   {memorySummary.mastered + memorySummary.solid}
                 </span>
               </div>
-              <div className="h-3 w-full rounded-full bg-white/10 overflow-hidden flex gap-0.5">
+              <div
+                role="progressbar"
+                aria-label={t('Estado de memoria del banco', 'Bankuaren memoria-egoera')}
+                aria-valuenow={Math.round(
+                  ((memorySummary.mastered + memorySummary.solid) / memorySummary.tracked) * 100,
+                )}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="h-3 w-full rounded-full bg-white/10 overflow-hidden flex gap-0.5"
+              >
                 {[
                   { val: memorySummary.mastered, color: 'bg-emerald-400', label: t('Dominadas', 'Menderatuak') },
                   { val: memorySummary.solid, color: 'bg-indigo-400', label: t('Sólidas', 'Sendoak') },
@@ -955,118 +1109,17 @@ export default function StatsDashboard({
           </div>
         </div>
 
-        {/* Right Column: Temarios (Común vs Específico) + Siguiente Paso */}
+        {/* Right Column: Siguiente Paso (priority on mobile) + Temarios (Común vs Específico) */}
         <div className="xl:col-span-5 flex flex-col gap-5">
-          {!singleScope && !lawCurriculum && syllabusSummaries.length > 0 ? (
-            <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 sm:p-6 shadow-sm space-y-4 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                    {t('Por temario', 'Gai-zerrendaka')}
-                  </div>
-                  <h3 className="text-lg font-black text-slate-900">
-                    {t('Común vs. Específico', 'Orokorra vs. Espezifikoa')}
-                  </h3>
-                </div>
-                <span className="text-xs font-bold text-slate-400">
-                  {t('Pulsa para filtrar', 'Sakatu iragazteko')}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">
-                {syllabusSummaries.map((item) => {
-                  const isFiltered = topicScopeFilter === item.scope;
-                  const memTotal = Math.max(1, item.totalQuestions);
-                  return (
-                    <button
-                      key={item.scope}
-                      type="button"
-                      onClick={() => handleSyllabusCardClick(item.scope)}
-                      className={`w-full text-left rounded-2xl border p-4 space-y-3 transition-all ${
-                        isFiltered
-                          ? 'border-indigo-500 bg-indigo-50/50 shadow-sm'
-                          : 'border-slate-100 bg-slate-50 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-black text-slate-900">
-                          {formatSyllabusLabel(item.scope, locale, { curriculum, variant: 'section' })}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          {item.deltaPp != null ? (
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-xs font-black ${
-                                item.deltaPp >= 0
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : 'bg-rose-100 text-rose-700'
-                              }`}
-                            >
-                              {item.deltaPp >= 0 ? `↑ +${item.deltaPp}` : `↓ ${item.deltaPp}`} pts
-                            </span>
-                          ) : null}
-                          <span className="text-xs font-bold text-slate-500">
-                            {item.topicCount} {t('temas', 'gai')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <div className="flex justify-between text-slate-500 mb-1">
-                            <span>{t('Cobertura', 'Estaldura')}</span>
-                            <strong className="text-slate-900 tabular-nums">{item.coveragePct}%</strong>
-                          </div>
-                          <div className="h-2 rounded-full bg-white border border-slate-200 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-indigo-600"
-                              style={{ width: `${item.coveragePct}%` }}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-slate-500 mb-1">
-                            <span>{t('Acierto', 'Doitasuna')}</span>
-                            <strong className="text-slate-900 tabular-nums">
-                              {item.accuracyPct == null ? '—' : `${item.accuracyPct}%`}
-                            </strong>
-                          </div>
-                          <div className="h-2 rounded-full bg-white border border-slate-200 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                (item.accuracyPct ?? 0) >= 75
-                                  ? 'bg-emerald-500'
-                                  : (item.accuracyPct ?? 0) >= 60
-                                    ? 'bg-amber-500'
-                                    : 'bg-rose-500'
-                              }`}
-                              style={{ width: `${item.accuracyPct ?? 0}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden flex gap-0.5">
-                        <div className="bg-emerald-500" style={{ width: `${(item.masteredCount / memTotal) * 100}%` }} />
-                        <div className="bg-indigo-500" style={{ width: `${(item.solidCount / memTotal) * 100}%` }} />
-                        <div className="bg-amber-500" style={{ width: `${(item.consolidatingCount / memTotal) * 100}%` }} />
-                        <div className="bg-rose-500" style={{ width: `${(item.fragileCount / memTotal) * 100}%` }} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Single Actionable Coach Card (no duplicate copy) */}
-          <div className="rounded-[2.25rem] border border-indigo-100 bg-white p-5 sm:p-6 shadow-sm flex flex-col justify-between gap-4">
+          {/* Single Actionable Coach Card (first on mobile so CTA isn't buried) */}
+          <div className="order-first xl:order-last rounded-[2.25rem] border border-indigo-100 bg-white p-5 sm:p-6 shadow-sm flex flex-col justify-between gap-4">
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-indigo-600">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-indigo-700">
                   <Swords size={14} />
                   {t('Hoy te conviene', 'Gaur komeni zaizuna')}
-                </div>
-                <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-xs font-bold text-slate-600">
+                </h2>
+                <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-xs font-bold text-slate-700">
                   {recommendedModeLabel} · {recommendedCount} {t('preg.', 'gal.')}
                 </span>
               </div>
@@ -1082,11 +1135,139 @@ export default function StatsDashboard({
               type="button"
               onClick={onStartRecommended}
               disabled={!onStartRecommended}
-              className="w-full rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm sm:text-base font-black text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 disabled:opacity-60"
+              className="min-h-[44px] w-full rounded-2xl bg-indigo-600 px-5 py-3.5 text-sm sm:text-base font-black text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
             >
               {actionCopy.cta ?? t('Practicar por aquí', 'Hemendik praktikatu')}
             </button>
           </div>
+
+          {!singleScope && !lawCurriculum && syllabusSummaries.length > 0 ? (
+            <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 sm:p-6 shadow-sm space-y-4 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                    {t('Por temario', 'Gai-zerrendaka')}
+                  </div>
+                  <h2 className="text-lg font-black text-slate-900">
+                    {t('Común vs. Específico', 'Orokorra vs. Espezifikoa')}
+                  </h2>
+                </div>
+                <span className="text-xs font-bold text-slate-500">
+                  {t('Pulsa para filtrar', 'Sakatu iragazteko')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">
+                {syllabusSummaries.map((item) => {
+                  const isFiltered = topicScopeFilter === item.scope;
+                  const memTotal = Math.max(1, item.totalQuestions);
+                  const scopeTitle = formatSyllabusLabel(item.scope, locale, {
+                    curriculum,
+                    variant: 'section',
+                  });
+                  return (
+                    <button
+                      key={item.scope}
+                      type="button"
+                      onClick={() => handleSyllabusCardClick(item.scope)}
+                      aria-pressed={isFiltered}
+                      className={`w-full text-left rounded-2xl border p-4 space-y-3 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                        isFiltered
+                          ? 'border-indigo-500 bg-indigo-50/50 shadow-sm'
+                          : 'border-slate-100 bg-slate-50 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-black text-slate-900">{scopeTitle}</span>
+                        <div className="flex items-center gap-1.5">
+                          {item.deltaPp != null ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                                item.deltaPp >= 0
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-rose-100 text-rose-700'
+                              }`}
+                            >
+                              {item.deltaPp >= 0 ? `↑ +${item.deltaPp}` : `↓ ${item.deltaPp}`} pts
+                            </span>
+                          ) : null}
+                          <span className="text-xs font-bold text-slate-600">
+                            {item.topicCount} {t('temas', 'gai')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="flex justify-between text-slate-600 mb-1">
+                            <span>{t('Cobertura', 'Estaldura')}</span>
+                            <strong className="text-slate-900 tabular-nums">{item.coveragePct}%</strong>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-label={`${scopeTitle} · ${t('Cobertura', 'Estaldura')}`}
+                            aria-valuenow={item.coveragePct}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            className="h-2 rounded-full bg-white border border-slate-200 overflow-hidden"
+                          >
+                            <div
+                              className="h-full rounded-full bg-indigo-600"
+                              style={{ width: `${item.coveragePct}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-slate-600 mb-1">
+                            <span>{t('Acierto', 'Doitasuna')}</span>
+                            <strong className="text-slate-900 tabular-nums">
+                              {item.accuracyPct == null ? '—' : `${item.accuracyPct}%`}
+                            </strong>
+                          </div>
+                          <div
+                            role="progressbar"
+                            aria-label={`${scopeTitle} · ${t('Acierto', 'Doitasuna')}`}
+                            aria-valuenow={item.accuracyPct ?? 0}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            className="h-2 rounded-full bg-white border border-slate-200 overflow-hidden"
+                          >
+                            <div
+                              className={`h-full rounded-full ${
+                                (item.accuracyPct ?? 0) >= 75
+                                  ? 'bg-emerald-500'
+                                  : (item.accuracyPct ?? 0) >= 60
+                                    ? 'bg-amber-500'
+                                    : 'bg-rose-500'
+                              }`}
+                              style={{ width: `${item.accuracyPct ?? 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden flex gap-0.5">
+                        {[
+                          { val: item.masteredCount, cls: 'bg-emerald-500' },
+                          { val: item.solidCount, cls: 'bg-indigo-500' },
+                          { val: item.consolidatingCount, cls: 'bg-amber-500' },
+                          { val: item.fragileCount, cls: 'bg-rose-500' },
+                        ]
+                          .filter((seg) => seg.val > 0)
+                          .map((seg, idx) => (
+                            <div
+                              key={idx}
+                              className={seg.cls}
+                              style={{ width: `${(seg.val / memTotal) * 100}%` }}
+                            />
+                          ))}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1095,9 +1276,9 @@ export default function StatsDashboard({
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900">
                 {t('Evolución de acierto y volumen', 'Doitasunaren eta bolumenaren bilakaera')}
-              </h3>
+              </h2>
               {evolutionData.deltaPp != null ? (
                 <span
                   className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black ${
@@ -1108,20 +1289,24 @@ export default function StatsDashboard({
                 >
                   {evolutionData.deltaPp >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
                   {evolutionData.deltaPp >= 0 ? `+${evolutionData.deltaPp}` : evolutionData.deltaPp}{' '}
-                  {t('pp vs tramo anterior', 'pp aurreko tartearekin')}
+                  {t('pts vs tramo anterior', 'pts aurreko tartearekin')}
                 </span>
               ) : null}
             </div>
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-slate-600">
               {t(
-                'Barras suaves = preguntas del día · Línea sólida = acierto · Línea discontinua = tendencia suavizada (7 días)',
-                'Barra leunak = eguneko galderak · Marra jarraitua = doitasuna · Etena = 7 eguneko joera',
+                'Barras suaves = preguntas del día · Línea sólida = acierto · Línea verde discontinua = objetivo 70%',
+                'Barra leunak = eguneko galderak · Marra jarraitua = doitasuna · Marra berdea = %70 helburua',
               )}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
+            <div
+              role="group"
+              aria-label={t('Filtrar evolución por ámbito', 'Bilakaera esparruka iragazi')}
+              className="flex flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1"
+            >
               {(
                 [
                   { id: 'all', label: t('Global', 'Orokorra') },
@@ -1137,10 +1322,13 @@ export default function StatsDashboard({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setEvolutionLens(item.id)}
-                  aria-pressed={evolutionLens === item.id}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
-                    evolutionLens === item.id
+                  onClick={() => {
+                    setEvolutionLens(item.id);
+                    setPinnedEvolutionDate(null);
+                  }}
+                  aria-pressed={effectiveEvolutionLens === item.id}
+                  className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    effectiveEvolutionLens === item.id
                       ? 'bg-indigo-600 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-white'
                   }`}
@@ -1150,14 +1338,21 @@ export default function StatsDashboard({
               ))}
             </div>
 
-            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
+            <div
+              role="group"
+              aria-label={t('Ventana temporal', 'Denbora tartea')}
+              className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1"
+            >
               {([7, 14, 30] as EvolutionWindowDays[]).map((days) => (
                 <button
                   key={days}
                   type="button"
-                  onClick={() => setEvolutionWindow(days)}
+                  onClick={() => {
+                    setEvolutionWindow(days);
+                    setPinnedEvolutionDate(null);
+                  }}
                   aria-pressed={evolutionWindow === days}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-black transition-all ${
+                  className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 ${
                     evolutionWindow === days
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-white'
@@ -1172,24 +1367,34 @@ export default function StatsDashboard({
 
         <div className="h-[250px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={evolutionData.points}>
+            <ComposedChart
+              data={evolutionData.points}
+              onClick={(state) => {
+                const payload = (
+                  state as { activePayload?: Array<{ payload?: { iso?: string } }> } | null
+                )?.activePayload?.[0]?.payload;
+                if (payload?.iso) setPinnedEvolutionDate(payload.iso);
+              }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis
                 dataKey="label"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }}
+                tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }}
                 minTickGap={18}
               />
               <YAxis
                 yAxisId="acc"
                 domain={[0, 100]}
+                unit="%"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }}
-                width={36}
+                tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }}
+                width={44}
               />
               <YAxis yAxisId="vol" orientation="right" hide domain={[0, 'dataMax * 2']} />
+              <ReferenceLine yAxisId="acc" y={70} stroke="#10b981" strokeDasharray="4 4" />
               <Tooltip content={renderEvolutionTooltip} />
               <Bar
                 yAxisId="vol"
@@ -1197,7 +1402,7 @@ export default function StatsDashboard({
                 fill="#4f46e5"
                 fillOpacity={0.14}
                 radius={[6, 6, 0, 0]}
-                barSize={20}
+                maxBarSize={evolutionWindow === 30 ? 8 : evolutionWindow === 14 ? 14 : 22}
               />
               <Line
                 yAxisId="acc"
@@ -1223,6 +1428,47 @@ export default function StatsDashboard({
           </ResponsiveContainer>
         </div>
 
+        {/* Touch & keyboard tap-to-pin day inspector */}
+        {pinnedEvolutionPoint ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-xs">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="font-black text-slate-900">{pinnedEvolutionPoint.longLabel}</span>
+              <span className="font-bold text-slate-700 tabular-nums">
+                {t('Acierto', 'Doitasuna')}:{' '}
+                <strong className="text-indigo-700">
+                  {pinnedEvolutionPoint.accuracy == null ? '—' : `${pinnedEvolutionPoint.accuracy}%`}
+                </strong>
+              </span>
+              <span className="font-bold text-slate-700 tabular-nums">
+                {t('Preguntas', 'Galderak')}:{' '}
+                <strong className="text-slate-900">
+                  {pinnedEvolutionPoint.correct}/{pinnedEvolutionPoint.questions}
+                </strong>
+              </span>
+              {pinnedEvolutionPoint.modesText ? (
+                <span className="font-bold text-indigo-700">{pinnedEvolutionPoint.modesText}</span>
+              ) : null}
+            </div>
+            {activeEvolutionPoints.length > 1 ? (
+              <label className="inline-flex items-center gap-2 font-bold text-slate-600">
+                <span>{t('Día:', 'Eguna:')}</span>
+                <select
+                  aria-label={t('Inspeccionar día de la gráfica', 'Grafikako eguna ikuskatu')}
+                  value={pinnedEvolutionPoint.iso}
+                  onChange={(event) => setPinnedEvolutionDate(event.target.value)}
+                  className="min-h-[36px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                >
+                  {activeEvolutionPoints.map((pt) => (
+                    <option key={pt.iso} value={pt.iso}>
+                      {pt.label} ({pt.questions} {t('preg.', 'gal.')})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-3.5 text-sm font-bold text-slate-700 leading-relaxed">
           {evolutionNarrative}
         </div>
@@ -1232,14 +1478,14 @@ export default function StatsDashboard({
       <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-5">
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-500">
               <Layers size={14} className="text-indigo-600" />
               {t('Desglose por temarios y temas', 'Gai-zerrenda eta gaikako banaketa')}
             </div>
-            <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900">
               {t('Tu mapa completo de temas', 'Zure gaien mapa osoa')}
-            </h3>
-            <p className="text-xs font-medium text-slate-500">
+            </h2>
+            <p className="text-xs font-medium text-slate-600">
               {t(
                 'Los temarios empiezan comprimidos para evitar scroll largo: despliega cada bloque o tema para ver su detalle.',
                 'Gai-zerrendak tolestuta hasten dira: zabaldu bloke edo gai bakoitza xehetasunak ikusteko.',
@@ -1248,8 +1494,12 @@ export default function StatsDashboard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {!singleScope && !lawCurriculum ? (
-              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
+            {effectiveTopicView !== 'laws' && !singleScope && !lawCurriculum ? (
+              <div
+                role="group"
+                aria-label={t('Filtrar temas por temario', 'Gaiak gai-zerrendaka iragazi')}
+                className="flex flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1"
+              >
                 {(
                   [
                     { id: 'all', label: t('Todos', 'Denak') },
@@ -1261,9 +1511,9 @@ export default function StatsDashboard({
                     key={item.id}
                     type="button"
                     onClick={() => setTopicScopeFilter(item.id)}
-                    aria-pressed={topicScopeFilter === item.id}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
-                      topicScopeFilter === item.id
+                    aria-pressed={effectiveTopicScope === item.id}
+                    className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      effectiveTopicScope === item.id
                         ? 'bg-indigo-600 text-white shadow-sm'
                         : 'text-slate-600 hover:bg-white'
                     }`}
@@ -1274,53 +1524,65 @@ export default function StatsDashboard({
               </div>
             ) : null}
 
-            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
-              {(
-                [
-                  { id: 'all', label: t('Todos', 'Denak') },
-                  { id: 'risk', label: t('En riesgo', 'Arriskuan') },
-                  { id: 'improving', label: t('Mejorando', 'Hobetzen') },
-                  { id: 'unexplored', label: t('Por explorar', 'Ikusteko') },
-                ] as Array<{ id: TopicStatusFilter; label: string }>
-              ).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setTopicStatusFilter(item.id);
-                    if (item.id !== 'all') {
-                      setExpandedScopes({ common: true, specific: true });
-                    }
-                  }}
-                  aria-pressed={topicStatusFilter === item.id}
-                  className={`rounded-lg px-2.5 py-1.5 text-xs font-black transition-all ${
-                    topicStatusFilter === item.id
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            {effectiveTopicView !== 'laws' ? (
+              <div
+                role="group"
+                aria-label={t('Filtrar temas por estado', 'Gaiak egoeraren arabera iragazi')}
+                className="flex flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1"
+              >
+                {(
+                  [
+                    { id: 'all', label: t('Todos', 'Denak') },
+                    { id: 'risk', label: t('En riesgo', 'Arriskuan') },
+                    { id: 'improving', label: t('Mejorando', 'Hobetzen') },
+                    { id: 'unexplored', label: t('Por explorar', 'Ikusteko') },
+                  ] as Array<{ id: TopicStatusFilter; label: string }>
+                ).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setTopicStatusFilter(item.id);
+                      if (item.id !== 'all') {
+                        setExpandedScopes({ common: true, specific: true });
+                      }
+                    }}
+                    aria-pressed={topicStatusFilter === item.id}
+                    className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-2.5 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-700 ${
+                      topicStatusFilter === item.id
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
+            <div
+              role="tablist"
+              aria-label={t('Vista del mapa de temas', 'Gaien maparen ikuspegia')}
+              className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1"
+            >
               <button
                 type="button"
+                role="tab"
+                aria-selected={effectiveTopicView === 'list'}
                 onClick={() => setTopicView('list')}
-                aria-pressed={topicView === 'list'}
-                className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
-                  topicView === 'list' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+                className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  effectiveTopicView === 'list' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
                 }`}
               >
                 {t('Lista', 'Zerrenda')}
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={effectiveTopicView === 'matrix'}
                 onClick={() => setTopicView('matrix')}
-                aria-pressed={topicView === 'matrix'}
-                className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
-                  topicView === 'matrix' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+                className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  effectiveTopicView === 'matrix' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
                 }`}
               >
                 {t('Matriz', 'Matrizea')}
@@ -1328,10 +1590,11 @@ export default function StatsDashboard({
               {lawBreakdown.length > 0 ? (
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={effectiveTopicView === 'laws'}
                   onClick={() => setTopicView('laws')}
-                  aria-pressed={topicView === 'laws'}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition-all ${
-                    topicView === 'laws' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+                  className={`min-h-[44px] sm:min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    effectiveTopicView === 'laws' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white'
                   }`}
                 >
                   {t('Por leyes', 'Legeka')}
@@ -1356,7 +1619,7 @@ export default function StatsDashboard({
                 <button
                   type="button"
                   onClick={toggleAllTopicScopes}
-                  className="text-xs font-black text-indigo-700 hover:text-indigo-900 px-3 py-1.5 rounded-xl bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  className="min-h-[44px] sm:min-h-[36px] text-xs font-black text-indigo-700 hover:text-indigo-900 px-3.5 py-2 rounded-xl bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   {anyScopeExpanded
                     ? t('Comprimir temarios', 'Gai-zerrendak tolestu')
@@ -1366,6 +1629,7 @@ export default function StatsDashboard({
 
               {groupedTopics.map((group) => {
                 const isExpanded = Boolean(expandedScopes[group.scope]);
+                const scopePanelId = `stats-scope-panel-${group.scope}`;
                 return (
                   <div
                     key={group.scope}
@@ -1374,15 +1638,16 @@ export default function StatsDashboard({
                     <button
                       type="button"
                       aria-expanded={isExpanded}
+                      aria-controls={scopePanelId}
                       onClick={() => toggleScopeExpand(group.scope)}
-                      className="w-full px-4 py-4 sm:px-5 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-slate-100/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                      className="min-h-[56px] w-full px-4 py-4 sm:px-5 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-slate-100/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-indigo-600 shrink-0">
                           {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-base font-black text-slate-900 truncate">
+                          <div className="text-base font-black text-slate-900 line-clamp-2">
                             {group.label}
                           </div>
                           <div className="text-xs font-bold text-slate-600">
@@ -1418,9 +1683,13 @@ export default function StatsDashboard({
                     </button>
 
                     {isExpanded ? (
-                      <div className="border-t border-slate-200 bg-white divide-y divide-slate-100">
-                        {group.items.map((topic) => {
+                      <div
+                        id={scopePanelId}
+                        className="border-t border-slate-200 bg-white divide-y divide-slate-100"
+                      >
+                        {group.items.map((topic, topicIdx) => {
                           const topicOpen = Boolean(expandedTopicIds[topic.id]);
+                          const topicPanelId = `stats-topic-panel-${group.scope}-${topicIdx}`;
                           const accColor =
                             topic.accuracyPct == null
                               ? '#64748b'
@@ -1436,19 +1705,31 @@ export default function StatsDashboard({
                               <button
                                 type="button"
                                 aria-expanded={topicOpen}
+                                aria-controls={topicPanelId}
                                 onClick={() => toggleTopicExpand(topic.id)}
-                                className="w-full flex flex-wrap items-center justify-between gap-3 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                className="min-h-[44px] w-full flex flex-wrap items-center justify-between gap-3 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                               >
                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <span className="text-slate-500 shrink-0">
                                     {topicOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                   </span>
                                   <div className="min-w-0 flex-1">
-                                    <div className="text-sm font-black text-slate-900 truncate">
+                                    <div
+                                      className={`text-sm font-black text-slate-900 ${
+                                        topicOpen ? '' : 'line-clamp-2'
+                                      }`}
+                                    >
                                       {topic.label}
                                     </div>
                                     <div className="mt-1 flex items-center gap-2">
-                                      <div className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden shrink-0">
+                                      <div
+                                        role="progressbar"
+                                        aria-label={`${topic.label} · ${t('Cobertura', 'Estaldura')}`}
+                                        aria-valuenow={topic.coveragePct}
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                        className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden shrink-0"
+                                      >
                                         <div
                                           className="h-full bg-indigo-600 rounded-full"
                                           style={{ width: `${topic.coveragePct}%` }}
@@ -1495,7 +1776,10 @@ export default function StatsDashboard({
                               </button>
 
                               {topicOpen ? (
-                                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 pl-6">
+                                <div
+                                  id={topicPanelId}
+                                  className="mt-3 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 pl-6"
+                                >
                                   <div className="space-y-2 flex-1">
                                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 font-bold">
                                       <span>{t('Madurez de memoria', 'Memoria-egoera')}</span>
@@ -1507,7 +1791,16 @@ export default function StatsDashboard({
                                         <strong className="text-rose-700">{topic.fragileCount}</strong>
                                       </span>
                                     </div>
-                                    <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden flex gap-0.5">
+                                    <div
+                                      role="progressbar"
+                                      aria-label={`${topic.label} · ${t('Madurez de memoria', 'Memoria-egoera')}`}
+                                      aria-valuenow={Math.round(
+                                        ((topic.masteredCount + topic.solidCount) / memTotal) * 100,
+                                      )}
+                                      aria-valuemin={0}
+                                      aria-valuemax={100}
+                                      className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden flex gap-0.5"
+                                    >
                                       {[
                                         { val: topic.masteredCount, cls: 'bg-emerald-500' },
                                         { val: topic.solidCount, cls: 'bg-indigo-500' },
@@ -1525,7 +1818,7 @@ export default function StatsDashboard({
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-4 shrink-0">
+                                  <div className="flex flex-wrap items-center gap-4 shrink-0">
                                     <div className="flex items-center gap-2">
                                       <span className="text-xs font-bold text-slate-600">
                                         {t('Tendencia', 'Joera')}:
@@ -1536,7 +1829,7 @@ export default function StatsDashboard({
                                       <button
                                         type="button"
                                         onClick={() => onPracticeTopic(topic.label, topic.scope)}
-                                        className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+                                        className="min-h-[44px] sm:min-h-[36px] px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                                       >
                                         {topic.fragileCount >= 8
                                           ? t('Reforzar tema', 'Gaia indartu')
@@ -1557,76 +1850,105 @@ export default function StatsDashboard({
             </div>
           )
         ) : effectiveTopicView === 'matrix' ? (
-          /* View 2: Priority Matrix (Coverage x Accuracy) */
+          /* View 2: Priority Matrix (Coverage x Accuracy) with keyboard-accessible topic selector */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            <div className="lg:col-span-8 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <div className="lg:col-span-8 rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-3">
               {matrixData.length === 0 ? (
-                <div className="p-6 text-sm font-bold text-slate-500">
+                <div className="p-6 text-sm font-bold text-slate-600">
                   {t('Sin temas suficientes para la matriz.', 'Ez dago gai nahikorik matrizerako.')}
                 </div>
               ) : (
-                <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 16, right: 20, bottom: 16, left: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis
-                        type="number"
-                        dataKey="x"
-                        name={t('Cobertura', 'Estaldura')}
-                        domain={[0, 100]}
-                        unit="%"
-                        tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }}
-                      />
-                      <YAxis
-                        type="number"
-                        dataKey="y"
-                        name={t('Acierto', 'Doitasuna')}
-                        domain={[0, 100]}
-                        unit="%"
-                        tick={{ fill: '#64748b', fontSize: 12, fontWeight: 700 }}
-                        width={40}
-                      />
-                      <ZAxis type="number" dataKey="z" range={[120, 460]} />
-                      <ReferenceLine x={50} stroke="#cbd5e1" strokeDasharray="4 4" />
-                      <ReferenceLine y={70} stroke="#cbd5e1" strokeDasharray="4 4" />
-                      <Tooltip
-                        cursor={{ strokeDasharray: '3 3' }}
-                        formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
-                        labelFormatter={(_, payload) =>
-                          String((payload?.[0]?.payload as { name?: string } | undefined)?.name ?? '')
-                        }
-                      />
-                      <Scatter
-                        data={matrixData}
-                        onClick={(entry) => {
-                          const id = (entry as { id?: string } | undefined)?.id;
-                          if (id) setSelectedMatrixTopicId(id);
-                        }}
+                <>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 16, right: 20, bottom: 16, left: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          type="number"
+                          dataKey="x"
+                          name={t('Cobertura', 'Estaldura')}
+                          domain={[0, 100]}
+                          unit="%"
+                          tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="y"
+                          name={t('Acierto', 'Doitasuna')}
+                          domain={[0, 100]}
+                          unit="%"
+                          tick={{ fill: '#475569', fontSize: 12, fontWeight: 700 }}
+                          width={44}
+                        />
+                        <ZAxis type="number" dataKey="z" range={[120, 460]} />
+                        <ReferenceLine x={50} stroke="#cbd5e1" strokeDasharray="4 4" />
+                        <ReferenceLine y={70} stroke="#cbd5e1" strokeDasharray="4 4" />
+                        <Tooltip
+                          cursor={{ strokeDasharray: '3 3' }}
+                          formatter={(value: unknown, name: unknown) => [`${value}%`, String(name)]}
+                          labelFormatter={(_, payload) =>
+                            String((payload?.[0]?.payload as { name?: string } | undefined)?.name ?? '')
+                          }
+                        />
+                        <Scatter
+                          data={matrixData}
+                          onClick={(entry) => {
+                            const id = (entry as { id?: string } | undefined)?.id;
+                            if (id) setSelectedMatrixTopicId(id);
+                          }}
+                        >
+                          {matrixData.map((entry) => {
+                            const isSelected = selectedMatrixTopic?.id === entry.id;
+                            const fill =
+                              entry.status === 'risk'
+                                ? '#be123c'
+                                : entry.status === 'improving'
+                                  ? '#047857'
+                                  : entry.status === 'unexplored'
+                                    ? '#64748b'
+                                    : '#4f46e5';
+                            return (
+                              <Cell
+                                key={entry.id}
+                                fill={fill}
+                                fillOpacity={isSelected ? 1 : 0.72}
+                                stroke={isSelected ? '#0f172a' : '#ffffff'}
+                                strokeWidth={isSelected ? 3 : 1}
+                              />
+                            );
+                          })}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Keyboard & touch selector synced with ScatterChart */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/70">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 w-full sm:w-auto">
+                      <span className="shrink-0">{t('Seleccionar tema:', 'Gaia hautatu:')}</span>
+                      <select
+                        aria-label={t('Seleccionar tema en la matriz', 'Matrizean gaia hautatu')}
+                        value={selectedMatrixTopic?.id ?? ''}
+                        onChange={(event) => setSelectedMatrixTopicId(event.target.value)}
+                        className="min-h-[40px] flex-1 sm:max-w-[280px] rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                       >
-                        {matrixData.map((entry) => {
-                          const fill =
-                            entry.status === 'risk'
-                              ? '#ef4444'
-                              : entry.status === 'improving'
-                                ? '#10b981'
-                                : entry.status === 'unexplored'
-                                  ? '#94a3b8'
-                                  : '#4f46e5';
-                          return <Cell key={entry.id} fill={fill} fillOpacity={0.78} />;
-                        })}
-                      </Scatter>
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </div>
+                        {matrixData.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name} ({entry.x}% · {entry.y}%)
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="text-xs font-bold text-slate-600">
+                      {t('Abajo-derecha = Fuga de puntos (alta prioridad)', 'Behean-eskuinean = Puntu ihesa (lehentasuna)')}
+                    </span>
+                  </div>
+                </>
               )}
-              <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs font-bold text-slate-500">
-                <span>{t('Eje X: Cobertura (%) · Eje Y: Acierto (%)', 'X ardatza: Estaldura (%) · Y ardatza: Doitasuna (%)')}</span>
-                <span>{t('Abajo-derecha = Fuga de puntos (alta prioridad)', 'Behean-eskuinean = Puntu ihesa (lehentasuna)')}</span>
-              </div>
             </div>
 
             <div className="lg:col-span-4 rounded-2xl border border-slate-100 bg-slate-50 p-5 space-y-4">
-              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                 {t('Inspector de tema', 'Gaiaren xehetasuna')}
               </div>
               {selectedMatrixTopic ? (
@@ -1636,13 +1958,13 @@ export default function StatsDashboard({
                   </div>
                   <div className="grid grid-cols-2 gap-2.5 text-xs">
                     <div className="rounded-xl border border-slate-200 bg-white p-3">
-                      <div className="text-slate-400 font-bold">{t('Cobertura', 'Estaldura')}</div>
+                      <div className="text-slate-600 font-bold">{t('Cobertura', 'Estaldura')}</div>
                       <div className="text-lg font-black text-slate-900 tabular-nums">
                         {selectedMatrixTopic.coveragePct}%
                       </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-3">
-                      <div className="text-slate-400 font-bold">{t('Acierto', 'Doitasuna')}</div>
+                      <div className="text-slate-600 font-bold">{t('Acierto', 'Doitasuna')}</div>
                       <div className="text-lg font-black text-slate-900 tabular-nums">
                         {selectedMatrixTopic.accuracyPct == null
                           ? '—'
@@ -1660,65 +1982,103 @@ export default function StatsDashboard({
                       onClick={() =>
                         onPracticeTopic(selectedMatrixTopic.label, selectedMatrixTopic.scope)
                       }
-                      className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white hover:bg-indigo-700"
+                      className="min-h-[44px] w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                     >
                       {t('Practicar este tema', 'Gai hau praktikatu')}
                     </button>
                   ) : null}
                 </>
               ) : (
-                <p className="text-xs font-bold text-slate-500">
+                <p className="text-xs font-bold text-slate-600">
                   {t('Sin datos todavía.', 'Daturik gabe oraindik.')}
                 </p>
               )}
             </div>
           </div>
         ) : (
-          /* View 3: Collapsed-by-default Law Breakdown */
+          /* View 3: Collapsed-by-default Law Breakdown with 1-click practice CTA */
           <div className="space-y-2.5">
-            {lawBreakdown.map((law) => {
+            {lawBreakdown.map((law, lawIdx) => {
               const lawKey = law.lawId ?? law.ley_referencia;
-              const open = Boolean(expandedLawIds[lawKey]);
+              const hasBlocks = Boolean(law.blocks && law.blocks.length > 0);
+              const open = hasBlocks && Boolean(expandedLawIds[lawKey]);
+              const lawPanelId = `stats-law-panel-${lawIdx}`;
               const acc = Math.round((law.accuracyRate ?? 0) * 100);
               const qCount = law.questionCount ?? 0;
+              const lawAction = onPracticeLaw
+                ? () => onPracticeLaw(law.ley_referencia)
+                : onPracticeTopic
+                  ? () => onPracticeTopic(law.ley_referencia, 'specific')
+                  : null;
+
               return (
                 <div
                   key={lawKey}
                   className="rounded-2xl border border-slate-200 bg-slate-50/70 overflow-hidden"
                 >
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() =>
-                      setExpandedLawIds((prev) => ({ ...prev, [lawKey]: !prev[lawKey] }))
-                    }
-                    className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-left hover:bg-slate-100/70"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-slate-400">
-                        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="text-sm font-black text-slate-900 truncate">
-                          {law.shortTitle ?? law.ley_referencia}
+                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                    {hasBlocks ? (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={lawPanelId}
+                        onClick={() =>
+                          setExpandedLawIds((prev) => ({ ...prev, [lawKey]: !prev[lawKey] }))
+                        }
+                        className="min-h-[44px] flex-1 min-w-0 flex items-center gap-2.5 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      >
+                        <span className="text-slate-500 shrink-0">
+                          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </span>
+                        <div className="min-w-0">
+                          <div className={`text-sm font-black text-slate-900 ${open ? '' : 'line-clamp-2'}`}>
+                            {law.shortTitle ?? law.ley_referencia}
+                          </div>
+                          <div className="text-xs font-bold text-slate-600">
+                            {law.attempts} {t('intentos', 'saiakera')}
+                            {qCount > 0 ? ` · ${law.consolidatedCount ?? 0}/${qCount} ${t('consolidadas', 'sendotuak')}` : ''}
+                          </div>
                         </div>
-                        <div className="text-xs font-bold text-slate-500">
-                          {law.attempts} {t('intentos', 'saiakera')}
-                          {qCount > 0 ? ` · ${law.consolidatedCount ?? 0}/${qCount} ${t('consolidadas', 'sendotuak')}` : ''}
+                      </button>
+                    ) : (
+                      <div className="min-h-[44px] flex-1 min-w-0 flex items-center gap-2.5">
+                        <div className="min-w-0">
+                          <div className="text-sm font-black text-slate-900 line-clamp-2">
+                            {law.shortTitle ?? law.ley_referencia}
+                          </div>
+                          <div className="text-xs font-bold text-slate-600">
+                            {law.attempts} {t('intentos', 'saiakera')}
+                            {qCount > 0 ? ` · ${law.consolidatedCount ?? 0}/${qCount} ${t('consolidadas', 'sendotuak')}` : ''}
+                          </div>
                         </div>
                       </div>
+                    )}
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-base font-black text-slate-900 tabular-nums">{acc}%</span>
+                      {lawAction ? (
+                        <button
+                          type="button"
+                          onClick={lawAction}
+                          className="min-h-[44px] sm:min-h-[36px] rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+                        >
+                          {t('Practicar ley', 'Legea praktikatu')}
+                        </button>
+                      ) : null}
                     </div>
-                    <span className="text-base font-black text-slate-900 tabular-nums">{acc}%</span>
-                  </button>
+                  </div>
                   {open && law.blocks && law.blocks.length > 0 ? (
-                    <div className="border-t border-slate-200 bg-white divide-y divide-slate-100 px-4 py-2">
+                    <div
+                      id={lawPanelId}
+                      className="border-t border-slate-200 bg-white divide-y divide-slate-100 px-4 py-2"
+                    >
                       {law.blocks.map((block) => (
                         <div
                           key={block.blockId}
                           className="py-2.5 flex items-center justify-between gap-3 text-xs"
                         >
-                          <span className="font-bold text-slate-700 truncate">{block.title}</span>
-                          <span className="font-black text-slate-900 tabular-nums">
+                          <span className="font-bold text-slate-700">{block.title}</span>
+                          <span className="font-black text-slate-900 tabular-nums shrink-0">
                             {Math.round((block.accuracyRate ?? 0) * 100)}%
                           </span>
                         </div>
@@ -1738,13 +2098,13 @@ export default function StatsDashboard({
         <div className="lg:col-span-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                 <Target size={14} className="text-indigo-600" />
                 {t('Transferencia real', 'Benetako transferentzia')}
               </div>
-              <h3 className="mt-1 text-xl font-black text-slate-900">
+              <h2 className="mt-1 text-xl font-black text-slate-900">
                 {t('En foco (1 tema) vs. Mezclado / Largo', 'Fokuan (gai 1) vs. Nahastua / Luzea')}
-              </h3>
+              </h2>
             </div>
             {focusVsMixed.gapPp != null ? (
               <span
@@ -1785,7 +2145,14 @@ export default function StatsDashboard({
                     {row.acc == null ? '—' : `${row.acc}%`}
                   </strong>
                 </div>
-                <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  role="progressbar"
+                  aria-label={row.label}
+                  aria-valuenow={row.acc ?? 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  className="h-3 rounded-full bg-slate-100 overflow-hidden"
+                >
                   <div
                     className={`h-full rounded-full ${row.bar}`}
                     style={{ width: `${row.acc ?? 0}%` }}
@@ -1807,41 +2174,52 @@ export default function StatsDashboard({
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs sm:text-sm font-bold text-slate-700 leading-relaxed">
-            {!focusVsMixed.enoughData
-              ? t(
-                  'Combina sesiones por tema con algún Desafío o test de temario completo para medir si sostienes lo aprendido al mezclar.',
-                  'Konbinatu gaikako saioak Erronka edo gai-zerrenda osoko testekin, nahastean eusten diozun ikusteko.',
-                )
-              : focusVsMixed.gapPp != null && focusVsMixed.gapPp <= -12
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <p className="text-xs sm:text-sm font-bold text-slate-700 leading-relaxed">
+              {!focusVsMixed.enoughData
                 ? t(
-                    'Aciertas muy bien tema a tema, pero al mezclar todo el temario baja tu precisión. Alterna con sesiones mixtas cortas.',
-                    'Oso ondo asmatzen duzu gaiz gai, baina dena nahastean jaisten da. Txandakatu saio nahastu laburrekin.',
+                    'Combina sesiones por tema con algún Desafío o test de temario completo para medir si sostienes lo aprendido al mezclar.',
+                    'Konbinatu gaikako saioak Erronka edo gai-zerrenda osoko testekin, nahastean eusten diozun ikusteko.',
                   )
-                : t(
-                    'Buena transferencia: sostienes el acierto incluso cuando mezclas temas distintos en sesiones largas.',
-                    'Transferentzia ona: doitasunari eusten diozu saio luzeetan gaiak nahastean ere.',
-                  )}
+                : focusVsMixed.gapPp != null && focusVsMixed.gapPp <= -12
+                  ? t(
+                      'Aciertas muy bien tema a tema, pero al mezclar todo el temario baja tu precisión. Alterna con sesiones mixtas cortas.',
+                      'Oso ondo asmatzen duzu gaiz gai, baina dena nahastean jaisten da. Txandakatu saio nahastu laburrekin.',
+                    )
+                  : t(
+                      'Buena transferencia: sostienes el acierto incluso cuando mezclas temas distintos en sesiones largas.',
+                      'Transferentzia ona: doitasunari eusten diozu saio luzeetan gaiak nahastean ere.',
+                    )}
+            </p>
+            {onPracticeMixed && (!focusVsMixed.enoughData || (focusVsMixed.gapPp != null && focusVsMixed.gapPp <= -8)) ? (
+              <button
+                type="button"
+                onClick={onPracticeMixed}
+                className="min-h-[44px] sm:min-h-[36px] shrink-0 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-black text-white transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+              >
+                {t('Hacer test mezclado', 'Test nahastua egin')}
+              </button>
+            ) : null}
           </div>
         </div>
 
         {/* Card B: Aguante, Precipitación y Recuperación */}
         <div className="lg:col-span-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-4">
           <div>
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-500">
               <Activity size={14} className="text-amber-600" />
               {t('Comportamiento en tus tests', 'Zure testetako portaera')}
             </div>
-            <h3 className="mt-1 text-xl font-black text-slate-900">
+            <h2 className="mt-1 text-xl font-black text-slate-900">
               {t('Aguante, Precipitación y Recuperación', 'Eustea, Presa eta Berreskurapena')}
-            </h3>
+            </h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-2">
               <div className="flex items-center justify-between text-xs font-black text-slate-800">
                 <span>{t('Tests largos (≥25 preg.)', 'Test luzeak (≥25 gal.)')}</span>
-                <span className="text-indigo-600 tabular-nums">
+                <span className="text-indigo-700 tabular-nums">
                   {behavior?.longSessionDropPp == null
                     ? '—'
                     : `${behavior.longSessionDropPp > 0 ? `+${behavior.longSessionDropPp}` : behavior.longSessionDropPp} pts`}
@@ -1867,7 +2245,7 @@ export default function StatsDashboard({
                   ) : null}
                 </div>
               ) : (
-                <p className="text-xs font-medium text-slate-500">
+                <p className="text-xs font-medium text-slate-600">
                   {t('Haz sesiones de ≥25 preguntas para medir aguante.', 'Egin ≥25 galderako saioak eustea neurtzeko.')}
                 </p>
               )}
@@ -1876,23 +2254,23 @@ export default function StatsDashboard({
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-2">
               <div className="flex items-center justify-between text-xs font-black text-slate-800">
                 <span>{t('Fallos evitables', 'Akats saihesgarriak')}</span>
-                <span className="text-rose-600 tabular-nums">
+                <span className="text-rose-700 tabular-nums">
                   {behavior?.avoidableErrorRate == null ? '—' : `${behavior.avoidableErrorRate}%`}
                 </span>
               </div>
               {behavior?.avoidableErrorRate != null ? (
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">{t('Rápidos (<2,5s)', 'Azkarregi (<2,5s)')}</span>
+                    <span className="text-slate-600">{t('Rápidos (<2,5s)', 'Azkarregi (<2,5s)')}</span>
                     <strong className="text-slate-900">{behavior.fastErrorRate ?? 0}%</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">{t('Cambió a peor', 'Okerrera aldatuak')}</span>
+                    <span className="text-slate-600">{t('Cambió a peor', 'Okerrera aldatuak')}</span>
                     <strong className="text-slate-900">{behavior.changedToWrongRate ?? 0}%</strong>
                   </div>
                 </div>
               ) : (
-                <p className="text-xs font-medium text-slate-500">
+                <p className="text-xs font-medium text-slate-600">
                   {t('Se activa al reunir suficientes fallos cronometrados.', 'Nahikoa akats kronometratu biltzean aktibatzen da.')}
                 </p>
               )}
@@ -1900,7 +2278,7 @@ export default function StatsDashboard({
           </div>
 
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-2.5">
-            <div className="flex items-center justify-between text-xs font-black text-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-black text-slate-800">
               <span>{t('Recuperación de preguntas falladas', 'Huts egindako galderen berreskurapena')}</span>
               <span className="text-emerald-700 tabular-nums">
                 {errorRecovery.totalFailed > 0
@@ -1910,7 +2288,14 @@ export default function StatsDashboard({
             </div>
             {errorRecovery.totalFailed > 0 ? (
               <>
-                <div className="h-2.5 w-full rounded-full bg-white border border-slate-200 overflow-hidden flex gap-0.5">
+                <div
+                  role="progressbar"
+                  aria-label={t('Recuperación de preguntas falladas', 'Huts egindako galderen berreskurapena')}
+                  aria-valuenow={Math.round((errorRecovery.recovered / errorRecovery.totalFailed) * 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  className="h-2.5 w-full rounded-full bg-white border border-slate-200 overflow-hidden flex gap-0.5"
+                >
                   {[
                     { val: errorRecovery.recovered, cls: 'bg-emerald-500' },
                     { val: errorRecovery.recovering, cls: 'bg-amber-400' },
@@ -1926,25 +2311,37 @@ export default function StatsDashboard({
                       />
                     ))}
                 </div>
-                <div className="flex flex-wrap justify-between gap-2 text-xs font-bold text-slate-600">
-                  <span>
-                    <strong className="text-emerald-700">{errorRecovery.recovered}</strong>{' '}
-                    {t('recuperadas', 'berreskuratuak')}
-                  </span>
-                  <span>
-                    <strong className="text-amber-700">{errorRecovery.recovering}</strong>{' '}
-                    {t('en proceso', 'bidean')}
-                  </span>
-                  {(errorRecovery.pending ?? 0) > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
                     <span>
-                      <strong className="text-orange-700">{errorRecovery.pending}</strong>{' '}
-                      {t('pendientes', 'zain')}
+                      <strong className="text-emerald-700">{errorRecovery.recovered}</strong>{' '}
+                      {t('recuperadas', 'berreskuratuak')}
                     </span>
+                    <span>
+                      <strong className="text-amber-700">{errorRecovery.recovering}</strong>{' '}
+                      {t('en proceso', 'bidean')}
+                    </span>
+                    {(errorRecovery.pending ?? 0) > 0 ? (
+                      <span>
+                        <strong className="text-orange-700">{errorRecovery.pending}</strong>{' '}
+                        {t('pendientes', 'zain')}
+                      </span>
+                    ) : null}
+                    <span>
+                      <strong className="text-rose-700">{errorRecovery.reincident}</strong>{' '}
+                      {t('reincidentes', 'errepikatuak')}
+                    </span>
+                  </div>
+                  {onPracticeReviewMistakes &&
+                  errorRecovery.reincident + (errorRecovery.pending ?? 0) > 0 ? (
+                    <button
+                      type="button"
+                      onClick={onPracticeReviewMistakes}
+                      className="min-h-[44px] sm:min-h-[34px] rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1"
+                    >
+                      {t('Repasar fallos', 'Akatsak errepasatu')}
+                    </button>
                   ) : null}
-                  <span>
-                    <strong className="text-rose-700">{errorRecovery.reincident}</strong>{' '}
-                    {t('reincidentes', 'errepikatuak')}
-                  </span>
                 </div>
               </>
             ) : (
@@ -1958,16 +2355,16 @@ export default function StatsDashboard({
         {/* Card C: Modalidades ponderadas por preguntas */}
         <div className="lg:col-span-5 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-4">
           <div>
-            <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+            <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
               {t('Ponderado por preguntas', 'Galderaka haztatua')}
             </div>
-            <h3 className="mt-1 text-xl font-black text-slate-900">
+            <h2 className="mt-1 text-xl font-black text-slate-900">
               {t('Cómo repartes tu práctica', 'Nola banatzen duzun praktika')}
-            </h3>
+            </h2>
           </div>
 
           {modeDistribution.length === 0 ? (
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs font-bold text-slate-500">
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs font-bold text-slate-600">
               {t('Aún no hay sesiones registradas.', 'Oraindik ez dago saiorik erregistratuta.')}
             </div>
           ) : (
@@ -1976,15 +2373,22 @@ export default function StatsDashboard({
                 <div key={item.kind} className="space-y-1">
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <span className="font-black text-slate-800 truncate">{item.label}</span>
-                    <span className="text-slate-500 font-bold shrink-0 tabular-nums">
+                    <span className="text-slate-600 font-bold shrink-0 tabular-nums">
                       <strong className="text-slate-900">{item.questions}</strong> {t('preg.', 'gal.')} (
                       {item.sharePct}%) ·{' '}
-                      <strong className="text-indigo-600">
+                      <strong className="text-indigo-700">
                         {item.accuracyPct == null ? '—' : `${item.accuracyPct}%`}
                       </strong>
                     </span>
                   </div>
-                  <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    role="progressbar"
+                    aria-label={`${item.label} (${item.sharePct}%)`}
+                    aria-valuenow={item.sharePct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="h-2.5 rounded-full bg-slate-100 overflow-hidden"
+                  >
                     <div
                       className="h-full rounded-full"
                       style={{
@@ -2003,10 +2407,13 @@ export default function StatsDashboard({
         <div className="lg:col-span-7 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                {t('Hábito mensual (Color = Acierto · Punto = Volumen)', 'Hileko ohitura (Kolorea = Doitasuna)')}
+              <div className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                {t(
+                  'Hábito mensual (Color = Acierto · Tamaño = Volumen)',
+                  'Hileko ohitura (Kolorea = Doitasuna · Tamaina = Bolumena)',
+                )}
               </div>
-              <h3 className="mt-1 text-xl font-black text-slate-900">{calendarLabel}</h3>
+              <h2 className="mt-1 text-xl font-black text-slate-900">{calendarLabel}</h2>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -2015,7 +2422,7 @@ export default function StatsDashboard({
                 onClick={() =>
                   setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
                 }
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-600 hover:bg-slate-100"
+                className="min-w-[44px] min-h-[44px] sm:w-9 sm:h-9 sm:min-w-0 sm:min-h-0 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 <ChevronLeft size={16} />
               </button>
@@ -2025,21 +2432,21 @@ export default function StatsDashboard({
                 onClick={() =>
                   setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
                 }
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-600 hover:bg-slate-100"
+                className="min-w-[44px] min-h-[44px] sm:w-9 sm:h-9 sm:min-w-0 sm:min-h-0 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 <ChevronRight size={16} />
               </button>
             </div>
           </div>
 
-          {results.length === 0 ? (
-            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 text-sm font-bold text-slate-500">
+          {groupedSessions.length === 0 ? (
+            <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 text-sm font-bold text-slate-600">
               {t('Aún no hay sesiones registradas.', 'Oraindik ez dago saiorik erregistratuta.')}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
               <div className="md:col-span-7 space-y-2">
-                <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-black text-slate-400">
+                <div className="grid grid-cols-7 gap-1.5 text-center text-xs font-black text-slate-500">
                   {weekdayLabels.map((day) => (
                     <span key={day}>{day}</span>
                   ))}
@@ -2050,7 +2457,7 @@ export default function StatsDashboard({
                     const isSelected = selectedDate === cell.iso;
                     const acc = summary && summary.totalQuestions > 0 ? Math.round(summary.accuracy) : null;
                     const colorClass = !summary
-                      ? 'border-slate-100 bg-slate-50 text-slate-300'
+                      ? 'border-slate-100 bg-slate-50 text-slate-400'
                       : acc != null && acc >= 80
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
                         : acc != null && acc >= 60
@@ -2058,36 +2465,64 @@ export default function StatsDashboard({
                           : 'border-rose-200 bg-rose-50 text-rose-900';
                     const dotColor =
                       acc != null && acc >= 80
-                        ? 'bg-emerald-500'
+                        ? 'bg-emerald-600'
                         : acc != null && acc >= 60
-                          ? 'bg-amber-500'
-                          : 'bg-rose-500';
+                          ? 'bg-amber-600'
+                          : 'bg-rose-600';
+                    const volumeSizeClass = !summary
+                      ? ''
+                      : summary.totalQuestions >= 40
+                        ? 'w-3 h-1.5 rounded-full'
+                        : summary.totalQuestions >= 15
+                          ? 'w-2 h-2 rounded-full'
+                          : 'w-1.5 h-1.5 rounded-full';
+                    const cellAriaLabel = summary
+                      ? `${formatLongDate(cell.date, locale)}: ${summary.totalQuestions} ${t('preguntas', 'galdera')}, ${acc ?? 0}% ${t('de acierto', 'doitasun')}`
+                      : `${formatLongDate(cell.date, locale)}: ${t('Sin actividad', 'Jarduerarik gabe')}`;
 
                     return (
                       <button
                         key={cell.iso}
                         type="button"
                         onClick={() => setSelectedDate(cell.iso)}
-                        title={
-                          summary
-                            ? `${formatLongDate(cell.date, locale)} · ${summary.totalQuestions} ${t('preguntas', 'galdera')} · ${acc ?? 0}%`
-                            : `${formatLongDate(cell.date, locale)} · ${t('Sin actividad', 'Jarduerarik gabe')}`
-                        }
-                        className={`h-10 rounded-xl border text-xs font-black flex flex-col items-center justify-center transition-all ${colorClass} ${
+                        aria-label={cellAriaLabel}
+                        aria-pressed={isSelected}
+                        title={cellAriaLabel}
+                        className={`min-h-[44px] sm:h-10 sm:min-h-0 rounded-xl border text-xs font-black flex flex-col items-center justify-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${colorClass} ${
                           isSelected ? 'ring-2 ring-indigo-600' : ''
                         } ${cell.inMonth ? '' : 'opacity-45'}`}
                       >
                         <span>{cell.date.getDate()}</span>
                         {summary ? (
-                          <span
-                            className={`rounded-full mt-0.5 ${dotColor} ${
-                              summary.totalQuestions >= 40 ? 'w-2 h-2' : 'w-1.5 h-1.5'
-                            }`}
-                          />
+                          <span className={`mt-0.5 ${dotColor} ${volumeSizeClass}`} aria-hidden="true" />
                         ) : null}
                       </button>
                     );
                   })}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-bold text-slate-600">
+                  <div className="flex items-center gap-2.5">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600" aria-hidden="true" /> ≥80%
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-600" aria-hidden="true" /> 60–79%
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-rose-600" aria-hidden="true" /> &lt;60%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-500" aria-hidden="true" /> &lt;15
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-slate-500" aria-hidden="true" /> 15–39
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-3 h-1.5 rounded-full bg-slate-500" aria-hidden="true" /> ≥40 {t('preg.', 'gal.')}
+                    </span>
+                  </div>
                 </div>
               </div>
 

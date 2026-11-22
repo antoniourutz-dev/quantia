@@ -3558,6 +3558,25 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   syllabus: scope,
                 });
               }}
+              onPracticeReviewMistakes={() => {
+                void handleStartTest('review');
+              }}
+              onPracticeMixed={() => {
+                void handleStartCustomPractice({
+                  curriculum,
+                  contentScope:
+                    isSingleScopePracticeCurriculum || isLawSelectionCurriculum
+                      ? 'specific_only'
+                      : 'common_and_specific',
+                  topicMode: { type: 'all_topics' },
+                  sessionLength: 20,
+                  order: 'random',
+                  supportMode: customPracticeSupport,
+                });
+              }}
+              onPracticeLaw={(lawReference) => {
+                void handleStartLawTest(lawReference, 20);
+              }}
             />
           </Suspense>
         ) : null}

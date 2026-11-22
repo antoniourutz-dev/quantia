@@ -376,4 +376,83 @@ describe('StatsDashboard', () => {
     await user.click(screen.getByRole('button', { name: /Reintentar/i }));
     expect(onRetryTelemetry).toHaveBeenCalledTimes(1);
   });
+
+  it('muestra onboarding guiado cuando el alumno no tiene actividad previa', async () => {
+    const user = userEvent.setup();
+    const onStartRecommended = vi.fn();
+
+    render(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={[]}
+          bundle={null}
+          curriculum="osakidetza_admin"
+          onStartRecommended={onStartRecommended}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(
+      screen.getByRole('heading', { name: /Completa tu primer test para activar tus estadísticas/i }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Empezar mi primer test/i }));
+    expect(onStartRecommended).toHaveBeenCalledTimes(1);
+  });
+
+  it('soporta pestañas ARIA, selector de teclado en Matriz, CTA de 1 clic en Leyes/Fallos/Mezclado y filtros accesibles', async () => {
+    const user = userEvent.setup();
+    const onPracticeLaw = vi.fn();
+    const onPracticeReviewMistakes = vi.fn();
+    const onPracticeMixed = vi.fn();
+
+    const richBundle = buildBundle();
+    richBundle.practiceState.learningDashboardV2!.lawBreakdown = [
+      {
+        lawId: 'law-39',
+        ley_referencia: 'Ley 39/2015',
+        shortTitle: 'Ley 39/2015 LPACAP',
+        attempts: 25,
+        questionCount: 40,
+        consolidatedCount: 22,
+        accuracyRate: 0.72,
+        blocks: [{ blockId: 'b1', title: 'Título I', attempts: 10, accuracyRate: 0.8 }],
+      },
+    ];
+
+    render(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={results}
+          bundle={richBundle}
+          curriculum="osakidetza_admin"
+          onPracticeLaw={onPracticeLaw}
+          onPracticeReviewMistakes={onPracticeReviewMistakes}
+          onPracticeMixed={onPracticeMixed}
+        />
+      </LocaleProvider>,
+    );
+
+    // Grupos de filtros desambiguados y barras con role="progressbar"
+    expect(screen.getByRole('group', { name: /Filtrar temas por temario/i })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /Filtrar temas por estado/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('progressbar').length).toBeGreaterThanOrEqual(4);
+
+    // 1-click CTAs en Transferencia (gap -21 pts) y Recuperación de fallos (3 reincidentes)
+    await user.click(screen.getByRole('button', { name: /Hacer test mezclado/i }));
+    expect(onPracticeMixed).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: /Repasar fallos/i }));
+    expect(onPracticeReviewMistakes).toHaveBeenCalledTimes(1);
+
+    // Pestaña Matriz + selector accesible por teclado
+    await user.click(screen.getByRole('tab', { name: /Matriz/i }));
+    const matrixSelect = screen.getByLabelText(/Seleccionar tema en la matriz/i);
+    expect(matrixSelect).toBeInTheDocument();
+
+    // Pestaña Por leyes oculta filtros muertos de ámbito/estado y ofrece CTA de 1 clic
+    await user.click(screen.getByRole('tab', { name: /Por leyes/i }));
+    expect(screen.queryByRole('group', { name: /Filtrar temas por estado/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Practicar ley/i }));
+    expect(onPracticeLaw).toHaveBeenCalledWith('Ley 39/2015');
+  });
 });
