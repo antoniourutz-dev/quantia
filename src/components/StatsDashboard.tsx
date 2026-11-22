@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   CartesianGrid,
@@ -143,7 +143,7 @@ export default function StatsDashboard({
 }: StatsDashboardProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
-  const t = (es: string, eu: string) => (isBasque ? eu : es);
+  const t = useCallback((es: string, eu: string) => (isBasque ? eu : es), [isBasque]);
 
   const singleScope = isSingleScopeCurriculum(curriculum);
   const lawCurriculum = isLawSelectionCurriculum(curriculum);
@@ -190,6 +190,25 @@ export default function StatsDashboard({
   const [selectedBlockStart, setSelectedBlockStart] = useState<number | null>(null);
   const [questionStatsView, setQuestionStatsView] = useState<'blocks' | 'ranking'>('blocks');
   const [questionRankingSort, setQuestionRankingSort] = useState<QuestionRankingSort>('most_viewed');
+
+  const availableBlockScopes = useMemo(() => {
+    const set = new Set<SyllabusType>();
+    for (const block of questionBlocks) set.add(block.scope);
+    return Array.from(set);
+  }, [questionBlocks]);
+
+  const effectiveEvolutionLens: EvolutionLens =
+    (singleScope || lawCurriculum) && (evolutionLens === 'common' || evolutionLens === 'specific')
+      ? 'all'
+      : evolutionLens;
+  const effectiveTopicScope: 'all' | SyllabusType =
+    singleScope || lawCurriculum ? 'all' : topicScopeFilter;
+  const effectiveBlockScope: SyllabusType =
+    availableBlockScopes.length === 0
+      ? blockScope
+      : availableBlockScopes.includes(blockScope)
+        ? blockScope
+        : availableBlockScopes[0];
 
   // Core KPIs
   const readiness = Math.round((learningV2?.examReadinessRate ?? 0) * 100);
@@ -357,13 +376,13 @@ export default function StatsDashboard({
 
   const filteredTopics = useMemo(() => {
     return topicInsights.filter((item) => {
-      if (topicScopeFilter !== 'all' && item.scope !== topicScopeFilter) return false;
+      if (effectiveTopicScope !== 'all' && item.scope !== effectiveTopicScope) return false;
       if (topicStatusFilter === 'risk') return item.status === 'risk';
       if (topicStatusFilter === 'improving') return item.status === 'improving';
       if (topicStatusFilter === 'unexplored') return item.status === 'unexplored';
       return true;
     });
-  }, [topicInsights, topicScopeFilter, topicStatusFilter]);
+  }, [topicInsights, effectiveTopicScope, topicStatusFilter]);
 
   const groupedTopics = useMemo(() => {
     const groups: Array<{
@@ -382,9 +401,9 @@ export default function StatsDashboard({
     const scopes: SyllabusType[] =
       singleScope || lawCurriculum
         ? ['common']
-        : topicScopeFilter === 'all'
+        : effectiveTopicScope === 'all'
           ? ['common', 'specific']
-          : [topicScopeFilter];
+          : [effectiveTopicScope];
 
     for (const scope of scopes) {
       const items =
@@ -418,9 +437,11 @@ export default function StatsDashboard({
       });
     }
     return groups;
-  }, [curriculum, filteredTopics, lawCurriculum, locale, singleScope, t, topicScopeFilter]);
+  }, [curriculum, effectiveTopicScope, filteredTopics, lawCurriculum, locale, singleScope, t]);
 
   const lawBreakdown = useMemo(() => learningV2?.lawBreakdown ?? [], [learningV2?.lawBreakdown]);
+  const effectiveTopicView: TopicDisplayView =
+    topicView === 'laws' && lawBreakdown.length === 0 ? 'list' : topicView;
 
   // Matrix Scatter Data
   const matrixData = useMemo(
@@ -454,10 +475,10 @@ export default function StatsDashboard({
         sessions,
         scopedDaily: statsTelemetry?.scopedDaily ?? null,
         windowDays: evolutionWindow,
-        lens: evolutionLens,
+        lens: effectiveEvolutionLens,
         locale,
       }),
-    [evolutionLens, evolutionWindow, locale, sessions, statsTelemetry?.scopedDaily],
+    [effectiveEvolutionLens, evolutionWindow, locale, sessions, statsTelemetry?.scopedDaily],
   );
 
   const evolutionNarrative = useMemo(() => {
@@ -607,8 +628,8 @@ export default function StatsDashboard({
 
   // Question Blocks
   const visibleQuestionBlocks = useMemo(
-    () => questionBlocks.filter((block) => block.scope === blockScope),
-    [blockScope, questionBlocks],
+    () => questionBlocks.filter((block) => block.scope === effectiveBlockScope),
+    [effectiveBlockScope, questionBlocks],
   );
   const selectedQuestionBlock = useMemo(
     () =>
@@ -618,11 +639,14 @@ export default function StatsDashboard({
     [selectedBlockStart, visibleQuestionBlocks],
   );
   const rankedQuestions = useMemo(
-    () => rankQuestionPerformance(questionBlocks, blockScope, questionRankingSort),
-    [blockScope, questionBlocks, questionRankingSort],
+    () =>
+      blocksExpanded && questionStatsView === 'ranking'
+        ? rankQuestionPerformance(questionBlocks, effectiveBlockScope, questionRankingSort)
+        : [],
+    [blocksExpanded, effectiveBlockScope, questionBlocks, questionRankingSort, questionStatsView],
   );
   const blocksWorkedCount = useMemo(
-    () => questionBlocks.filter((b) => b.attemptedQuestionCount > 0).length,
+    () => questionBlocks.filter((b) => b.attempts > 0).length,
     [questionBlocks],
   );
 
@@ -773,8 +797,7 @@ export default function StatsDashboard({
                 ) : (
                   <p className="mt-1 text-xs font-medium text-slate-300">
                     {t('Cobertura del banco', 'Bankuaren estaldura')}:{' '}
-                    <strong className="text-white">{coverage}%</strong> ·{' '}
-                    {t('Por repasar', 'Errepasatzeko')}: {learningV2?.backlogOverdueCount ?? 0}
+                    <strong className="text-white">{coverage}%</strong>
                   </p>
                 )}
               </div>
@@ -797,22 +820,22 @@ export default function StatsDashboard({
               </div>
             </div>
 
-            {/* Readiness Gauge with Confidence Band */}
+            {/* Readiness Gauge with Confidence Band (CI band above base bar so ciLow is always visible) */}
             <div className="space-y-1.5">
               <div className="relative h-3.5 w-full rounded-full bg-white/10 overflow-hidden">
-                {readinessCiLow != null && readinessCiHigh != null ? (
-                  <div
-                    className="absolute inset-y-0 rounded-full bg-indigo-400/35 border border-indigo-300/40"
-                    style={{
-                      left: `${Math.max(0, Math.min(100, readinessCiLow))}%`,
-                      width: `${Math.max(3, Math.min(100 - readinessCiLow, readinessCiHigh - readinessCiLow))}%`,
-                    }}
-                  />
-                ) : null}
                 <div
                   className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-emerald-400"
                   style={{ width: `${Math.max(2, Math.min(100, readiness))}%` }}
                 />
+                {readinessCiLow != null && readinessCiHigh != null ? (
+                  <div
+                    className="absolute inset-y-0 rounded-full bg-white/25 border border-white/60"
+                    style={{
+                      left: `${Math.max(0, Math.min(97, readinessCiLow))}%`,
+                      width: `${Math.max(2, Math.min(100 - Math.max(0, Math.min(97, readinessCiLow)), readinessCiHigh - readinessCiLow))}%`,
+                    }}
+                  />
+                ) : null}
               </div>
             </div>
 
@@ -835,14 +858,16 @@ export default function StatsDashboard({
                   { val: memorySummary.consolidating, color: 'bg-amber-400', label: t('Consolidando', 'Sendotzen') },
                   { val: memorySummary.fragile, color: 'bg-rose-400', label: t('Frágiles', 'Hauskorrak') },
                   { val: memorySummary.unseen, color: 'bg-white/15', label: t('Sin ver', 'Ikusi gabe') },
-                ].map((seg) => (
-                  <div
-                    key={seg.label}
-                    title={`${seg.label}: ${seg.val}`}
-                    className={`${seg.color} h-full transition-all duration-500`}
-                    style={{ width: `${(seg.val / memorySummary.tracked) * 100}%` }}
-                  />
-                ))}
+                ]
+                  .filter((seg) => seg.val > 0)
+                  .map((seg) => (
+                    <div
+                      key={seg.label}
+                      title={`${seg.label}: ${seg.val}`}
+                      className={`${seg.color} h-full transition-all duration-500`}
+                      style={{ width: `${(seg.val / memorySummary.tracked) * 100}%` }}
+                    />
+                  ))}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                 {[
@@ -1250,7 +1275,7 @@ export default function StatsDashboard({
         </div>
 
         {/* View 1: Collapsed-by-default Topic Accordions */}
-        {topicView === 'list' ? (
+        {effectiveTopicView === 'list' ? (
           groupedTopics.length === 0 ? (
             <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-sm font-bold text-slate-600">
               {t(
@@ -1264,7 +1289,7 @@ export default function StatsDashboard({
                 <button
                   type="button"
                   onClick={toggleAllTopicScopes}
-                  className="text-xs font-black text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-xl bg-indigo-50"
+                  className="text-xs font-black text-indigo-700 hover:text-indigo-900 px-3 py-1.5 rounded-xl bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   {anyScopeExpanded
                     ? t('Comprimir temarios', 'Gai-zerrendak tolestu')
@@ -1283,7 +1308,7 @@ export default function StatsDashboard({
                       type="button"
                       aria-expanded={isExpanded}
                       onClick={() => toggleScopeExpand(group.scope)}
-                      className="w-full px-4 py-4 sm:px-5 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-slate-100/70 transition-colors"
+                      className="w-full px-4 py-4 sm:px-5 flex flex-wrap items-center justify-between gap-3 text-left hover:bg-slate-100/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-indigo-600 shrink-0">
@@ -1293,11 +1318,11 @@ export default function StatsDashboard({
                           <div className="text-base font-black text-slate-900 truncate">
                             {group.label}
                           </div>
-                          <div className="text-xs font-bold text-slate-500">
+                          <div className="text-xs font-bold text-slate-600">
                             {group.summary.topicCount} {t('temas', 'gai')} ·{' '}
                             {group.summary.coveragePct}% {t('visto', 'ikusita')}
                             {group.summary.riskCount > 0 ? (
-                              <span className="text-rose-600">
+                              <span className="text-rose-700">
                                 {' '}
                                 · {group.summary.riskCount} {t('en riesgo', 'arriskuan')}
                               </span>
@@ -1308,7 +1333,7 @@ export default function StatsDashboard({
 
                       <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
-                          <div className="text-xs font-bold text-slate-400">
+                          <div className="text-xs font-bold text-slate-600">
                             {t('Acierto', 'Doitasuna')}
                           </div>
                           <div className="text-lg font-black text-slate-900 tabular-nums">
@@ -1317,7 +1342,7 @@ export default function StatsDashboard({
                               : `${group.summary.accuracyPct}%`}
                           </div>
                         </div>
-                        <span className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-indigo-600">
+                        <span className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-indigo-700">
                           {isExpanded
                             ? t('Ocultar', 'Ezkutatu')
                             : t('Ver temas', 'Gaiak ikusi')}
@@ -1331,12 +1356,12 @@ export default function StatsDashboard({
                           const topicOpen = Boolean(expandedTopicIds[topic.id]);
                           const accColor =
                             topic.accuracyPct == null
-                              ? '#94a3b8'
+                              ? '#64748b'
                               : topic.accuracyPct >= 78
-                                ? '#10b981'
+                                ? '#047857'
                                 : topic.accuracyPct >= 62
-                                  ? '#f59e0b'
-                                  : '#ef4444';
+                                  ? '#b45309'
+                                  : '#be123c';
                           const memTotal = Math.max(1, topic.questionCount);
 
                           return (
@@ -1345,10 +1370,10 @@ export default function StatsDashboard({
                                 type="button"
                                 aria-expanded={topicOpen}
                                 onClick={() => toggleTopicExpand(topic.id)}
-                                className="w-full flex flex-wrap items-center justify-between gap-3 text-left"
+                                className="w-full flex flex-wrap items-center justify-between gap-3 text-left rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                               >
                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                  <span className="text-slate-400 shrink-0">
+                                  <span className="text-slate-500 shrink-0">
                                     {topicOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                   </span>
                                   <div className="min-w-0 flex-1">
@@ -1362,7 +1387,7 @@ export default function StatsDashboard({
                                           style={{ width: `${topic.coveragePct}%` }}
                                         />
                                       </div>
-                                      <span className="text-xs font-bold text-slate-500 tabular-nums">
+                                      <span className="text-xs font-bold text-slate-600 tabular-nums">
                                         {topic.seenCount}/{topic.questionCount} ({topic.coveragePct}%)
                                       </span>
                                     </div>
@@ -1385,10 +1410,10 @@ export default function StatsDashboard({
                                         : topic.deltaPp < 0
                                           ? `↓ ${topic.deltaPp}`
                                           : '0'}{' '}
-                                      pp
+                                      pts
                                     </span>
                                   ) : topic.status === 'unexplored' ? (
-                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-xs font-bold text-slate-500">
+                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-xs font-bold text-slate-600">
                                       {t('Poco visto', 'Gutxi ikusita')}
                                     </span>
                                   ) : null}
@@ -1405,26 +1430,37 @@ export default function StatsDashboard({
                               {topicOpen ? (
                                 <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 pl-6">
                                   <div className="space-y-2 flex-1">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-bold">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 font-bold">
                                       <span>{t('Madurez de memoria', 'Memoria-egoera')}</span>
                                       <span>
                                         {t('Dominadas', 'Menderatuak')}: {topic.masteredCount} ·{' '}
                                         {t('Sólidas', 'Sendoak')}: {topic.solidCount} ·{' '}
+                                        {t('Consolidando', 'Sendotzen')}: {topic.consolidatingCount} ·{' '}
                                         {t('Frágiles', 'Hauskorrak')}:{' '}
-                                        <strong className="text-rose-600">{topic.fragileCount}</strong>
+                                        <strong className="text-rose-700">{topic.fragileCount}</strong>
                                       </span>
                                     </div>
                                     <div className="h-2.5 w-full rounded-full bg-slate-100 overflow-hidden flex gap-0.5">
-                                      <div className="bg-emerald-500" style={{ width: `${(topic.masteredCount / memTotal) * 100}%` }} />
-                                      <div className="bg-indigo-500" style={{ width: `${(topic.solidCount / memTotal) * 100}%` }} />
-                                      <div className="bg-amber-400" style={{ width: `${(topic.consolidatingCount / memTotal) * 100}%` }} />
-                                      <div className="bg-rose-500" style={{ width: `${(topic.fragileCount / memTotal) * 100}%` }} />
+                                      {[
+                                        { val: topic.masteredCount, cls: 'bg-emerald-500' },
+                                        { val: topic.solidCount, cls: 'bg-indigo-500' },
+                                        { val: topic.consolidatingCount, cls: 'bg-amber-400' },
+                                        { val: topic.fragileCount, cls: 'bg-rose-500' },
+                                      ]
+                                        .filter((seg) => seg.val > 0)
+                                        .map((seg, segIdx) => (
+                                          <div
+                                            key={segIdx}
+                                            className={seg.cls}
+                                            style={{ width: `${(seg.val / memTotal) * 100}%` }}
+                                          />
+                                        ))}
                                     </div>
                                   </div>
 
                                   <div className="flex items-center gap-4 shrink-0">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold text-slate-400">
+                                      <span className="text-xs font-bold text-slate-600">
                                         {t('Tendencia', 'Joera')}:
                                       </span>
                                       <TopicSparkline values={topic.checkpoints} color={accColor} />
@@ -1433,7 +1469,7 @@ export default function StatsDashboard({
                                       <button
                                         type="button"
                                         onClick={() => onPracticeTopic(topic.label, topic.scope)}
-                                        className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors"
+                                        className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
                                       >
                                         {topic.fragileCount >= 8
                                           ? t('Reforzar tema', 'Gaia indartu')
@@ -1453,7 +1489,7 @@ export default function StatsDashboard({
               })}
             </div>
           )
-        ) : topicView === 'matrix' ? (
+        ) : effectiveTopicView === 'matrix' ? (
           /* View 2: Priority Matrix (Coverage x Accuracy) */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
             <div className="lg:col-span-8 rounded-2xl border border-slate-100 bg-slate-50 p-4">
@@ -1791,7 +1827,7 @@ export default function StatsDashboard({
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-2.5">
             <div className="flex items-center justify-between text-xs font-black text-slate-800">
               <span>{t('Recuperación de preguntas falladas', 'Huts egindako galderen berreskurapena')}</span>
-              <span className="text-emerald-600 tabular-nums">
+              <span className="text-emerald-700 tabular-nums">
                 {errorRecovery.totalFailed > 0
                   ? `${Math.round((errorRecovery.recovered / errorRecovery.totalFailed) * 100)}% ${t('recuperadas', 'berreskuratuak')}`
                   : '—'}
@@ -1800,36 +1836,44 @@ export default function StatsDashboard({
             {errorRecovery.totalFailed > 0 ? (
               <>
                 <div className="h-2.5 w-full rounded-full bg-white border border-slate-200 overflow-hidden flex gap-0.5">
-                  <div
-                    className="bg-emerald-500"
-                    style={{ width: `${(errorRecovery.recovered / errorRecovery.totalFailed) * 100}%` }}
-                  />
-                  <div
-                    className="bg-amber-400"
-                    style={{ width: `${(errorRecovery.recovering / errorRecovery.totalFailed) * 100}%` }}
-                  />
-                  <div
-                    className="bg-rose-500"
-                    style={{ width: `${(errorRecovery.reincident / errorRecovery.totalFailed) * 100}%` }}
-                  />
+                  {[
+                    { val: errorRecovery.recovered, cls: 'bg-emerald-500' },
+                    { val: errorRecovery.recovering, cls: 'bg-amber-400' },
+                    { val: errorRecovery.pending ?? 0, cls: 'bg-orange-400' },
+                    { val: errorRecovery.reincident, cls: 'bg-rose-500' },
+                  ]
+                    .filter((seg) => seg.val > 0)
+                    .map((seg, idx) => (
+                      <div
+                        key={idx}
+                        className={seg.cls}
+                        style={{ width: `${(seg.val / errorRecovery.totalFailed) * 100}%` }}
+                      />
+                    ))}
                 </div>
                 <div className="flex flex-wrap justify-between gap-2 text-xs font-bold text-slate-600">
                   <span>
-                    <strong className="text-emerald-600">{errorRecovery.recovered}</strong>{' '}
+                    <strong className="text-emerald-700">{errorRecovery.recovered}</strong>{' '}
                     {t('recuperadas', 'berreskuratuak')}
                   </span>
                   <span>
-                    <strong className="text-amber-600">{errorRecovery.recovering}</strong>{' '}
+                    <strong className="text-amber-700">{errorRecovery.recovering}</strong>{' '}
                     {t('en proceso', 'bidean')}
                   </span>
+                  {(errorRecovery.pending ?? 0) > 0 ? (
+                    <span>
+                      <strong className="text-orange-700">{errorRecovery.pending}</strong>{' '}
+                      {t('pendientes', 'zain')}
+                    </span>
+                  ) : null}
                   <span>
-                    <strong className="text-rose-600">{errorRecovery.reincident}</strong>{' '}
+                    <strong className="text-rose-700">{errorRecovery.reincident}</strong>{' '}
                     {t('reincidentes', 'errepikatuak')}
                   </span>
                 </div>
               </>
             ) : (
-              <p className="text-xs font-medium text-slate-500">
+              <p className="text-xs font-medium text-slate-600">
                 {t('Aún no hay historial de fallos repetidos.', 'Oraindik ez dago huts errepikatuen historikorik.')}
               </p>
             )}
@@ -2073,7 +2117,7 @@ export default function StatsDashboard({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                {!singleScope ? (
+                {!singleScope && !lawCurriculum && availableBlockScopes.length > 1 ? (
                   <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
                     {(['common', 'specific'] as const).map((scope) => (
                       <button
@@ -2083,9 +2127,9 @@ export default function StatsDashboard({
                           setBlockScope(scope);
                           setSelectedBlockStart(null);
                         }}
-                        aria-pressed={blockScope === scope}
-                        className={`rounded-lg px-3 py-2 text-xs font-black transition-all ${
-                          blockScope === scope
+                        aria-pressed={effectiveBlockScope === scope}
+                        className={`rounded-lg px-3 py-2 text-xs font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                          effectiveBlockScope === scope
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-slate-600 hover:bg-white'
                         }`}
@@ -2103,7 +2147,7 @@ export default function StatsDashboard({
                     onChange={(event) =>
                       setQuestionRankingSort(event.target.value as QuestionRankingSort)
                     }
-                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 outline-none"
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     <option value="most_viewed">{t('Más vistas', 'Ikusienak')}</option>
                     <option value="least_viewed">{t('Menos vistas', 'Gutxien ikusiak')}</option>

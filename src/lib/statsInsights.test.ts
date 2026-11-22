@@ -42,17 +42,19 @@ describe('classifyPracticeSessionKind & buildModeDistribution', () => {
 });
 
 describe('buildFocusVsMixedSummary', () => {
-  it('computes focused vs mixed transfer without any simulacro sessions', () => {
+  it('computes focused vs mixed transfer without simulacros and excludes mistake-review from focused', () => {
     const summary = buildFocusVsMixedSummary([
       session({ id: 'f1', mode: 'custom', title: 'Temas · Tema 1', score: 18, total: 20 }),
-      session({ id: 'f2', mode: 'review', title: 'Corregir fallos', score: 16, total: 20 }),
-      session({ id: 'm1', mode: 'custom', title: 'Desafío · Mixto', score: 30, total: 50 }),
+      session({ id: 'f2', mode: 'review', title: 'Corregir fallos', score: 10, total: 20 }),
+      session({ id: 'm1', mode: 'standard', title: 'Test Común + Específico', score: 30, total: 50 }),
     ]);
 
     expect(summary.enoughData).toBe(true);
-    expect(summary.focusedAccuracy).toBe(85);
+    expect(summary.focusedQuestions).toBe(20);
+    expect(summary.focusedAccuracy).toBe(90);
+    expect(summary.mixedQuestions).toBe(50);
     expect(summary.mixedAccuracy).toBe(60);
-    expect(summary.gapPp).toBe(-25);
+    expect(summary.gapPp).toBe(-30);
   });
 });
 
@@ -249,5 +251,74 @@ describe('buildEvolutionChartData & mergeTopicInsights', () => {
       masteredCount: 1,
       fragileCount: 0,
     });
+  });
+
+  it('never falls back to global sessions when scopedDaily is empty for common/specific lenses', () => {
+    const result = buildEvolutionChartData({
+      sessions: [session({ id: 'g1', score: 18, total: 20 })],
+      scopedDaily: {},
+      windowDays: 7,
+      lens: 'common',
+      locale: 'es',
+      referenceDate: new Date(2026, 10, 21, 12, 0, 0),
+    });
+
+    expect(result.totalQuestions).toBe(0);
+    expect(result.activeDays).toBe(0);
+    expect(result.deltaPp).toBeNull();
+  });
+
+  it('separates first-time pending failures from reincident failures and isolates topics across scopes', () => {
+    const bank = [
+      { id: 'c1', number: 1, scope: 'common' as const, category: 'Tema 1' },
+      { id: 's1', number: 1, scope: 'specific' as const, category: 'Tema 1' },
+    ];
+    const attempts = [
+      { eventId: 'a1', questionId: 'c1', questionNumber: 1, scope: 'common' as const, answeredAt: '2026-11-20T10:00:00.000Z', isCorrect: false },
+      { eventId: 'a2', questionId: 's1', questionNumber: 1, scope: 'specific' as const, answeredAt: '2026-11-20T10:01:00.000Z', isCorrect: false },
+      { eventId: 'a3', questionId: 's1', questionNumber: 1, scope: 'specific' as const, answeredAt: '2026-11-20T10:02:00.000Z', isCorrect: false },
+    ];
+
+    const telemetry = buildStatsAttemptTelemetry(bank, attempts);
+    expect(telemetry.errorRecovery.pending).toBe(1);
+    expect(telemetry.errorRecovery.reincident).toBe(1);
+    expect(telemetry.topicEvolution['common:tema 1'].attempts).toBe(1);
+    expect(telemetry.topicEvolution['specific:tema 1'].attempts).toBe(2);
+  });
+
+  it('computes syllabus 14d delta accurately in local calendar days', () => {
+    const referenceDate = new Date(2026, 10, 21, 0, 30, 0);
+    const scopedDaily = {
+      '2026-11-01': { common: { questions: 20, correct: 10 }, specific: { questions: 0, correct: 0 } },
+      '2026-11-21': { common: { questions: 20, correct: 18 }, specific: { questions: 0, correct: 0 } },
+    };
+    const summaries = buildSyllabusSummaries(
+      [
+        {
+          id: 'common:t1',
+          label: 'Tema 1',
+          scope: 'common',
+          questionCount: 20,
+          seenCount: 20,
+          unseenCount: 0,
+          coveragePct: 100,
+          attempts: 40,
+          accuracyPct: 70,
+          deltaPp: null,
+          checkpoints: [],
+          fragileCount: 2,
+          consolidatingCount: 4,
+          solidCount: 6,
+          masteredCount: 8,
+          excessRiskPct: null,
+          status: 'solid',
+        },
+      ],
+      null,
+      scopedDaily,
+      referenceDate,
+    );
+
+    expect(summaries[0].deltaPp).toBe(40);
   });
 });

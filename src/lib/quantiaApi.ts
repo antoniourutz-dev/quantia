@@ -856,14 +856,6 @@ const queryQuestionBankRowsForTarget = async (
   target: CurriculumQueryTarget,
   filters?: PracticeFilters | null,
 ) => {
-  let query = supabase
-    .from('preguntas')
-    .select(QUESTION_BANK_LIST_SELECT)
-    .in('curriculum', target.candidates);
-  const activeExamSourceKey = getActiveExamSourceKey(target.curriculum);
-  if (activeExamSourceKey) {
-    query = query.eq('exam_source_key', activeExamSourceKey);
-  }
   const normalizedFilters = normalizePracticeFilters(filters);
   const explicitEmptyBlockSelection =
     Array.isArray(filters?.generalLawBlockIds) && filters.generalLawBlockIds.length === 0;
@@ -872,46 +864,61 @@ const queryQuestionBankRowsForTarget = async (
   const articleQuestionIds = normalizedFilters?.generalLawArticleIds?.length
     ? await getQuestionIdsByGeneralLawArticles(normalizedFilters.generalLawArticleIds)
     : null;
-  if (normalizedFilters?.generalLawId) {
-    query = query.eq('general_law_id', normalizedFilters.generalLawId);
-  }
-  if (normalizedFilters?.generalLawBlockIds?.length) {
-    query = query.in('general_law_block_id', normalizedFilters.generalLawBlockIds);
-  }
-  if (articleQuestionIds?.length) {
-    query = query.in('id', articleQuestionIds);
-  } else if (
-    normalizedFilters?.generalLawId &&
-    (explicitEmptyBlockSelection || explicitEmptyArticleSelection || articleQuestionIds)
-  ) {
-    query = query.eq('id', -1);
-  }
-  if (
-    normalizedFilters?.generalLawId ||
-    normalizedFilters?.generalLawBlockIds?.length ||
-    normalizedFilters?.generalLawArticleIds?.length
-  ) {
-    query = query
-      .eq('opposition_id', normalizedFilters.oppositionId ?? GENERAL_LAWS_OPPOSITION_ID)
-      .eq('curriculum', normalizedFilters.curriculum ?? GENERAL_LAWS_CURRICULUM)
-      .eq('curriculum_key', normalizedFilters.curriculumKey ?? GENERAL_LAWS_CURRICULUM)
-      .eq('grupo', normalizedFilters.grupo ?? 'especifico')
-      .eq('question_scope_key', normalizedFilters.questionScopeKey === 'common' ? 'common' : 'specific');
+
+  const buildBaseQuery = () => {
+    let query = supabase
+      .from('preguntas')
+      .select(QUESTION_BANK_LIST_SELECT)
+      .in('curriculum', target.candidates);
+    const activeExamSourceKey = getActiveExamSourceKey(target.curriculum);
+    if (activeExamSourceKey) {
+      query = query.eq('exam_source_key', activeExamSourceKey);
+    }
+    if (normalizedFilters?.generalLawId) {
+      query = query.eq('general_law_id', normalizedFilters.generalLawId);
+    }
+    if (normalizedFilters?.generalLawBlockIds?.length) {
+      query = query.in('general_law_block_id', normalizedFilters.generalLawBlockIds);
+    }
+    if (articleQuestionIds?.length) {
+      query = query.in('id', articleQuestionIds);
+    } else if (
+      normalizedFilters?.generalLawId &&
+      (explicitEmptyBlockSelection || explicitEmptyArticleSelection || articleQuestionIds)
+    ) {
+      query = query.eq('id', -1);
+    }
+    if (
+      normalizedFilters?.generalLawId ||
+      normalizedFilters?.generalLawBlockIds?.length ||
+      normalizedFilters?.generalLawArticleIds?.length
+    ) {
+      query = query
+        .eq('opposition_id', normalizedFilters.oppositionId ?? GENERAL_LAWS_OPPOSITION_ID)
+        .eq('curriculum', normalizedFilters.curriculum ?? GENERAL_LAWS_CURRICULUM)
+        .eq('curriculum_key', normalizedFilters.curriculumKey ?? GENERAL_LAWS_CURRICULUM)
+        .eq('grupo', normalizedFilters.grupo ?? 'especifico')
+        .eq('question_scope_key', normalizedFilters.questionScopeKey === 'common' ? 'common' : 'specific');
+    }
+    return query.order('numero', { ascending: true }).order('id', { ascending: true });
+  };
+
+  const pageSize = 1000;
+  const rawRows: Array<Record<string, unknown>> = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildBaseQuery().range(from, from + pageSize - 1);
+    if (error) {
+      throw new Error(mapPracticeCloudError(error));
+    }
+    const page = (data ?? []) as Array<Record<string, unknown>>;
+    rawRows.push(...page);
+    if (page.length < pageSize) break;
   }
 
-  const { data, error } = await query
-    .order('numero', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (error) {
-    throw new Error(mapPracticeCloudError(error));
-  }
-
-  return ((data ?? []) as Array<Record<string, unknown>>)
+  return rawRows
     .map(mapQuestionBankCacheRow)
     .filter((row): row is QuestionBankCacheRow => Boolean(row))
-    .filter((row) => target.scope === 'all' || row.syllabus === target.scope)
-    ;
+    .filter((row) => target.scope === 'all' || row.syllabus === target.scope);
 };
 
 const mergeQuestionBankRows = (rows: QuestionBankCacheRow[]) => {
@@ -1656,21 +1663,16 @@ const sortSessionSummariesByRecency = <T extends { finishedAt?: string | null; s
     return 0;
   });
 
-const getSessionTableRows = async (source: TableSource, limit: number) => {
+const getSessionTableRows = async (source: TableSource, limit: number, userId?: string | null) => {
+  const baseQuery = () => {
+    const query = getSchemaClient(source.schema).from(source.table).select('*');
+    return userId ? query.eq('user_id', userId) : query;
+  };
+
   const orderedQueries = [
-    () =>
-      getSchemaClient(source.schema)
-        .from(source.table)
-        .select('*')
-        .order('finished_at', { ascending: false, nullsFirst: false })
-        .limit(limit),
-    () =>
-      getSchemaClient(source.schema)
-        .from(source.table)
-        .select('*')
-        .order('started_at', { ascending: false, nullsFirst: false })
-        .limit(limit),
-    () => getSchemaClient(source.schema).from(source.table).select('*').limit(limit),
+    () => baseQuery().order('finished_at', { ascending: false, nullsFirst: false }).limit(limit),
+    () => baseQuery().order('started_at', { ascending: false, nullsFirst: false }).limit(limit),
+    () => baseQuery().limit(limit),
   ];
 
   for (const query of orderedQueries) {
@@ -1691,11 +1693,14 @@ const getSessionTableRows = async (source: TableSource, limit: number) => {
 
 const getRecentActivitySessions = async () => {
   let lastError: Error | null = null;
+  const authSession = await getSafeSupabaseSession().catch(() => null);
+  const userId = readText(authSession?.user?.id);
+  if (!userId) return [];
 
   for (const source of SESSION_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
 
-    const { data, error } = await getSessionTableRows(source, 1000);
+    const { data, error } = await getSessionTableRows(source, 1000, userId);
     if (!error) {
       return sortSessionSummariesByRecency(
         ((data ?? []) as Array<Record<string, unknown>>).map(mapSession),
@@ -2078,15 +2083,14 @@ const getPracticeSessions = async (curriculum: string) => {
   const normalizedCandidates = buildNormalizedCurriculumCandidateSet(curriculumCandidates);
   const authSession = await getSafeSupabaseSession().catch(() => null);
   const userId = readText(authSession?.user?.id);
-  if (userId) await syncQuestionActivity({ userId, curriculum }).catch(() => undefined);
-  const activityRowsPromise = userId
-    ? getCloudQuestionActivityRows(curriculum, userId).catch(() => [])
-    : Promise.resolve([] as Array<Record<string, unknown>>);
+  if (!userId) return [];
+  await syncQuestionActivity({ userId, curriculum }).catch(() => undefined);
+  const activityRowsPromise = getCloudQuestionActivityRows(curriculum, userId).catch(() => []);
 
   for (const source of SESSION_TABLE_SOURCES) {
     if (isKnownMissingTableSource(source)) continue;
 
-    const { data, error } = await getSessionTableRows(source, 1000);
+    const { data, error } = await getSessionTableRows(source, 1000, userId);
 
     if (!error) {
       const rows = (data ?? []) as Array<Record<string, unknown>>;
@@ -2359,6 +2363,10 @@ const getAttemptedQuestionRefsFromSessions = async (
   curriculum: string,
 ): Promise<AttemptedQuestionRefs | null> => {
   let lastError: Error | null = null;
+  const authSession = await getSafeSupabaseSession().catch(() => null);
+  const userId = readText(authSession?.user?.id);
+  if (!userId) return null;
+
   const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
     buildCurriculumCandidates(curriculum),
   );
@@ -2370,6 +2378,7 @@ const getAttemptedQuestionRefsFromSessions = async (
     const { data, error } = await getSchemaClient(source.schema)
       .from(source.table)
       .select('*')
+      .eq('user_id', userId)
       .limit(source.table === 'practice_sessions' ? 1000 : 4000);
 
     if (!error) {
@@ -4278,6 +4287,10 @@ const readAttemptCorrectness = (value: unknown): boolean | null => {
 };
 
 const getGranularAttemptRowsForCurriculum = async (curriculum: string) => {
+  const authSession = await getSafeSupabaseSession().catch(() => null);
+  const userId = readText(authSession?.user?.id);
+  if (!userId) return [];
+
   const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
     buildCurriculumCandidates(curriculum),
   );
@@ -4290,10 +4303,35 @@ const getGranularAttemptRowsForCurriculum = async (curriculum: string) => {
 
   for (const source of sources) {
     if (isKnownMissingTableSource(source)) continue;
-    const { data, error } = await getSchemaClient(source.schema)
-      .from(source.table)
-      .select('*')
-      .limit(source.table === 'practice_sessions' ? 1000 : 4000);
+
+    const runSourceQuery = async () => {
+      if (source.table === 'question_attempt_events') {
+        const focused = await getSchemaClient(source.schema)
+          .from(source.table)
+          .select('id,session_id,question_id,curriculum,is_correct,answered_at,response_time_ms,changed_answer')
+          .eq('user_id', userId)
+          .in('curriculum', curriculumCandidates)
+          .order('answered_at', { ascending: false })
+          .limit(1000);
+        if (!focused.error || !isMissingColumnError(focused.error)) return focused;
+      }
+
+      const scoped = await getSchemaClient(source.schema)
+        .from(source.table)
+        .select('*')
+        .eq('user_id', userId)
+        .in('curriculum', curriculumCandidates)
+        .limit(1000);
+      if (!scoped.error || !isMissingColumnError(scoped.error)) return scoped;
+
+      return getSchemaClient(source.schema)
+        .from(source.table)
+        .select('*')
+        .eq('user_id', userId)
+        .limit(1000);
+    };
+
+    const { data, error } = await runSourceQuery();
     if (error) {
       if (isMissingRelationError(error)) {
         markTableSourceMissing(source);

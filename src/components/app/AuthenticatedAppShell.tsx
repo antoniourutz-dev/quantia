@@ -603,9 +603,13 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (!session) return;
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
+    const loadCycle = dashboardLoadCycleRef.current;
+
     try {
       const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
       const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum, { skipSharedCommonOverride: true });
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
       setBundle((prev) => {
         const recentSessions =
           prev?.practiceState.recentSessions?.length ? prev.practiceState.recentSessions : nextBundle.practiceState.recentSessions;
@@ -620,6 +624,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       requestIdle(() => {
         void getRecentSessionsForHome(curriculum)
           .then((recentSessions) => {
+            if (dashboardLoadCycleRef.current !== loadCycle) return;
             setBundle((prev) => {
               if (!prev) return prev;
               return {
@@ -642,6 +647,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             nextBundle.questionBlocks,
           ).catch(() => null);
           if (!sharedOverride) return;
+          if (dashboardLoadCycleRef.current !== loadCycle) return;
           setBundle((prev) => {
             if (!prev?.practiceState.learningDashboardV2) return prev;
             const learningDashboardV2 = prev.practiceState.learningDashboardV2;
@@ -3484,9 +3490,10 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           </Suspense>
         ) : null}
 
-        {currentView === 'stats' ? (
+        {currentView === 'stats' && !(dataLoading && !bundle) ? (
           <Suspense fallback={screenLoader}>
             <StatsDashboard
+              key={curriculum}
               results={statsResults}
               bundle={bundle}
               curriculum={curriculum}
@@ -3509,10 +3516,20 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   void handleStartLawTest(topicLabel, 20);
                   return;
                 }
+                const normalizedLabel = topicLabel
+                  .normalize('NFD')
+                  .replace(/[\u0300-\u036f]/g, '')
+                  .trim()
+                  .toLowerCase();
+                const isSharedCommonAggregate =
+                  scope === 'common' &&
+                  (normalizedLabel === 'parte comun' || normalizedLabel === 'zati arrunta');
                 void handleStartCustomPractice({
                   curriculum,
                   contentScope: scope === 'common' ? 'common_only' : 'specific_only',
-                  topicMode: { type: 'single_topic', topicId: topicLabel },
+                  topicMode: isSharedCommonAggregate
+                    ? { type: 'all_topics' }
+                    : { type: 'single_topic', topicId: topicLabel },
                   sessionLength: 20,
                   order: 'random',
                   supportMode: customPracticeSupport,

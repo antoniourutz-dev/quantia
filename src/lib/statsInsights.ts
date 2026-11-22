@@ -48,6 +48,7 @@ export type ErrorRecoverySummary = {
   totalFailed: number;
   recovered: number;
   recovering: number;
+  pending?: number;
   reincident: number;
 };
 
@@ -183,8 +184,20 @@ export const normalizeTopicKey = (value: string | null | undefined) =>
     .trim()
     .toLowerCase();
 
+export const normalizeSearchText = (value: string | null | undefined) =>
+  normalizeTopicKey(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
 const toLocalDayKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const parseLocalIsoDayMs = (iso: string): number | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+};
 
 const parseTimestampMs = (raw: string | null | undefined) => {
   if (!raw) return null;
@@ -195,9 +208,9 @@ const parseTimestampMs = (raw: string | null | undefined) => {
 export const classifyPracticeSessionKind = (
   session: Pick<PracticeSessionSummary, 'mode' | 'title'>,
 ): PracticeModalityKind => {
-  const title = normalizeTopicKey(session.title);
+  const title = normalizeSearchText(session.title);
   if (title.startsWith('temas') || title.startsWith('gaiak')) return 'topics';
-  if (title.startsWith('desafío') || title.startsWith('desafio') || title.startsWith('erronka')) {
+  if (title.startsWith('desafio') || title.startsWith('erronka')) {
     return 'challenge';
   }
   const mode: PracticeMode = session.mode;
@@ -238,7 +251,7 @@ export const isMixedOrLongSession = (session: PracticeSessionSummary) => {
     return true;
   }
   if (kind === 'topics' || kind === 'quick_five' || kind === 'review') return false;
-  const title = normalizeTopicKey(session.title);
+  const title = normalizeSearchText(session.title);
   if (title.includes('mixto') || title.includes('mistoa') || title.includes('comun + especifico')) {
     return true;
   }
@@ -293,6 +306,8 @@ export const buildFocusVsMixedSummary = (
   for (const session of sessions) {
     const total = Math.max(0, Number(session.total) || 0);
     if (total <= 0) continue;
+    const kind = classifyPracticeSessionKind(session);
+    if (kind === 'review') continue;
     const correct = Math.max(0, Math.min(total, Number(session.score) || 0));
     if (isMixedOrLongSession(session)) {
       mixedQuestions += total;
@@ -357,13 +372,15 @@ export const buildStatsAttemptTelemetry = (
   const byQuestion = new Map<string, Array<{ ts: number; isCorrect: boolean }>>();
   const byTopic = new Map<
     string,
-    { scope: SyllabusType | 'unknown'; events: Array<{ ts: number; isCorrect: boolean }> }
+    { scope: SyllabusType | 'unknown'; topicKey: string; events: Array<{ ts: number; isCorrect: boolean }> }
   >();
   const bySession = new Map<string, Array<{ ts: number; isCorrect: boolean }>>();
   const scopedDaily: ScopedDailyMetrics = {};
 
   let timedSampleCount = 0;
   let incorrectCount = 0;
+  let timedIncorrectCount = 0;
+  let changedTrackedIncorrectCount = 0;
   let fastIncorrectCount = 0;
   let changedIncorrectCount = 0;
   let avoidableIncorrectCount = 0;
@@ -392,10 +409,10 @@ export const buildStatsAttemptTelemetry = (
     const displayLabel = resolveCategoryLabel ? resolveCategoryLabel(rawCategory) : rawCategory;
     const topicKey = normalizeTopicKey(displayLabel ?? rawCategory);
     if (topicKey) {
-      const tGroup = byTopic.get(topicKey) ?? { scope, events: [] };
-      if (tGroup.scope === 'unknown' && scope !== 'unknown') tGroup.scope = scope;
+      const scopedTopicKey = `${scope}:${topicKey}`;
+      const tGroup = byTopic.get(scopedTopicKey) ?? { scope, topicKey, events: [] };
       tGroup.events.push({ ts, isCorrect: attempt.isCorrect });
-      byTopic.set(topicKey, tGroup);
+      byTopic.set(scopedTopicKey, tGroup);
     }
 
     const answeredMs = parseTimestampMs(attempt.answeredAt);
@@ -416,12 +433,16 @@ export const buildStatsAttemptTelemetry = (
       bySession.set(attempt.sessionId, sList);
     }
 
-    if (attempt.responseTimeMs != null || attempt.changedAnswer != null) {
+    const hasResponseTime = attempt.responseTimeMs != null && attempt.responseTimeMs > 0;
+    const hasChangedFlag = attempt.changedAnswer != null;
+    if (hasResponseTime || hasChangedFlag) {
       timedSampleCount += 1;
       if (!attempt.isCorrect) {
         incorrectCount += 1;
-        const isFast = attempt.responseTimeMs != null && attempt.responseTimeMs > 0 && attempt.responseTimeMs <= 2500;
+        const isFast = hasResponseTime && (attempt.responseTimeMs ?? 0) <= 2500;
         const isChanged = Boolean(attempt.changedAnswer);
+        if (hasResponseTime) timedIncorrectCount += 1;
+        if (hasChangedFlag) changedTrackedIncorrectCount += 1;
         if (isFast) fastIncorrectCount += 1;
         if (isChanged) changedIncorrectCount += 1;
         if (isFast || isChanged) avoidableIncorrectCount += 1;
@@ -511,7 +532,8 @@ export const buildStatsAttemptTelemetry = (
 
   // Topic evolution
   const topicEvolution: Record<string, TopicAttemptEvolution> = {};
-  for (const [topicKey, group] of byTopic.entries()) {
+  for (const [, group] of byTopic.entries()) {
+    const topicKey = group.topicKey;
     const sorted = [...group.events].sort((a, b) => a.ts - b.ts);
     const total = sorted.length;
     const correct = sorted.filter((item) => item.isCorrect).length;
@@ -568,23 +590,25 @@ export const buildStatsAttemptTelemetry = (
     }
   }
 
-  // Error recovery funnel
+  // Error recovery funnel (separate 1st unrecovered failure as pending vs >=2 failures as reincident)
   const errorRecovery: ErrorRecoverySummary = {
     totalFailed: 0,
     recovered: 0,
     recovering: 0,
+    pending: 0,
     reincident: 0,
   };
   for (const events of byQuestion.values()) {
     const sorted = [...events].sort((a, b) => a.ts - b.ts);
-    const hadError = sorted.some((item) => !item.isCorrect);
-    if (!hadError) continue;
+    const wrongCount = sorted.filter((item) => !item.isCorrect).length;
+    if (wrongCount === 0) continue;
     errorRecovery.totalFailed += 1;
     const last = sorted[sorted.length - 1];
     const prev = sorted.length >= 2 ? sorted[sorted.length - 2] : null;
     if (!last.isCorrect) {
-      errorRecovery.reincident += 1;
-    } else if (prev?.isCorrect || sorted.filter((item) => item.isCorrect).length > sorted.filter((item) => !item.isCorrect).length) {
+      if (wrongCount >= 2) errorRecovery.reincident += 1;
+      else errorRecovery.pending = (errorRecovery.pending ?? 0) + 1;
+    } else if (prev?.isCorrect || sorted.filter((item) => item.isCorrect).length > wrongCount) {
       errorRecovery.recovered += 1;
     } else {
       errorRecovery.recovering += 1;
@@ -623,9 +647,11 @@ export const buildStatsAttemptTelemetry = (
   const avoidableErrorRate =
     incorrectCount >= 5 ? Math.round((avoidableIncorrectCount / incorrectCount) * 100) : null;
   const fastErrorRate =
-    incorrectCount >= 5 ? Math.round((fastIncorrectCount / incorrectCount) * 100) : null;
+    timedIncorrectCount >= 5 ? Math.round((fastIncorrectCount / timedIncorrectCount) * 100) : null;
   const changedToWrongRate =
-    incorrectCount >= 5 ? Math.round((changedIncorrectCount / incorrectCount) * 100) : null;
+    changedTrackedIncorrectCount >= 5
+      ? Math.round((changedIncorrectCount / changedTrackedIncorrectCount) * 100)
+      : null;
 
   return {
     topicEvolution,
@@ -673,8 +699,8 @@ export const buildEvolutionChartData = (params: {
     { questions: number; correct: number; sessions: number; modes: Set<string> }
   >();
 
-  if ((lens === 'common' || lens === 'specific') && scopedDaily && Object.keys(scopedDaily).length > 0) {
-    for (const [iso, bucket] of Object.entries(scopedDaily)) {
+  if (lens === 'common' || lens === 'specific') {
+    for (const [iso, bucket] of Object.entries(scopedDaily ?? {})) {
       const target = bucket[lens];
       if (!target || target.questions <= 0) continue;
       dayMap.set(iso, {
@@ -800,8 +826,9 @@ export const mergeTopicInsights = (params: {
         ? Math.max(0, Math.round(riskItem.excessRisk * 100))
         : null;
 
+    const normalizedSearchLabel = normalizeSearchText(label);
     const fallbackScopeMem =
-      normalizeTopicKey(label) === 'parte común' || normalizeTopicKey(label) === 'parte comun'
+      normalizedSearchLabel === 'parte comun' || normalizedSearchLabel === 'zati arrunta'
         ? telemetry?.scopeMemory?.[scope] ?? null
         : null;
     const evoMemory = evo?.memory ?? fallbackScopeMem;
@@ -860,9 +887,14 @@ export const buildSyllabusSummaries = (
   topics: TopicInsightItem[],
   learningV2: PracticeLearningDashboardV2 | null,
   scopedDaily?: ScopedDailyMetrics | null,
+  referenceDate = new Date(),
 ): SyllabusSummaryItem[] => {
   const scopes: SyllabusType[] = ['common', 'specific'];
-  const now = new Date();
+  const todayStart = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate(),
+  ).getTime();
   const msDay = 24 * 60 * 60 * 1000;
 
   return scopes
@@ -897,9 +929,9 @@ export const buildSyllabusSummaries = (
         let priorQ = 0;
         let priorC = 0;
         for (const [iso, bucket] of Object.entries(scopedDaily)) {
-          const ts = parseTimestampMs(iso);
-          if (ts == null) continue;
-          const ageDays = Math.floor((now.getTime() - ts) / msDay);
+          const dayMs = parseLocalIsoDayMs(iso);
+          if (dayMs == null) continue;
+          const ageDays = Math.round((todayStart - dayMs) / msDay);
           const target = bucket[scope];
           if (ageDays >= 0 && ageDays < 14) {
             recentQ += target.questions;
