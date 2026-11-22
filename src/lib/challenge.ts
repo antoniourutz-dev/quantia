@@ -17,8 +17,8 @@ export async function loadChallengeQuestions(
   const groups = await Promise.all(scopes.map(loadScope));
   const result: Question[] = [];
   const ids = new Set<string>();
-  for (const [index, group] of groups.entries()) {
-    if (group.length !== CHALLENGE_OPTIONS[scopes[index]].count) return [];
+  for (const group of groups) {
+    if (group.length === 0) return [];
     const sorted = [...group].sort((a, b) =>
       (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) ||
       a.id.localeCompare(b.id),

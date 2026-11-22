@@ -41,6 +41,7 @@ export default function HighlightableText({
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectionRange, setSelectionRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
   const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; top: number; left: number } | null>(null);
 
   const getAbsoluteOffset = useCallback((container: Node, targetNode: Node, localOffset: number) => {
     const treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
@@ -91,6 +92,7 @@ export default function HighlightableText({
         }
       }
       setSelectionRange({ startIndex: start, endIndex: end });
+      setPendingDelete(null);
       const range = sel.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       setPopupPos({
@@ -143,13 +145,14 @@ export default function HighlightableText({
             onClick={(e) => {
               if (!readOnly && chunk.highlight) {
                 e.stopPropagation();
-                // Custom confirm would be better, but keeping it functional for now
-                if (window.confirm(isBasque ? 'Nabarmendua kendu nahi duzu?' : '¿Eliminar este resaltado?')) {
-                  onRemoveHighlight(chunk.highlight.id);
-                  setSelectionRange(null);
-                  setPopupPos(null);
-                  window.getSelection()?.removeAllRanges();
-                }
+                const rect = e.currentTarget.getBoundingClientRect();
+                setPendingDelete({
+                  id: chunk.highlight.id,
+                  top: Math.max(10, rect.top - 52),
+                  left: Math.max(10, rect.left + rect.width / 2),
+                });
+                setSelectionRange(null);
+                setPopupPos(null);
               }
             }}
           >
@@ -158,6 +161,45 @@ export default function HighlightableText({
         ))}
       </div>
 
+      {pendingDelete && !readOnly && createPortal(
+        <div
+          className="fixed z-[10000] -translate-x-1/2 flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-[0_15px_50px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-150"
+          style={{ top: pendingDelete.top, left: pendingDelete.left }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span>{isBasque ? 'Nabarmendua kendu?' : '¿Eliminar resaltado?'}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemoveHighlight(pendingDelete.id);
+              setPendingDelete(null);
+              setSelectionRange(null);
+              setPopupPos(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+            className="rounded-lg bg-rose-500 px-2.5 py-1 text-[11px] font-black text-white transition-all hover:bg-rose-600"
+          >
+            {isBasque ? 'Kendu' : 'Eliminar'}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setPendingDelete(null);
+            }}
+            aria-label={isBasque ? 'Utzi' : 'Cancelar'}
+            className="rounded-lg bg-white/10 px-2 py-1 text-[11px] font-bold text-slate-300 transition-all hover:bg-white/20"
+          >
+            {isBasque ? 'Utzi' : 'Cancelar'}
+          </button>
+        </div>,
+        document.body,
+      )}
+
       {popupPos && selectionRange && !readOnly && createPortal(
         <div
           className="fixed z-[10000] -translate-x-1/2 flex items-center gap-1.5 p-2 bg-slate-900 shadow-[0_15px_50px_rgba(0,0,0,0.5)] border border-white/10 rounded-[1.25rem] animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
@@ -165,6 +207,8 @@ export default function HighlightableText({
           onMouseDown={(e) => e.stopPropagation()} // Prevent closing on click
         >
           <button
+            type="button"
+            aria-label={isBasque ? 'Funtsezko kontzeptua' : 'Concepto clave'}
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'core_concept' });
@@ -175,9 +219,11 @@ export default function HighlightableText({
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <Check size={18} />
-            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Key</span>
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">{isBasque ? 'Gakoa' : 'Clave'}</span>
           </button>
           <button
+            type="button"
+            aria-label={isBasque ? 'Lege-erreferentzia' : 'Referencia legal'}
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'law_reference' });
@@ -188,9 +234,11 @@ export default function HighlightableText({
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <Book size={18} />
-            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Law</span>
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">{isBasque ? 'Legea' : 'Ley'}</span>
           </button>
           <button
+            type="button"
+            aria-label={isBasque ? 'Epea edo data' : 'Plazo o fecha'}
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'deadline' });
@@ -201,9 +249,11 @@ export default function HighlightableText({
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <Calendar size={18} />
-            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Date</span>
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">{isBasque ? 'Epea' : 'Plazo'}</span>
           </button>
           <button
+            type="button"
+            aria-label={isBasque ? 'Salbuespena' : 'Excepción'}
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'exception' });
@@ -214,12 +264,14 @@ export default function HighlightableText({
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <AlertCircle size={18} />
-            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">Exc</span>
+            <span className="text-[7px] font-black uppercase tracking-tighter mt-1">{isBasque ? 'Salb.' : 'Excep.'}</span>
           </button>
           
           <div className="w-px h-8 bg-white/10 mx-1" />
           
           <button
+            type="button"
+            aria-label={isBasque ? 'Itxi' : 'Cerrar'}
             onClick={(e) => {
               e.preventDefault();
               window.getSelection()?.removeAllRanges();

@@ -18,7 +18,13 @@ type Props = {
 };
 
 export default function ChallengePanel({ scope, onScopeChange, ...props }: Props) {
-  const { isBasque } = props;
+  const { isBasque, curriculum } = props;
+  const [scopeCounts, setScopeCounts] = useState<Partial<Record<ChallengeScope, number>>>({});
+
+  useEffect(() => {
+    setScopeCounts({});
+  }, [curriculum]);
+
   return (
     <section className="space-y-6 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-8">
       <div>
@@ -29,21 +35,41 @@ export default function ChallengePanel({ scope, onScopeChange, ...props }: Props
         <legend className="mb-2 text-sm font-bold text-slate-800">{isBasque ? 'Gai-zerrenda' : 'Temario'}</legend>
         {(Object.keys(CHALLENGE_OPTIONS) as ChallengeScope[]).map((key) => {
           const item = CHALLENGE_OPTIONS[key];
+          const displayCount = scopeCounts[key] ?? item.count;
           return (
             <button key={key} type="button" aria-pressed={scope === key}
               onClick={() => onScopeChange(key)}
               className={`rounded-xl border-2 px-4 py-3 text-left text-sm font-bold ${scope === key ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-700'}`}>
-              {isBasque ? item.labelEu : item.label} · {item.count}
+              {isBasque ? item.labelEu : item.label} · {displayCount}
             </button>
           );
         })}
       </fieldset>
-      <FullChallenge {...props} scope={scope} />
+      <FullChallenge
+        {...props}
+        scope={scope}
+        onBankCountResolved={(resolvedScope, count) =>
+          setScopeCounts((prev) => (prev[resolvedScope] === count ? prev : { ...prev, [resolvedScope]: count }))
+        }
+      />
     </section>
   );
 }
 
-function FullChallenge({ curriculum, userId, isBasque, syncing, scope, randomize, onRandomizeChange, onStart }: Omit<Props, 'scope' | 'onScopeChange'> & { scope: ChallengeScope }) {
+function FullChallenge({
+  curriculum,
+  userId,
+  isBasque,
+  syncing,
+  scope,
+  randomize,
+  onRandomizeChange,
+  onStart,
+  onBankCountResolved,
+}: Omit<Props, 'scope' | 'onScopeChange'> & {
+  scope: ChallengeScope;
+  onBankCountResolved?: (scope: ChallengeScope, count: number) => void;
+}) {
   const bankKey = JSON.stringify([curriculum, scope]);
   const [bank, setBank] = useState<{ key: string; questions: Question[]; error: boolean } | null>(null);
   const currentBank = bank?.key === bankKey ? bank : null;
@@ -52,6 +78,7 @@ function FullChallenge({ curriculum, userId, isBasque, syncing, scope, randomize
   const [ranking, setRanking] = useState<{ key: string; rows: ChallengeResult[]; error: boolean } | null>(null);
   const current = ranking?.key === rankingKey ? ranking : null;
   const option = CHALLENGE_OPTIONS[scope];
+  const totalBankCount = currentBank && currentBank.questions.length > 0 ? currentBank.questions.length : option.count;
   const locale = isBasque ? 'eu-ES' : 'es-ES';
   const percentage = (value: number, total: number) =>
     new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 2 }).format(value / total);
@@ -61,11 +88,18 @@ function FullChallenge({ curriculum, userId, isBasque, syncing, scope, randomize
     void loadChallengeQuestions(scope, (questionScope) =>
       getQuestionBankSnapshot({ curriculum, questionScope }),
     ).then(
-      (questions) => { if (active) setBank({ key: bankKey, questions, error: false }); },
+      (questions) => {
+        if (active) {
+          setBank({ key: bankKey, questions, error: false });
+          if (questions.length > 0) {
+            onBankCountResolved?.(scope, questions.length);
+          }
+        }
+      },
       () => { if (active) setBank({ key: bankKey, questions: [], error: true }); },
     );
     return () => { active = false; };
-  }, [bankKey, curriculum, scope]);
+  }, [bankKey, curriculum, onBankCountResolved, scope]);
 
   useEffect(() => {
     if (!userId || syncing || gradedTotal === 0) return;
@@ -89,13 +123,13 @@ function FullChallenge({ curriculum, userId, isBasque, syncing, scope, randomize
       </label>
       {currentBank?.error ? <p role="alert" className="text-sm text-rose-700">{isBasque ? 'Ezin izan da erronka kargatu.' : 'No se ha podido cargar el desafío.'}</p>
         : currentBank && gradedTotal === 0 ? <p role="alert" className="text-sm text-rose-700">{isBasque ? 'Galdera sorta osoa ez dago erabilgarri oposizio honetan.' : 'El bloque completo no está disponible para esta oposición.'}</p>
-        : currentBank && gradedTotal < option.count ? <p className="text-sm text-slate-600">
+        : currentBank && gradedTotal < currentBank.questions.length ? <p className="text-sm text-slate-600">
           {isBasque ? `${gradedTotal} galdera ebaluagarri. Erantzunik esleitu gabekoak ez dira puntuatzen.` : `${gradedTotal} preguntas evaluables. Las que no tienen respuesta asignada quedan fuera de la puntuación.`}
         </p> : null}
       <button type="button" disabled={!currentBank || gradedTotal === 0}
         onClick={() => currentBank && onStart(randomize ? shuffleChallengeQuestions(currentBank.questions) : currentBank.questions, option.title)}
         className="rounded-xl bg-indigo-700 px-5 py-3 font-bold text-white hover:bg-indigo-800 disabled:opacity-60">
-        {!currentBank ? (isBasque ? 'Kargatzen…' : 'Cargando…') : (isBasque ? 'Erronka hasi' : 'Empezar desafío')} · {option.count}
+        {!currentBank ? (isBasque ? 'Kargatzen…' : 'Cargando…') : (isBasque ? 'Erronka hasi' : 'Empezar desafío')} · {totalBankCount}
       </button>
       {gradedTotal > 0 && <div aria-live="polite" className="space-y-2 border-t border-slate-100 pt-4">
         <h4 className="flex items-center gap-2 font-bold text-slate-900"><Trophy size={18} aria-hidden="true" />{isBasque ? 'Zure hiru marka onenak' : 'Tus tres mejores marcas'}</h4>

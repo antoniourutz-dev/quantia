@@ -3,6 +3,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Flag,
+  LayoutGrid,
   RotateCcw,
   Info,
   Loader2,
@@ -78,6 +80,8 @@ export default function TestInterface({
     answerDetails: Array<TestAnswer | null>;
   } | null>(null);
   const [resolvedMistakeQuestionIds, setResolvedMistakeQuestionIds] = useState<string[]>([]);
+  const [flaggedQuestionIds, setFlaggedQuestionIds] = useState<string[]>([]);
+  const [isGridOpen, setIsGridOpen] = useState(false);
   const finishStartedRef = useRef(false);
   const wasFinishingRef = useRef(false);
   const viewOccurrencesRef = useRef(new Map<string, number>());
@@ -129,6 +133,18 @@ export default function TestInterface({
     () => activeSelectedAnswers.filter((answer) => answer !== null).length,
     [activeSelectedAnswers],
   );
+  const blankCount = activeQuestions.length - answeredCount;
+  const flaggedQuestionIdSet = useMemo(
+    () => new Set(flaggedQuestionIds),
+    [flaggedQuestionIds],
+  );
+  const isCurrentQuestionFlagged = Boolean(
+    currentQuestion && flaggedQuestionIdSet.has(currentQuestion.id),
+  );
+  const flaggedCount = useMemo(
+    () => activeQuestions.filter((q) => flaggedQuestionIdSet.has(q.id)).length,
+    [activeQuestions, flaggedQuestionIdSet],
+  );
   const resolvedMistakeQuestionIdSet = useMemo(
     () => new Set(resolvedMistakeQuestionIds),
     [resolvedMistakeQuestionIds],
@@ -155,7 +171,7 @@ export default function TestInterface({
     () => ({
       score: mainScore,
       answers: answerDetails.filter(
-        (answer): answer is TestAnswer => Boolean(answer?.correctOption),
+        (answer): answer is TestAnswer => Boolean(answer?.correctOption && answer?.selectedOption),
       ),
     }),
     [answerDetails, mainScore],
@@ -183,6 +199,8 @@ export default function TestInterface({
     finishStartedRef.current = false;
     setMistakeReview(null);
     setResolvedMistakeQuestionIds([]);
+    setFlaggedQuestionIds([]);
+    setIsGridOpen(false);
   }, [mode, questions]);
 
   useEffect(() => {
@@ -239,67 +257,121 @@ export default function TestInterface({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleAnswer = (optionId: OptionKey) => {
-    if (closingSession) return;
-    if (!isSimulacro && selectedAnswer !== null) return;
-
-    const answeredAt = new Date().toISOString();
-    const responseTimeMs = Math.max(0, Date.now() - questionStartAt);
-    const previousDetail = activeAnswerDetails[currentIndex];
-    const isCorrect = optionId === currentQuestion.correctAnswer;
-    const changedAnswer = previousDetail ? previousDetail.selectedOption !== optionId : false;
-    const changedFromCorrect =
-      !isCorrect &&
-      Boolean(
-        previousDetail &&
-          ((previousDetail.selectedOption !== optionId && previousDetail.isCorrect) ||
-            previousDetail.changedFromCorrect),
+  const toggleDoubtFlag = useCallback(
+    (questionId?: string) => {
+      const targetId = questionId ?? currentQuestion?.id;
+      if (!targetId || closingSession) return;
+      setFlaggedQuestionIds((prev) =>
+        prev.includes(targetId) ? prev.filter((id) => id !== targetId) : [...prev, targetId],
       );
-    const detail: TestAnswer = {
-      questionId: currentQuestion.id,
-      selectedOption: optionId,
-      correctOption: currentQuestion.correctAnswer,
-      isCorrect,
-      answeredAt,
-      responseTimeMs,
-      timeToFirstSelectionMs: previousDetail?.timeToFirstSelectionMs ?? responseTimeMs,
-      changedAnswer,
-      changedFromCorrect,
-    };
-    if (currentQuestion.correctAnswer && activityUserId && activityCurriculum && currentViewEventIdRef.current) {
-      recordQuestionAnswer({
-        userId: activityUserId,
-        curriculum: activityCurriculum,
-        eventId: currentViewEventIdRef.current,
-        isCorrect: detail.isCorrect,
-      });
-    }
+    },
+    [closingSession, currentQuestion?.id],
+  );
 
+  const goToQuestion = useCallback(
+    (nextIndex: number) => {
+      if (closingSession || nextIndex < 0 || nextIndex >= activeQuestions.length) return;
+      setCurrentIndex(nextIndex);
+      setShowExplanation(!isSimulacro && activeSelectedAnswers[nextIndex] !== null);
+      setManualExplanationOpen(false);
+      setQuestionStartAt(Date.now());
+      setIsGridOpen(false);
+    },
+    [activeQuestions.length, activeSelectedAnswers, closingSession, isSimulacro],
+  );
+
+  const clearCurrentAnswer = useCallback(() => {
+    if (closingSession || !isSimulacro || selectedAnswer === null) return;
     const nextSelected = [...activeSelectedAnswers];
-    nextSelected[currentIndex] = optionId;
-
+    nextSelected[currentIndex] = null;
     const nextDetails = [...activeAnswerDetails];
-    nextDetails[currentIndex] = detail;
-    if (mistakeReview) {
-      setMistakeReview({
-        ...mistakeReview,
-        selectedAnswers: nextSelected,
-        answerDetails: nextDetails,
-      });
-    } else {
-      setSelectedAnswers(nextSelected);
-      setAnswerDetails(nextDetails);
-    }
-    setShowExplanation(!isSimulacro);
-    setManualExplanationOpen(false);
+    nextDetails[currentIndex] = null;
+    setSelectedAnswers(nextSelected);
+    setAnswerDetails(nextDetails);
+  }, [activeAnswerDetails, activeSelectedAnswers, closingSession, currentIndex, isSimulacro, selectedAnswer]);
 
-    if (navigator.vibrate) {
-      navigator.vibrate(isSimulacro ? 10 : optionId === currentQuestion.correctAnswer ? 10 : [10, 30, 10]);
-    }
-  };
+  const handleAnswer = useCallback(
+    (optionId: OptionKey) => {
+      if (closingSession || !currentQuestion) return;
+      if (!isSimulacro && selectedAnswer !== null) return;
+      if (isSimulacro && selectedAnswer === optionId) {
+        clearCurrentAnswer();
+        return;
+      }
 
-  const nextQuestion = () => {
-    if (closingSession || selectedAnswer === null) return;
+      const answeredAt = new Date().toISOString();
+      const responseTimeMs = Math.max(0, Date.now() - questionStartAt);
+      const previousDetail = activeAnswerDetails[currentIndex];
+      const isCorrect = optionId === currentQuestion.correctAnswer;
+      const changedAnswer = previousDetail ? previousDetail.selectedOption !== optionId : false;
+      const changedFromCorrect =
+        !isCorrect &&
+        Boolean(
+          previousDetail &&
+            ((previousDetail.selectedOption !== optionId && previousDetail.isCorrect) ||
+              previousDetail.changedFromCorrect),
+        );
+      const detail: TestAnswer = {
+        questionId: currentQuestion.id,
+        selectedOption: optionId,
+        correctOption: currentQuestion.correctAnswer,
+        isCorrect,
+        answeredAt,
+        responseTimeMs,
+        timeToFirstSelectionMs: previousDetail?.timeToFirstSelectionMs ?? responseTimeMs,
+        changedAnswer,
+        changedFromCorrect,
+      };
+      if (currentQuestion.correctAnswer && activityUserId && activityCurriculum && currentViewEventIdRef.current) {
+        recordQuestionAnswer({
+          userId: activityUserId,
+          curriculum: activityCurriculum,
+          eventId: currentViewEventIdRef.current,
+          isCorrect: detail.isCorrect,
+        });
+      }
+
+      const nextSelected = [...activeSelectedAnswers];
+      nextSelected[currentIndex] = optionId;
+
+      const nextDetails = [...activeAnswerDetails];
+      nextDetails[currentIndex] = detail;
+      if (mistakeReview) {
+        setMistakeReview({
+          ...mistakeReview,
+          selectedAnswers: nextSelected,
+          answerDetails: nextDetails,
+        });
+      } else {
+        setSelectedAnswers(nextSelected);
+        setAnswerDetails(nextDetails);
+      }
+      setShowExplanation(!isSimulacro);
+      setManualExplanationOpen(false);
+
+      if (navigator.vibrate) {
+        navigator.vibrate(isSimulacro ? 10 : optionId === currentQuestion.correctAnswer ? 10 : [10, 30, 10]);
+      }
+    },
+    [
+      activeAnswerDetails,
+      activeSelectedAnswers,
+      activityCurriculum,
+      activityUserId,
+      clearCurrentAnswer,
+      closingSession,
+      currentIndex,
+      currentQuestion,
+      isSimulacro,
+      mistakeReview,
+      questionStartAt,
+      selectedAnswer,
+    ],
+  );
+
+  const nextQuestion = useCallback(() => {
+    if (closingSession) return;
+    if (mistakeReview && selectedAnswer === null) return;
     if (mistakeReview) {
       const currentDetail = activeAnswerDetails[currentIndex];
       if (!currentDetail) return;
@@ -371,29 +443,19 @@ export default function TestInterface({
     } else {
       requestFinish();
     }
-  };
+  }, [
+    activeAnswerDetails,
+    activeQuestions.length,
+    activeSelectedAnswers,
+    closingSession,
+    currentIndex,
+    isSimulacro,
+    mistakeReview,
+    requestFinish,
+    selectedAnswer,
+  ]);
 
-  useEffect(() => {
-    const handleEnterToContinue = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' || event.repeat || closingSession || selectedAnswer === null) return;
-
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.closest('button, a, input, textarea, select, [role="button"]'))
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-      nextQuestion();
-    };
-
-    window.addEventListener('keydown', handleEnterToContinue);
-    return () => window.removeEventListener('keydown', handleEnterToContinue);
-  }, [closingSession, nextQuestion, selectedAnswer]);
-
-  const prevQuestion = () => {
+  const prevQuestion = useCallback(() => {
     if (closingSession) return;
     if (currentIndex > 0) {
       const nextIndex = currentIndex - 1;
@@ -402,7 +464,97 @@ export default function TestInterface({
       setManualExplanationOpen(false);
       setQuestionStartAt(Date.now());
     }
-  };
+  }, [activeSelectedAnswers, closingSession, currentIndex, isSimulacro]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || closingSession) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"], [role="dialog"]'))
+      ) {
+        return;
+      }
+
+      const key = event.key;
+      const lowerKey = key.toLowerCase();
+
+      const optionMap: Record<string, number> = {
+        '1': 0,
+        a: 0,
+        '2': 1,
+        b: 1,
+        '3': 2,
+        c: 2,
+        '4': 3,
+        d: 3,
+      };
+      if (lowerKey in optionMap) {
+        const optionIndex = optionMap[lowerKey];
+        const targetOption = currentQuestion?.options[optionIndex];
+        if (targetOption && (isSimulacro || selectedAnswer === null)) {
+          event.preventDefault();
+          handleAnswer(targetOption.id);
+        }
+        return;
+      }
+
+      if (lowerKey === 'e') {
+        if (showExplanation && !isSimulacro) {
+          event.preventDefault();
+          setManualExplanationOpen((prev) => !prev);
+        }
+        return;
+      }
+
+      if (key === 'ArrowLeft') {
+        if (currentIndex > 0) {
+          event.preventDefault();
+          prevQuestion();
+        }
+        return;
+      }
+
+      if (key === 'ArrowRight') {
+        if (!isMistakeReview || selectedAnswer !== null) {
+          if (currentIndex < activeQuestions.length - 1) {
+            event.preventDefault();
+            nextQuestion();
+          }
+        }
+        return;
+      }
+
+      if (key === 'Enter') {
+        if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) {
+          return;
+        }
+        if (!isMistakeReview || selectedAnswer !== null) {
+          event.preventDefault();
+          nextQuestion();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    activeQuestions.length,
+    closingSession,
+    currentIndex,
+    currentQuestion,
+    handleAnswer,
+    isMistakeReview,
+    isSimulacro,
+    nextQuestion,
+    prevQuestion,
+    selectedAnswer,
+    showExplanation,
+  ]);
 
   const startMistakeReview = () => {
     if (!canStartMistakeReview) return;
@@ -505,9 +657,33 @@ export default function TestInterface({
                   <Zap size={12} />
                   Focus
                 </button>
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                  {currentIndex + 1} / {activeQuestions.length}
-                </span>
+                {isMistakeReview ? (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    {currentIndex + 1} / {activeQuestions.length}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsGridOpen((prev) => !prev)}
+                    disabled={closingSession}
+                    aria-expanded={isGridOpen}
+                    aria-label={isBasque ? 'Galderen mapa' : 'Mapa de preguntas'}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
+                      isGridOpen
+                        ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <LayoutGrid size={13} />
+                    <span>{currentIndex + 1} / {activeQuestions.length}</span>
+                    {flaggedCount > 0 ? (
+                      <span className="ml-0.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-800">
+                        <Flag size={10} className="fill-amber-500 text-amber-600" />
+                        {flaggedCount}
+                      </span>
+                    ) : null}
+                  </button>
+                )}
                 <button
                   onClick={onCancel}
                   disabled={closingSession}
@@ -557,6 +733,65 @@ export default function TestInterface({
         </div>
       )}
 
+      {isGridOpen && !isMistakeReview && !closingSession ? (
+        <div className="mx-2 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:mx-0">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-600">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                {isBasque ? `Erantzunda: ${answeredCount}` : `Contestadas: ${answeredCount}`}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-slate-100" />
+                {isBasque ? `Zuri: ${blankCount}` : `En blanco: ${blankCount}`}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                {isBasque ? `Zalantzan: ${flaggedCount}` : `Con duda: ${flaggedCount}`}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10">
+            {activeQuestions.map((question, idx) => {
+              const isCurrent = idx === currentIndex;
+              const isAnswered = activeSelectedAnswers[idx] !== null;
+              const isFlagged = flaggedQuestionIdSet.has(question.id);
+              const detail = activeAnswerDetails[idx];
+
+              let cellStyle = 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100';
+              if (isFlagged) {
+                cellStyle = 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100';
+              } else if (isAnswered) {
+                if (isSimulacro) {
+                  cellStyle = 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100';
+                } else if (detail?.isCorrect) {
+                  cellStyle = 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100';
+                } else {
+                  cellStyle = 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100';
+                }
+              }
+
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  onClick={() => goToQuestion(idx)}
+                  aria-label={`${isBasque ? 'Galdera' : 'Pregunta'} ${idx + 1}`}
+                  className={`relative flex h-9 items-center justify-center rounded-xl border text-xs font-black transition-all ${cellStyle} ${
+                    isCurrent ? 'ring-2 ring-indigo-600 ring-offset-1' : ''
+                  }`}
+                >
+                  {idx + 1}
+                  {isFlagged ? (
+                    <Flag size={10} className="absolute right-1 top-1 fill-amber-500 text-amber-600" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <div className={`mx-2 flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all duration-500 sm:mx-0 sm:rounded-[2.25rem] ${isFocusMode ? 'gap-2 p-4 shadow-xl sm:p-5' : 'pb-4 sm:gap-4 sm:p-6 sm:pb-6'}`}>
         {closingSession ? null : (
           <>
@@ -588,18 +823,47 @@ export default function TestInterface({
                     </span>
                   ) : null}
                 </div>
-                {reviewPriority === 'most_problematic' && frictionBadgeLabel ? (
-                  <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
-                    {frictionBadgeLabel}
-                  </span>
-                ) : null}
-                {selectedAnswer !== null && !isSimulacro && (
-                  <span className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${selectedAnswer === currentQuestion.correctAnswer ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {selectedAnswer === currentQuestion.correctAnswer
-                      ? isBasque ? '✓ Zuzena' : '✓ Correcto'
-                      : isBasque ? '✗ Okerra' : '✗ Incorrecto'}
-                  </span>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {reviewPriority === 'most_problematic' && frictionBadgeLabel ? (
+                    <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700">
+                      {frictionBadgeLabel}
+                    </span>
+                  ) : null}
+                  {selectedAnswer !== null && !isSimulacro && (
+                    <span className={`shrink-0 text-[10px] font-black uppercase tracking-widest ${selectedAnswer === currentQuestion.correctAnswer ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {selectedAnswer === currentQuestion.correctAnswer
+                        ? isBasque ? '✓ Zuzena' : '✓ Correcto'
+                        : isBasque ? '✗ Okerra' : '✗ Incorrecto'}
+                    </span>
+                  )}
+                  {isSimulacro && selectedAnswer !== null && !isMistakeReview ? (
+                    <button
+                      type="button"
+                      onClick={clearCurrentAnswer}
+                      disabled={closingSession}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+                    >
+                      <RotateCcw size={12} />
+                      <span>{isBasque ? 'Erantzuna ezabatu' : 'Borrar respuesta'}</span>
+                    </button>
+                  ) : null}
+                  {!isMistakeReview ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleDoubtFlag()}
+                      disabled={closingSession}
+                      aria-pressed={isCurrentQuestionFlagged}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
+                        isCurrentQuestionFlagged
+                          ? 'border-amber-300 bg-amber-50 text-amber-800 shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                      }`}
+                    >
+                      <Flag size={13} className={isCurrentQuestionFlagged ? 'fill-amber-500 text-amber-600' : ''} />
+                      <span>{isCurrentQuestionFlagged ? (isBasque ? 'Zalantzan' : 'En duda') : (isBasque ? 'Zalantza' : 'Duda')}</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
@@ -751,7 +1015,7 @@ export default function TestInterface({
               })}
             </div>
 
-            {showExplanation && !isSimulacro && !isFocusMode && (
+            {showExplanation && !isSimulacro && (!isFocusMode || manualExplanationOpen) && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-500 px-4 sm:px-0 py-4 sm:py-0 sm:mt-4">
                 {!manualExplanationOpen ? (
                   <button
@@ -844,6 +1108,29 @@ export default function TestInterface({
                   <XCircle size={15} />
                   <span>{isBasque ? 'Irten Focus modutik' : 'Salir de Focus'}</span>
                 </button>
+                {!isMistakeReview ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsGridOpen((prev) => !prev)}
+                    disabled={closingSession}
+                    aria-expanded={isGridOpen}
+                    aria-label={isBasque ? 'Galderen mapa' : 'Mapa de preguntas'}
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
+                      isGridOpen
+                        ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    <LayoutGrid size={13} />
+                    <span>{currentIndex + 1} / {activeQuestions.length}</span>
+                    {flaggedCount > 0 ? (
+                      <span className="ml-0.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-800">
+                        <Flag size={10} className="fill-amber-500 text-amber-600" />
+                        {flaggedCount}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
                 <div
                   role="group"
                   aria-label={isBasque ? 'Testuaren tamaina' : 'Tamaño del texto'}
@@ -888,13 +1175,15 @@ export default function TestInterface({
 
             <button
               onClick={nextQuestion}
-              disabled={closingSession || selectedAnswer === null}
+              disabled={closingSession || (isMistakeReview && selectedAnswer === null)}
               className={`flex items-center gap-2 rounded-2xl px-8 py-4 font-bold transition-all shadow-lg ${
                 closingSession
                   ? 'bg-slate-900 text-white cursor-wait'
-                : selectedAnswer === null
+                  : isMistakeReview && selectedAnswer === null
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:translate-y-[-2px]'
+                    : selectedAnswer === null && currentIndex < activeQuestions.length - 1
+                      ? 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 shadow-sm'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:translate-y-[-2px]'
               }`}
             >
               {closingSession ? (
@@ -911,7 +1200,9 @@ export default function TestInterface({
                         : isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
                       : currentIndex === activeQuestions.length - 1
                         ? isBasque ? 'Amaitu' : 'Finalizar'
-                        : isBasque ? 'Hurrengoa' : 'Siguiente'}
+                        : selectedAnswer === null
+                          ? isBasque ? 'Zuri utzi' : 'Dejar en blanco'
+                          : isBasque ? 'Hurrengoa' : 'Siguiente'}
                   </span>
                   <ChevronRight size={20} />
                 </>
@@ -919,8 +1210,8 @@ export default function TestInterface({
             </button>
           </div>
 
-          {/* ÚNICA NAVEGACIÓN EN MÓVIL (flotante tras responder) */}
-          {!closingSession && selectedAnswer !== null && (
+          {/* ÚNICA NAVEGACIÓN EN MÓVIL (flotante) */}
+          {!closingSession && (
             <div className="fixed bottom-4 left-4 right-4 z-50 animate-in slide-in-from-bottom-8 fade-in duration-300 sm:hidden">
               <div className="flex items-center gap-2 rounded-2xl bg-slate-900/95 p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.3)] backdrop-blur-xl ring-1 ring-white/10">
                 {currentIndex > 0 && !isFocusMode && (
@@ -935,8 +1226,8 @@ export default function TestInterface({
                 
                 <button
                   onClick={nextQuestion}
-                  disabled={closingSession}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-indigo-500/20 transition-all active:scale-[0.98]"
+                  disabled={closingSession || (isMistakeReview && selectedAnswer === null)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-indigo-500/20 transition-all active:scale-[0.98] disabled:opacity-50"
                 >
                   {isMistakeReview
                     ? mistakeReview?.kind === 'all' && currentIndex === activeQuestions.length - 1
@@ -944,7 +1235,9 @@ export default function TestInterface({
                       : isBasque ? 'Repasoa jarraitu' : 'Continuar repaso'
                     : currentIndex === activeQuestions.length - 1
                       ? isBasque ? 'Amaitu test' : 'Finalizar test'
-                      : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
+                      : selectedAnswer === null
+                        ? isBasque ? 'Zuri utzi' : 'Dejar en blanco'
+                        : isBasque ? 'Hurrengo galdera' : 'Siguiente'}
                   <ChevronRight size={20} className="relative left-[1px]" />
                 </button>
               </div>

@@ -8,7 +8,7 @@ export async function getChallengeRanking(
   gradedTotal: number,
   signal: AbortSignal,
 ): Promise<ChallengeResult[]> {
-  const { count, title } = CHALLENGE_OPTIONS[scope];
+  const { title } = CHALLENGE_OPTIONS[scope];
   const app = supabase.schema('app');
   const ranking: ChallengeResult[] = [];
   const pageSize = 10;
@@ -20,7 +20,6 @@ export async function getChallengeRanking(
       .eq('mode', 'custom')
       .eq('title', title)
       .eq('total', gradedTotal)
-      .eq('batch_size', count)
       .order('score', { ascending: false })
       .order('started_at', { ascending: true })
       .order('session_id', { ascending: true })

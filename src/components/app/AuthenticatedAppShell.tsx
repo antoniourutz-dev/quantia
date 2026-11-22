@@ -626,6 +626,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     try {
       const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
       if (dashboardLoadCycleRef.current !== loadCycle) return;
+      setBundle((prev) => prev ?? primaryBundle);
       const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum, { skipSharedCommonOverride: true });
       if (dashboardLoadCycleRef.current !== loadCycle) return;
       setBundle((prev) => {
@@ -972,8 +973,12 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     }
     if (!hasManagementAccess && currentView === 'stats') {
       void refreshDashboard();
+      return;
     }
-  }, [currentView, hasManagementAccess, refreshDashboard, session]);
+    if (!hasManagementAccess) {
+      void refreshDashboardSilently();
+    }
+  }, [currentView, hasManagementAccess, refreshDashboard, refreshDashboardSilently, session]);
 
   useEffect(() => {
     if (currentView !== 'dashboard') return;

@@ -443,7 +443,7 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
                  <Tag size={18} />
                </div>
                <p className="text-[13px] font-bold text-indigo-900/80 leading-relaxed">
-                 {isBasque ? 'Ikasketa moduan ez dago zigorrik, eta Oposik-eko zure metrikak ez dira aldatzen. Entrenamendu hutsa da.' : 'En modo Estudio no se penaliza ni se alteran tus métricas de Oposik. Es gimnasio puro.'}
+                 {isBasque ? 'Ikasketa moduan ez dago zigorrik, eta Quantia-ko zure metrikak ez dira aldatzen. Entrenamendu hutsa da.' : 'En modo Estudio no se penaliza ni se alteran tus métricas de Quantia. Es gimnasio puro.'}
                </p>
             </div>
           </div>

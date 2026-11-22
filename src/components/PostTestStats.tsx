@@ -75,9 +75,24 @@ export default function PostTestStats({
   );
   const total = scorableQuestions.length;
   const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
-  const failed = total - score;
-  const avgTimeMs = answers.length > 0
-    ? answers.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answers.length
+  const answerMap = useMemo(() => new Map(answers.map((a) => [a.questionId, a])), [answers]);
+  const unansweredCount = useMemo(
+    () =>
+      scorableQuestions.filter((q) => {
+        const a = answerMap.get(q.id);
+        return !a || a.selectedOption == null;
+      }).length,
+    [answerMap, scorableQuestions],
+  );
+  const incorrectCount = Math.max(0, total - score - unansweredCount);
+  const failed = incorrectCount;
+  const reviewableCount = incorrectCount + unansweredCount;
+  const answeredEntries = useMemo(
+    () => answers.filter((a) => a.selectedOption != null),
+    [answers],
+  );
+  const avgTimeMs = answeredEntries.length > 0
+    ? answeredEntries.reduce((acc, curr) => acc + (curr.responseTimeMs ?? 0), 0) / answeredEntries.length
     : 0;
   const avgTimeSec = (avgTimeMs / 1000).toFixed(1);
   const analysisTrace = useMemo(() => createAnalysisLoadTrace(`${curriculum}:${mode}`), [curriculum, mode]);
@@ -107,7 +122,6 @@ export default function PostTestStats({
     username,
   });
 
-  const answerMap = useMemo(() => new Map(answers.map((a) => [a.questionId, a])), [answers]);
   const lawData = useMemo(() => {
     if (!analysisHydrated) return [];
 
@@ -128,6 +142,7 @@ export default function PostTestStats({
         fullName,
         name: fullName.length > 36 ? `${fullName.substring(0, 33)}...` : fullName,
         accuracy: Math.round((stats.correct / Math.max(1, stats.total)) * 100),
+        correct: stats.correct,
         total: stats.total,
       }))
       .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
@@ -140,6 +155,7 @@ export default function PostTestStats({
       const answer = answerMap.get(q.id) ?? null;
       const selected = answer?.selectedOption ?? null;
       const correct = q.correctAnswer;
+      const isUnanswered = selected == null;
       const isCorrect = selected != null ? selected === correct : false;
 
       return {
@@ -155,6 +171,7 @@ export default function PostTestStats({
         options: q.options,
         explanation: q.explanation,
         isCorrect,
+        isUnanswered,
       };
     });
   }, [answerMap, curriculum, isBasque, scorableQuestions]);
@@ -164,7 +181,6 @@ export default function PostTestStats({
     return reviewItems.filter((item) => !item.isCorrect);
   }, [reviewItems, showOnlyIncorrect]);
   const currentReviewItem = reviewFiltered[reviewIndex] ?? null;
-  const continuityFocus = sessionEnd.nextMove.kind === 'start_session' && mode !== 'simulacro';
 
   const speedMessage = Number(avgTimeSec) < 30
     ? isBasque
@@ -267,10 +283,33 @@ export default function PostTestStats({
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{isBasque ? 'Emaitza' : 'Resultado'}</div>
                 <div className="text-[13px] font-bold text-slate-600 leading-none">
                   {score} {isBasque ? 'zuzen' : 'bien'} · {failed} {isBasque ? 'huts' : 'mal'}
+                  {unansweredCount > 0 ? ` · ${unansweredCount} ${isBasque ? 'zuri' : 'en blanco'}` : ''}
                 </div>
              </div>
           </div>
-          {null}
+          {sessionEnd.continuityLine ? (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-1.5 text-[11px] font-bold text-indigo-700">
+              {sessionEnd.continuityLine}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mb-4 space-y-2">
+          <h2 className="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
+            {sessionEnd.headline}
+          </h2>
+          <p className="text-sm font-medium leading-relaxed text-slate-600">
+            {sessionEnd.summary}
+          </p>
+          {sessionEnd.microReward ? (
+            <div className="mt-2 flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3.5 py-2.5">
+              <Zap size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+              <div className="text-xs leading-snug">
+                <div className="font-black text-emerald-900">{sessionEnd.microReward.title}</div>
+                <div className="font-medium text-emerald-700">{sessionEnd.microReward.detail}</div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {topicReview}
@@ -302,7 +341,7 @@ export default function PostTestStats({
             {sessionEnd.nextMove.kind === 'review_on_page' ? <RotateCcw size={18} /> : null}
             {sessionEnd.primaryCta}
           </button>
-          {failed > 0 ? (
+          {reviewableCount > 0 ? (
             <button
               type="button"
               onClick={() => {
@@ -317,7 +356,13 @@ export default function PostTestStats({
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-rose-100 bg-rose-50 py-3.5 text-[14px] font-black text-rose-700 transition-all hover:border-rose-200 hover:bg-rose-100"
             >
               <XCircle size={18} />
-              {isBasque ? `${failed} akatsak aztertu` : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`}
+              {failed > 0
+                ? isBasque
+                  ? `${failed} akatsak aztertu`
+                  : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`
+                : isBasque
+                  ? `${unansweredCount} zuriak aztertu`
+                  : `Revisar ${unansweredCount} en blanco`}
             </button>
           ) : null}
         </div>
@@ -343,10 +388,18 @@ export default function PostTestStats({
              </span>
              <span className="text-[13px] font-bold text-rose-600">{failed}</span>
            </div>
+           {unansweredCount > 0 ? (
+             <div className="flex-1 flex flex-col items-center px-1">
+               <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
+                 {isBasque ? 'Zuri' : 'En blanco'}
+               </span>
+               <span className="text-[13px] font-bold text-slate-600">{unansweredCount}</span>
+             </div>
+           ) : null}
         </div>
       </div>
 
-      {!continuityFocus && analysisHydrated ? (
+      {analysisHydrated ? (
       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
         <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
           <div className="flex items-center gap-3 mb-6">
@@ -367,7 +420,14 @@ export default function PostTestStats({
                 {lawData.slice(0, 12).map((law) => (
                   <div key={law.fullName} className="px-4 py-3 flex items-center justify-between gap-4 bg-white">
                     <div className="truncate font-bold text-slate-700 text-xs sm:text-sm">{law.fullName}</div>
-                    <div className={`shrink-0 font-black text-sm lg:text-base ${law.accuracy >= 80 ? 'text-emerald-600' : law.accuracy >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>{law.accuracy}%</div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-xs font-bold text-slate-400">
+                        {law.correct}/{law.total}
+                      </span>
+                      <span className={`font-black text-sm lg:text-base ${law.accuracy >= 80 ? 'text-emerald-600' : law.accuracy >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
+                        {law.accuracy}%
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -453,10 +513,22 @@ export default function PostTestStats({
                         className={`px-3 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest ${
                           item.isCorrect
                             ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
-                            : 'bg-rose-50 border-rose-100 text-rose-700'
+                            : item.isUnanswered
+                              ? 'bg-slate-100 border-slate-200 text-slate-600'
+                              : 'bg-rose-50 border-rose-100 text-rose-700'
                         }`}
                       >
-                        {item.isCorrect ? (isBasque ? 'ZUZEN' : 'ACIERTO') : (isBasque ? 'HUTS' : 'FALLO')}
+                        {item.isCorrect
+                          ? isBasque
+                            ? 'ZUZEN'
+                            : 'ACIERTO'
+                          : item.isUnanswered
+                            ? isBasque
+                              ? 'ZURI'
+                              : 'EN BLANCO'
+                            : isBasque
+                              ? 'HUTS'
+                              : 'FALLO'}
                       </span>
                     </div>
                     <div className="text-lg font-black text-slate-900 leading-snug">{item.text}</div>
