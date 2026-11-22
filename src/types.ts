@@ -209,6 +209,7 @@ export interface TestAnswer {
 export interface FinishedTestPayload {
   score: number;
   answers: TestAnswer[];
+  flaggedQuestionIds?: string[];
 }
 
 export interface TestResult {

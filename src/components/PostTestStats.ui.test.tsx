@@ -190,7 +190,7 @@ describe('PostTestStats', () => {
         correctAnswer: 'b',
         explanation: 'Exp 2',
         syllabus: 'common',
-        category: 'Ley 39/2015',
+        category: 'Ley 40/2015',
         questionScope: 'common',
       },
     ];
@@ -240,10 +240,9 @@ describe('PostTestStats', () => {
     expect(screen.getByText('Bien por aparecer hoy')).toBeInTheDocument();
     expect(screen.getByText('Eso es lo que hace que el progreso se quede.')).toBeInTheDocument();
 
-    // "Por ley" and "Tiempo" always rendered even in standard mode
-    expect(screen.getByText('Por ley')).toBeInTheDocument();
-    expect(screen.getByText('Tiempo')).toBeInTheDocument();
-    expect(screen.getByText('2/2')).toBeInTheDocument();
+    // "Por tema / ley" renders when >=2 topics/laws, and redundant "Tiempo" card is gone
+    expect(screen.getByText('Por tema / ley')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Tiempo' })).not.toBeInTheDocument();
 
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
@@ -251,12 +250,12 @@ describe('PostTestStats', () => {
     });
   });
 
-  it('distingue preguntas en blanco de fallos en resumen, métricas y revisión', async () => {
+  it('distingue fallos, preguntas en blanco y dudas en métricas y pestañas de revisión', async () => {
     const questions: Question[] = [
       {
         id: 'q1',
         number: 1,
-        text: 'Pregunta acertada',
+        text: 'Pregunta acertada con duda',
         options: [
           { id: 'a', text: 'A' },
           { id: 'b', text: 'B' },
@@ -299,6 +298,7 @@ describe('PostTestStats', () => {
 
     const payload: FinishedTestPayload = {
       score: 1,
+      flaggedQuestionIds: ['q1', 'q3'],
       answers: [
         {
           questionId: 'q1',
@@ -337,16 +337,25 @@ describe('PostTestStats', () => {
       />,
     );
 
-    expect(screen.getByText('1 bien · 1 mal · 1 en blanco')).toBeInTheDocument();
+    // Single-topic test hides redundant "Por tema / ley" card
+    expect(screen.queryByText('Por tema / ley')).not.toBeInTheDocument();
     expect(screen.getByText('En blanco')).toBeInTheDocument();
+    expect(screen.getByText('Dudas')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Analizar 1 fallo' }));
+    await user.click(screen.getByRole('button', { name: /Revisar test \(1 fallo · 1 en blanco · 2 dudas\)/i }));
     expect(screen.getByText('Pregunta fallada')).toBeInTheDocument();
     expect(screen.getByText('FALLO')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Siguiente' }));
+    // Switch to "En blanco (1)" tab
+    await user.click(screen.getByRole('tab', { name: /En blanco \(1\)/i }));
     expect(screen.getByText('Pregunta dejada en blanco')).toBeInTheDocument();
     expect(screen.getByText('EN BLANCO')).toBeInTheDocument();
+    expect(screen.getByText('DUDA')).toBeInTheDocument();
     expect(screen.getByText('Dejaste esta pregunta sin responder.')).toBeInTheDocument();
+
+    // Switch to "Con duda (2)" tab
+    await user.click(screen.getByRole('tab', { name: /Con duda \(2\)/i }));
+    expect(screen.getByText('Pregunta acertada con duda')).toBeInTheDocument();
+    expect(screen.getByText('DUDA')).toBeInTheDocument();
   });
 });

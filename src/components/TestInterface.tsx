@@ -173,8 +173,9 @@ export default function TestInterface({
       answers: answerDetails.filter(
         (answer): answer is TestAnswer => Boolean(answer?.correctOption && answer?.selectedOption),
       ),
+      flaggedQuestionIds: flaggedQuestionIds.length > 0 ? [...flaggedQuestionIds] : undefined,
     }),
-    [answerDetails, mainScore],
+    [answerDetails, flaggedQuestionIds, mainScore],
   );
 
   useEffect(() => {

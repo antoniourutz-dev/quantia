@@ -8,6 +8,7 @@ import {
   RotateCcw,
   LayoutDashboard,
   Clock,
+  Flag,
   Zap,
   Info,
 } from 'lucide-react';
@@ -32,6 +33,8 @@ import {
   markAnalysisLevel1Ready,
   markAnalysisReviewVisible,
 } from '../lib/analysisLoadMetrics';
+
+type ReviewFilter = 'all' | 'incorrect' | 'unanswered' | 'flagged';
 
 interface PostTestStatsProps {
   payload: FinishedTestPayload;
@@ -74,8 +77,11 @@ export default function PostTestStats({
     [questions],
   );
   const total = scorableQuestions.length;
-  const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   const answerMap = useMemo(() => new Map(answers.map((a) => [a.questionId, a])), [answers]);
+  const flaggedSet = useMemo(
+    () => new Set(payload.flaggedQuestionIds ?? []),
+    [payload.flaggedQuestionIds],
+  );
   const unansweredCount = useMemo(
     () =>
       scorableQuestions.filter((q) => {
@@ -84,9 +90,16 @@ export default function PostTestStats({
       }).length,
     [answerMap, scorableQuestions],
   );
+  const answeredCount = Math.max(0, total - unansweredCount);
+  const percentage = total > 0 ? Math.round((score / total) * 100) : 0;
   const incorrectCount = Math.max(0, total - score - unansweredCount);
   const failed = incorrectCount;
-  const reviewableCount = incorrectCount + unansweredCount;
+  const flaggedCount = useMemo(
+    () => scorableQuestions.filter((q) => flaggedSet.has(q.id)).length,
+    [flaggedSet, scorableQuestions],
+  );
+  const mostlyBlank = unansweredCount > 0 && unansweredCount > answeredCount;
+
   const answeredEntries = useMemo(
     () => answers.filter((a) => a.selectedOption != null),
     [answers],
@@ -114,6 +127,17 @@ export default function PostTestStats({
       }),
     [coachContext, curriculum, locale, mode, payload, total, username],
   );
+
+  const displayHeadline = mostlyBlank
+    ? isBasque
+      ? `Testa osatu gabe (${answeredCount}/${total} erantzunda)`
+      : `Test parcial (${answeredCount} de ${total} contestadas)`
+    : sessionEnd.headline;
+  const displaySummary = mostlyBlank
+    ? isBasque
+      ? `Zuri utzitako ${unansweredCount} galderak ez dira huts gisa gordetzen. Orain berrikus ditzakezu hutsuneak antzemateko.`
+      : `Las ${unansweredCount} preguntas en blanco no cuentan como fallo en tus estadísticas. Puedes revisarlas ahora para detectar lagunas.`
+    : sessionEnd.summary;
 
   const reviewCopy = buildReviewSurfaceCopy({
     locale,
@@ -147,8 +171,7 @@ export default function PostTestStats({
       }))
       .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
   }, [analysisHydrated, answerMap, curriculum, isBasque, scorableQuestions]);
-  const lawsSeen = useMemo(() => lawData.map((item) => item.fullName).filter(Boolean), [lawData]);
-  const [showOnlyIncorrect, setShowOnlyIncorrect] = useState(false);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
 
   const reviewItems = useMemo(() => {
     return scorableQuestions.map((q, index) => {
@@ -157,6 +180,7 @@ export default function PostTestStats({
       const correct = q.correctAnswer;
       const isUnanswered = selected == null;
       const isCorrect = selected != null ? selected === correct : false;
+      const isFlagged = flaggedSet.has(q.id);
 
       return {
         index: index + 1,
@@ -172,23 +196,30 @@ export default function PostTestStats({
         explanation: q.explanation,
         isCorrect,
         isUnanswered,
+        isFlagged,
       };
     });
-  }, [answerMap, curriculum, isBasque, scorableQuestions]);
+  }, [answerMap, curriculum, flaggedSet, isBasque, scorableQuestions]);
+
+  const reviewableCount = useMemo(
+    () => reviewItems.filter((item) => !item.isCorrect || item.isUnanswered || item.isFlagged).length,
+    [reviewItems],
+  );
 
   const reviewFiltered = useMemo(() => {
-    if (!showOnlyIncorrect) return reviewItems;
-    return reviewItems.filter((item) => !item.isCorrect);
-  }, [reviewItems, showOnlyIncorrect]);
+    switch (reviewFilter) {
+      case 'incorrect':
+        return reviewItems.filter((item) => !item.isCorrect && !item.isUnanswered);
+      case 'unanswered':
+        return reviewItems.filter((item) => item.isUnanswered);
+      case 'flagged':
+        return reviewItems.filter((item) => item.isFlagged);
+      case 'all':
+      default:
+        return reviewItems;
+    }
+  }, [reviewFilter, reviewItems]);
   const currentReviewItem = reviewFiltered[reviewIndex] ?? null;
-
-  const speedMessage = Number(avgTimeSec) < 30
-    ? isBasque
-      ? 'Erritmo ona izan duzu. Merezi du horri eustea.'
-      : 'Has ido con buen ritmo. Merece la pena mantenerlo.'
-    : isBasque
-      ? 'Erritmo ona da, baina errazetan denbora pixka bat gehiago aurreztu dezakezu.'
-      : 'El ritmo es bueno, pero aun puedes ahorrar tiempo en las faciles.';
 
   useEffect(() => {
     markAnalysisLevel1Ready(analysisTrace);
@@ -216,7 +247,7 @@ export default function PostTestStats({
       curriculum,
       mode,
       dominantState: sessionEnd.dominantState,
-      thesis: sessionEnd.headline,
+      thesis: displayHeadline,
       nextCta: sessionEnd.primaryCta,
       score,
       total,
@@ -226,18 +257,16 @@ export default function PostTestStats({
     coachContext?.primaryAction,
     coachContext?.tone,
     curriculum,
+    displayHeadline,
     mode,
     percentage,
     total,
     score,
     sessionEnd.dominantState,
-    sessionEnd.headline,
     sessionEnd.primaryCta,
     sessionEnd.nextMove.kind,
     sessionEnd.nextMove.kind === 'start_session' ? sessionEnd.nextMove.mode : null,
   ]);
-
-
 
   useEffect(() => {
     if (!analysisHydrated) return;
@@ -251,14 +280,23 @@ export default function PostTestStats({
 
   useEffect(() => {
     setReviewIndex(0);
-  }, [showOnlyIncorrect, showReview]);
+  }, [reviewFilter, showReview]);
 
   useEffect(() => {
     setShowReviewExplanation(false);
-  }, [reviewIndex, showOnlyIncorrect, showReview]);
+  }, [reviewIndex, reviewFilter, showReview]);
 
-  const openMistakeReview = () => {
-    setShowOnlyIncorrect(true);
+  const openMistakeReview = (preferredFilter?: ReviewFilter) => {
+    const nextFilter: ReviewFilter =
+      preferredFilter ??
+      (failed > 0
+        ? 'incorrect'
+        : flaggedCount > 0
+          ? 'flagged'
+          : unansweredCount > 0
+            ? 'unanswered'
+            : 'all');
+    setReviewFilter(nextFilter);
     setAnalysisHydrated(true);
     setReviewIndex(0);
     setShowReview(true);
@@ -267,25 +305,91 @@ export default function PostTestStats({
     });
   };
 
+  const shouldHideDuplicatePrimaryReviewCta =
+    Boolean(topicReview) &&
+    sessionEnd.nextMove.kind === 'start_session' &&
+    sessionEnd.nextMove.mode === 'review';
+
+  const reviewButtonLabel = (() => {
+    if (failed > 0 && unansweredCount === 0 && flaggedCount === 0) {
+      return isBasque
+        ? `${failed} akatsak aztertu`
+        : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`;
+    }
+    if (failed === 0 && unansweredCount > 0 && flaggedCount === 0) {
+      return isBasque
+        ? `${unansweredCount} zuriak berrikusi`
+        : `Revisar ${unansweredCount} en blanco`;
+    }
+    const parts: string[] = [];
+    if (failed > 0) parts.push(isBasque ? `${failed} huts` : `${failed} ${failed === 1 ? 'fallo' : 'fallos'}`);
+    if (unansweredCount > 0) parts.push(isBasque ? `${unansweredCount} zuri` : `${unansweredCount} en blanco`);
+    if (flaggedCount > 0) parts.push(isBasque ? `${flaggedCount} zalantza` : `${flaggedCount} ${flaggedCount === 1 ? 'duda' : 'dudas'}`);
+    return isBasque ? `Testa berrikusi (${parts.join(' · ')})` : `Revisar test (${parts.join(' · ')})`;
+  })();
+
+  const reviewTabs: Array<{ id: ReviewFilter; label: string; count: number; tone: string }> = [
+    {
+      id: 'all',
+      label: isBasque ? 'Denak' : 'Todas',
+      count: reviewItems.length,
+      tone: 'border-indigo-600 bg-indigo-50 text-indigo-700',
+    },
+    ...(failed > 0
+      ? [
+          {
+            id: 'incorrect' as const,
+            label: isBasque ? 'Hutsak' : 'Fallos',
+            count: failed,
+            tone: 'border-rose-600 bg-rose-50 text-rose-700',
+          },
+        ]
+      : []),
+    ...(unansweredCount > 0
+      ? [
+          {
+            id: 'unanswered' as const,
+            label: isBasque ? 'Zuri' : 'En blanco',
+            count: unansweredCount,
+            tone: 'border-slate-600 bg-slate-100 text-slate-800',
+          },
+        ]
+      : []),
+    ...(flaggedCount > 0
+      ? [
+          {
+            id: 'flagged' as const,
+            label: isBasque ? 'Zalantzak' : 'Con duda',
+            count: flaggedCount,
+            tone: 'border-amber-600 bg-amber-50 text-amber-800',
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 animate-in fade-in duration-150 pb-20 sm:space-y-6 sm:pb-24 pt-4 sm:pt-8">
       <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-        
-        {/* TOP ROW: Continuity & Metrics Compact */}
+        {/* TOP ROW: Score Badge + Continuity */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-             <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 border border-slate-100 min-w-[3rem]">
-                <span className={`text-[17px] leading-none font-black ${percentage >= 70 ? 'text-emerald-500' : percentage >= 50 ? 'text-amber-500' : 'text-rose-500'}`}>
-                  {percentage}%
-                </span>
-             </div>
-             <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">{isBasque ? 'Emaitza' : 'Resultado'}</div>
-                <div className="text-[13px] font-bold text-slate-600 leading-none">
-                  {score} {isBasque ? 'zuzen' : 'bien'} · {failed} {isBasque ? 'huts' : 'mal'}
-                  {unansweredCount > 0 ? ` · ${unansweredCount} ${isBasque ? 'zuri' : 'en blanco'}` : ''}
-                </div>
-             </div>
+            <div className="flex flex-col items-center justify-center px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 min-w-[3.5rem]">
+              <span
+                className={`text-[18px] leading-none font-black tabular-nums ${
+                  percentage >= 70 ? 'text-emerald-600' : percentage >= 50 ? 'text-amber-600' : 'text-rose-600'
+                }`}
+              >
+                {percentage}%
+              </span>
+            </div>
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">
+                {isBasque ? 'Emaitza' : 'Resultado'}
+              </div>
+              <div className="text-[13px] font-bold text-slate-600 leading-none tabular-nums">
+                {score}/{total} {isBasque ? 'zuzen' : 'aciertos'}
+              </div>
+            </div>
           </div>
           {sessionEnd.continuityLine ? (
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-1.5 text-[11px] font-bold text-indigo-700">
@@ -296,12 +400,12 @@ export default function PostTestStats({
 
         <div className="mb-4 space-y-2">
           <h2 className="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
-            {sessionEnd.headline}
+            {displayHeadline}
           </h2>
           <p className="text-sm font-medium leading-relaxed text-slate-600">
-            {sessionEnd.summary}
+            {displaySummary}
           </p>
-          {sessionEnd.microReward ? (
+          {!mostlyBlank && sessionEnd.microReward ? (
             <div className="mt-2 flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3.5 py-2.5">
               <Zap size={16} className="mt-0.5 shrink-0 text-emerald-600" />
               <div className="text-xs leading-snug">
@@ -312,35 +416,91 @@ export default function PostTestStats({
           ) : null}
         </div>
 
-        {topicReview}
-        <div className="mt-4">
+        {/* SINGLE METRICS STRIP (clickable shortcuts into review tabs) */}
+        <div className="grid grid-cols-2 sm:flex sm:divide-x divide-slate-100 rounded-2xl border border-slate-100 bg-slate-50/70 py-3 px-2 gap-y-2 mb-5">
+          <div className="flex-1 flex flex-col items-center px-1">
+            <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-0.5">
+              <CheckCircle2 size={12} /> {isBasque ? 'Zuzenak' : 'Aciertos'}
+            </span>
+            <span className="text-[14px] font-black text-emerald-600 tabular-nums">{score}</span>
+          </div>
           <button
-            onClick={() => {
-              trackEffect({
-                surface: 'session_end',
-                curriculum,
-                action: 'cta_clicked',
-                context: { cta: sessionEnd.primaryCta, mode, nextMoveKind: sessionEnd.nextMove.kind },
-              });
-              if (sessionEnd.nextMove.kind === 'review_on_page') {
-                openMistakeReview();
-                return;
-              }
-              if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
-                onStartNextSession({
-                  mode: sessionEnd.nextMove.mode,
-                  questionCount: sessionEnd.nextMove.questionCount,
-                  syllabus: sessionEnd.nextMove.syllabus,
-                });
-                return;
-              }
-              onRestart();
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-[15px] font-black text-white shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] transition-all active:scale-[0.98] hover:bg-indigo-700"
+            type="button"
+            disabled={failed === 0}
+            onClick={() => openMistakeReview('incorrect')}
+            className="flex-1 flex flex-col items-center px-1 rounded-lg transition hover:bg-white disabled:hover:bg-transparent"
           >
-            {sessionEnd.nextMove.kind === 'review_on_page' ? <RotateCcw size={18} /> : null}
-            {sessionEnd.primaryCta}
+            <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-0.5">
+              <XCircle size={12} /> {isBasque ? 'Hutsak' : 'Fallos'}
+            </span>
+            <span className="text-[14px] font-black text-rose-600 tabular-nums">{failed}</span>
           </button>
+          {unansweredCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => openMistakeReview('unanswered')}
+              className="flex-1 flex flex-col items-center px-1 rounded-lg transition hover:bg-white"
+            >
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-0.5">
+                {isBasque ? 'Zuri' : 'En blanco'}
+              </span>
+              <span className="text-[14px] font-black text-slate-700 tabular-nums">{unansweredCount}</span>
+            </button>
+          ) : null}
+          {flaggedCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => openMistakeReview('flagged')}
+              className="flex-1 flex flex-col items-center px-1 rounded-lg transition hover:bg-white"
+            >
+              <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-700 mb-0.5">
+                <Flag size={11} /> {isBasque ? 'Zalantzak' : 'Dudas'}
+              </span>
+              <span className="text-[14px] font-black text-amber-700 tabular-nums">{flaggedCount}</span>
+            </button>
+          ) : null}
+          <div className="flex-1 flex flex-col items-center px-1">
+            <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-0.5">
+              <Clock size={12} /> {isBasque ? 'Seg/gal' : 'Seg/preg'}
+            </span>
+            <span className="text-[14px] font-black text-slate-700 tabular-nums">
+              {answeredEntries.length > 0 ? `${avgTimeSec}s` : '—'}
+            </span>
+          </div>
+        </div>
+
+        {/* ACTIONS: At most 1 primary next-practice action + 1 secondary review-this-test action */}
+        <div className="space-y-3">
+          {topicReview}
+          {!shouldHideDuplicatePrimaryReviewCta ? (
+            <button
+              onClick={() => {
+                trackEffect({
+                  surface: 'session_end',
+                  curriculum,
+                  action: 'cta_clicked',
+                  context: { cta: sessionEnd.primaryCta, mode, nextMoveKind: sessionEnd.nextMove.kind },
+                });
+                if (sessionEnd.nextMove.kind === 'review_on_page') {
+                  openMistakeReview();
+                  return;
+                }
+                if (sessionEnd.nextMove.kind === 'start_session' && onStartNextSession) {
+                  onStartNextSession({
+                    mode: sessionEnd.nextMove.mode,
+                    questionCount: sessionEnd.nextMove.questionCount,
+                    syllabus: sessionEnd.nextMove.syllabus,
+                  });
+                  return;
+                }
+                onRestart();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3.5 text-[15px] font-black text-white shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] transition-all active:scale-[0.98] hover:bg-indigo-700"
+            >
+              {sessionEnd.nextMove.kind === 'review_on_page' ? <RotateCcw size={18} /> : null}
+              {sessionEnd.primaryCta}
+            </button>
+          ) : null}
           {reviewableCount > 0 ? (
             <button
               type="button"
@@ -353,147 +513,86 @@ export default function PostTestStats({
                 });
                 openMistakeReview();
               }}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-rose-100 bg-rose-50 py-3.5 text-[14px] font-black text-rose-700 transition-all hover:border-rose-200 hover:bg-rose-100"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white py-3.5 text-[14px] font-black text-slate-800 transition-all hover:border-indigo-200 hover:bg-indigo-50/50"
             >
-              <XCircle size={18} />
-              {failed > 0
-                ? isBasque
-                  ? `${failed} akatsak aztertu`
-                  : `Analizar ${failed} ${failed === 1 ? 'fallo' : 'fallos'}`
-                : isBasque
-                  ? `${unansweredCount} zuriak aztertu`
-                  : `Revisar ${unansweredCount} en blanco`}
+              <XCircle size={18} className="text-rose-600" />
+              {reviewButtonLabel}
             </button>
           ) : null}
         </div>
-
-
-        {/* SECONDARY MINIMAL METRICS */}
-        <div className="flex divide-x divide-slate-100 border-t border-slate-100 pt-4">
-           <div className="flex-1 flex flex-col items-center px-1">
-             <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
-               <Clock size={12} /> {isBasque ? 'Seg/gal' : 'Seg/preg'}
-             </span>
-             <span className="text-[13px] font-black text-slate-700">{avgTimeSec}s</span>
-           </div>
-           <div className="flex-1 flex flex-col items-center px-1">
-             <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
-               <CheckCircle2 size={12} /> {isBasque ? 'Zuzenak' : 'Aciertos'}
-             </span>
-             <span className="text-[13px] font-bold text-emerald-600">{score} </span>
-           </div>
-           <div className="flex-1 flex flex-col items-center px-1">
-             <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
-               <XCircle size={12} /> {isBasque ? 'Hutsak' : 'Fallos'}
-             </span>
-             <span className="text-[13px] font-bold text-rose-600">{failed}</span>
-           </div>
-           {unansweredCount > 0 ? (
-             <div className="flex-1 flex flex-col items-center px-1">
-               <span className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-0.5">
-                 {isBasque ? 'Zuri' : 'En blanco'}
-               </span>
-               <span className="text-[13px] font-bold text-slate-600">{unansweredCount}</span>
-             </div>
-           ) : null}
-        </div>
       </div>
 
-      {analysisHydrated ? (
-      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+      {/* Show breakdown only when the test actually covered >= 2 topics/laws */}
+      {analysisHydrated && lawData.length >= 2 ? (
         <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
               <BarChart3 size={20} />
             </div>
             <h3 className="text-lg font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Legez lege' : 'Por ley'}
+              {isBasque ? 'Gaika / Legez lege' : 'Por tema / ley'}
             </h3>
           </div>
-          {lawsSeen.length === 0 ? (
-            <div className="rounded-xl bg-slate-50 p-4 text-xs font-medium text-slate-500">
-              {isBasque ? 'Ez dago datu nahikorik.' : 'Sin datos por ley.'}
-            </div>
-          ) : (
-            <div className="rounded-xl bg-slate-50 overflow-hidden text-sm">
-              <div className="divide-y divide-slate-100">
-                {lawData.slice(0, 12).map((law) => (
-                  <div key={law.fullName} className="px-4 py-3 flex items-center justify-between gap-4 bg-white">
-                    <div className="truncate font-bold text-slate-700 text-xs sm:text-sm">{law.fullName}</div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="text-xs font-bold text-slate-400">
-                        {law.correct}/{law.total}
-                      </span>
-                      <span className={`font-black text-sm lg:text-base ${law.accuracy >= 80 ? 'text-emerald-600' : law.accuracy >= 60 ? 'text-amber-600' : 'text-rose-600'}`}>
-                        {law.accuracy}%
-                      </span>
-                    </div>
+          <div className="rounded-xl bg-slate-50 overflow-hidden text-sm">
+            <div className="divide-y divide-slate-100">
+              {lawData.slice(0, 12).map((law) => (
+                <div key={law.fullName} className="px-4 py-3 flex items-center justify-between gap-4 bg-white">
+                  <div className="truncate font-bold text-slate-700 text-xs sm:text-sm">{law.fullName}</div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500 tabular-nums">
+                      {law.correct}/{law.total}
+                    </span>
+                    <span
+                      className={`font-black text-sm lg:text-base tabular-nums ${
+                        law.accuracy >= 80
+                          ? 'text-emerald-600'
+                          : law.accuracy >= 60
+                            ? 'text-amber-600'
+                            : 'text-rose-600'
+                      }`}
+                    >
+                      {law.accuracy}%
+                    </span>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
-
-        <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-              <Zap size={20} />
-            </div>
-            <h3 className="text-lg font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Denbora' : 'Tiempo'}
-            </h3>
-          </div>
-          <div className="flex flex-col items-center justify-center p-6 rounded-2xl bg-slate-50 text-center mt-2 border border-slate-100/60">
-             <span className="text-4xl font-black text-slate-800 tracking-tight">{avgTimeSec}s</span>
-             <span className="text-[11px] font-extrabold text-slate-400 mt-1 uppercase tracking-widest">{isBasque ? 'Galderako' : 'Por pregunta'}</span>
-             <p className={`mt-5 text-[13px] font-bold leading-snug px-3 py-2 rounded-xl text-center shadow-sm w-full max-w-[240px] ${Number(avgTimeSec) < 30 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-               {speedMessage}
-             </p>
           </div>
         </div>
-      </div>
       ) : null}
 
       {showReview ? (
         <div id="session-end-review" className="space-y-6 rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2.5rem] sm:p-10">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
               <h3 className="text-2xl font-black text-slate-800 tracking-tight">
-                {isBasque ? 'Orain zer berrikusi komeni den' : 'Lo que conviene revisar ahora'}
+                {isBasque ? 'Orain zer berrikusi komeni den' : 'Revisión de preguntas'}
               </h3>
               <p className="text-slate-500 font-medium mt-1">
                 {reviewCopy.line2 ?? reviewCopy.line1}
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setShowOnlyIncorrect(false);
-                  setReviewIndex(0);
-                }}
-                className={`px-5 py-3 rounded-2xl border-2 font-black text-xs uppercase tracking-widest transition-all ${
-                  !showOnlyIncorrect
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                    : 'border-slate-100 bg-white text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                {isBasque ? 'Denak' : 'Ver todo'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowOnlyIncorrect(true);
-                  setReviewIndex(0);
-                }}
-                className={`px-5 py-3 rounded-2xl border-2 font-black text-xs uppercase tracking-widest transition-all ${
-                  showOnlyIncorrect
-                    ? 'border-rose-600 bg-rose-50 text-rose-700'
-                    : 'border-slate-100 bg-white text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                {isBasque ? 'Bakarrik hutsak' : 'Solo lo fallado'}
-              </button>
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label={isBasque ? 'Berrikuspen iragazkiak' : 'Filtros de revisión'}>
+              {reviewTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={reviewFilter === tab.id}
+                  onClick={() => {
+                    setReviewFilter(tab.id);
+                    setReviewIndex(0);
+                  }}
+                  className={`px-3.5 py-2.5 rounded-2xl border-2 font-black text-xs uppercase tracking-wider transition-all ${
+                    reviewFilter === tab.id
+                      ? tab.tone
+                      : 'border-slate-100 bg-white text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
             </div>
           </div>
 
@@ -502,7 +601,7 @@ export default function PostTestStats({
               <div key={item.id} className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
                 <div className="flex items-start justify-between gap-6">
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="px-3 py-1 rounded-lg bg-white border border-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                         #{item.index}
                       </span>
@@ -530,6 +629,12 @@ export default function PostTestStats({
                               ? 'HUTS'
                               : 'FALLO'}
                       </span>
+                      {item.isFlagged ? (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-black uppercase tracking-widest">
+                          <Flag size={11} />
+                          {isBasque ? 'ZALANTZA' : 'DUDA'}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="text-lg font-black text-slate-900 leading-snug">{item.text}</div>
                   </div>
@@ -538,7 +643,7 @@ export default function PostTestStats({
                     {item.isCorrect ? (
                       <CheckCircle2 size={28} className="text-emerald-600" />
                     ) : (
-                      <XCircle size={28} className="text-rose-600" />
+                      <XCircle size={28} className={item.isUnanswered ? 'text-slate-400' : 'text-rose-600'} />
                     )}
                   </div>
                 </div>
@@ -583,7 +688,7 @@ export default function PostTestStats({
                     );
                   })}
                   {!item.selected ? (
-                    <div className="text-xs font-bold text-slate-400">
+                    <div className="text-xs font-bold text-slate-500">
                       {isBasque ? 'Galdera erantzun gabe utzi zenuen.' : 'Dejaste esta pregunta sin responder.'}
                     </div>
                   ) : null}
@@ -624,7 +729,7 @@ export default function PostTestStats({
             ))}
             {!currentReviewItem ? (
               <div className="rounded-2xl bg-emerald-50 p-5 text-center text-sm font-bold text-emerald-700">
-                {isBasque ? 'Ez dago berrikusteko akatsik.' : 'No hay fallos que revisar.'}
+                {isBasque ? 'Ez dago berrikusteko galderarik iragazki honetan.' : 'No hay preguntas que revisar en este filtro.'}
               </div>
             ) : null}
           </div>
@@ -657,23 +762,25 @@ export default function PostTestStats({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 pt-2 pb-6 sm:grid-cols-2">
-        <button
-          onClick={() => {
-            trackEffect({ surface: 'session_end', curriculum, action: 'cta_clicked', context: { mode, cta: 'go_back' } });
-            onGoBack();
-          }}
-          className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[13px] font-black text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
-        >
-          <ArrowLeft size={16} />
-          {isBasque ? 'Itzuli' : 'Volver'}
-        </button>
+      <div className={`grid grid-cols-1 gap-3 pt-2 pb-6 ${homeVariant === 'dashboard' ? 'sm:grid-cols-2' : ''}`}>
+        {homeVariant === 'dashboard' ? (
+          <button
+            onClick={() => {
+              trackEffect({ surface: 'session_end', curriculum, action: 'cta_clicked', context: { mode, cta: 'go_back' } });
+              onGoBack();
+            }}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[13px] font-black text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+          >
+            <ArrowLeft size={16} />
+            {isBasque ? 'Itzuli' : 'Volver'}
+          </button>
+        ) : null}
         <button
           onClick={() => {
             trackEffect({ surface: 'session_end', curriculum, action: 'go_home', context: { mode } });
             onGoHome();
           }}
-          className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-[13px] font-black text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-100"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[13px] font-black text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
         >
           <LayoutDashboard size={16} />
           {homeVariant === 'test-selection'
