@@ -15,6 +15,8 @@ export type DashboardBundle = {
   weakCategories: PracticeCategoryRiskSummary[];
   questionBlocks: QuestionBlockPerformance[];
   statsTelemetry?: StatsAttemptTelemetry | null;
+  hydrationStatus?: 'primary' | 'hydrating' | 'ready' | 'error';
+  telemetryError?: string | null;
 };
 
 export type CurriculumOption = {

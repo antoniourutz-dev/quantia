@@ -57,6 +57,7 @@ export type BehaviorTelemetrySummary = {
   longSessionFirstHalfAcc: number | null;
   longSessionSecondHalfAcc: number | null;
   longSessionDropPp: number | null;
+  fatigueEnoughData?: boolean;
   timedSampleCount: number;
   avoidableErrorRate: number | null;
   fastErrorRate: number | null;
@@ -100,6 +101,7 @@ export type TelemetryAttemptItem = {
   isCorrect: boolean | null;
   responseTimeMs?: number | null;
   changedAnswer?: boolean | null;
+  changedFromCorrect?: boolean | null;
   mode?: string | null;
 };
 
@@ -338,11 +340,81 @@ export const buildFocusVsMixedSummary = (
   };
 };
 
+const MIN_REAL_EPOCH_MS = 946_684_800_000; // 2000-01-01T00:00:00Z
+const DAY_MS = 86_400_000;
+const FATIGUE_PAUSE_BREAK_MS = 20 * 60 * 1000; // 20 minutes
+
+export const classifyQuestionMemory = (
+  events: Array<{ ts: number; isCorrect: boolean }>,
+  referenceMs = Date.now(),
+): keyof MemoryCounts => {
+  const sorted = [...events].sort((a, b) => a.ts - b.ts);
+  const total = sorted.length;
+  if (total === 0) return 'fragile';
+
+  const correctCount = sorted.filter((item) => item.isCorrect).length;
+  const accuracy = correctCount / total;
+  const lastEvent = sorted[total - 1];
+  const lastResult = lastEvent?.isCorrect ?? false;
+
+  if (!lastResult) return 'fragile';
+  if (total >= 3 && accuracy < 0.5) return 'fragile';
+
+  let consecutiveCorrect = 0;
+  let streakStartTs = lastEvent.ts;
+  for (let index = total - 1; index >= 0; index -= 1) {
+    if (sorted[index].isCorrect) {
+      consecutiveCorrect += 1;
+      streakStartTs = sorted[index].ts;
+    } else {
+      break;
+    }
+  }
+
+  const hasRealTimestamps = lastEvent.ts >= MIN_REAL_EPOCH_MS && referenceMs >= MIN_REAL_EPOCH_MS;
+  const daysSinceLast = hasRealTimestamps ? Math.max(0, (referenceMs - lastEvent.ts) / DAY_MS) : 0;
+  const streakSpanDays =
+    hasRealTimestamps && consecutiveCorrect >= 2
+      ? Math.max(0, (lastEvent.ts - streakStartTs) / DAY_MS)
+      : 0;
+
+  // Base state before time-decay: mastered requires spacing (>=1d) or intensive streak (>=5)
+  let state: keyof MemoryCounts;
+  if (
+    consecutiveCorrect >= 3 &&
+    accuracy >= 0.8 &&
+    (!hasRealTimestamps || streakSpanDays >= 1 || consecutiveCorrect >= 5)
+  ) {
+    state = 'mastered';
+  } else if (consecutiveCorrect >= 2 || (total >= 2 && accuracy >= 0.75)) {
+    state = 'solid';
+  } else {
+    state = 'consolidating';
+  }
+
+  // Time-decay when real timestamps are available
+  if (hasRealTimestamps) {
+    if (state === 'mastered') {
+      if (daysSinceLast > 60) state = 'consolidating';
+      else if (daysSinceLast > 30) state = 'solid';
+    } else if (state === 'solid') {
+      if (daysSinceLast > 45) state = 'fragile';
+      else if (daysSinceLast > 21) state = 'consolidating';
+    } else if (state === 'consolidating' && daysSinceLast > 14) {
+      state = 'fragile';
+    }
+  }
+
+  return state;
+};
+
 export const buildStatsAttemptTelemetry = (
   bank: TelemetryBankItem[],
   attempts: TelemetryAttemptItem[],
   resolveCategoryLabel?: (category: string | null | undefined) => string | null,
+  options?: { referenceDate?: Date },
 ): StatsAttemptTelemetry => {
+  const referenceMs = options?.referenceDate ? options.referenceDate.getTime() : Date.now();
   const bankById = new Map<string, TelemetryBankItem>();
   const bankByDedupeKey = new Map<string, TelemetryBankItem>();
   const bankByScopeNumber = new Map<string, TelemetryBankItem>();
@@ -370,6 +442,7 @@ export const buildStatsAttemptTelemetry = (
   const cleanAttempts = [...dedupedByEvent.values(), ...withoutEventId];
 
   const byQuestion = new Map<string, Array<{ ts: number; isCorrect: boolean }>>();
+  const byBankQuestion = new Map<string, Array<{ ts: number; isCorrect: boolean }>>();
   const byTopic = new Map<
     string,
     { scope: SyllabusType | 'unknown'; topicKey: string; events: Array<{ ts: number; isCorrect: boolean }> }
@@ -403,6 +476,14 @@ export const buildStatsAttemptTelemetry = (
       const qList = byQuestion.get(questionKey) ?? [];
       qList.push({ ts, isCorrect: attempt.isCorrect });
       byQuestion.set(questionKey, qList);
+
+      // Bound memory breakdown to active bank questions when a bank is provided
+      if (bank.length === 0 || matched) {
+        const bKey = matched?.id ?? questionKey;
+        const bList = byBankQuestion.get(bKey) ?? [];
+        bList.push({ ts, isCorrect: attempt.isCorrect });
+        byBankQuestion.set(bKey, bList);
+      }
     }
 
     const rawCategory = matched?.category ?? matched?.topic ?? null;
@@ -434,13 +515,16 @@ export const buildStatsAttemptTelemetry = (
     }
 
     const hasResponseTime = attempt.responseTimeMs != null && attempt.responseTimeMs > 0;
-    const hasChangedFlag = attempt.changedAnswer != null;
+    const hasChangedFlag = attempt.changedFromCorrect != null || attempt.changedAnswer != null;
     if (hasResponseTime || hasChangedFlag) {
       timedSampleCount += 1;
       if (!attempt.isCorrect) {
         incorrectCount += 1;
         const isFast = hasResponseTime && (attempt.responseTimeMs ?? 0) <= 2500;
-        const isChanged = Boolean(attempt.changedAnswer);
+        const isChanged =
+          attempt.changedFromCorrect != null
+            ? Boolean(attempt.changedFromCorrect)
+            : Boolean(attempt.changedAnswer);
         if (hasResponseTime) timedIncorrectCount += 1;
         if (hasChangedFlag) changedTrackedIncorrectCount += 1;
         if (isFast) fastIncorrectCount += 1;
@@ -456,28 +540,6 @@ export const buildStatsAttemptTelemetry = (
     consolidating: 0,
     fragile: 0,
   });
-
-  const classifyQuestionMemory = (
-    events: Array<{ ts: number; isCorrect: boolean }>,
-  ): keyof MemoryCounts => {
-    const sorted = [...events].sort((a, b) => a.ts - b.ts);
-    const total = sorted.length;
-    const correctCount = sorted.filter((item) => item.isCorrect).length;
-    const accuracy = total > 0 ? correctCount / total : 0;
-    const lastResult = sorted[total - 1]?.isCorrect ?? false;
-
-    let consecutiveCorrect = 0;
-    for (let index = total - 1; index >= 0; index -= 1) {
-      if (sorted[index].isCorrect) consecutiveCorrect += 1;
-      else break;
-    }
-
-    if (!lastResult) return 'fragile';
-    if (consecutiveCorrect >= 3 && accuracy >= 0.8) return 'mastered';
-    if (consecutiveCorrect >= 2 || (total >= 2 && accuracy >= 0.75)) return 'solid';
-    if (total >= 3 && accuracy < 0.5) return 'fragile';
-    return 'consolidating';
-  };
 
   const memorySummary: MemoryBreakdownSummary = {
     mastered: 0,
@@ -505,8 +567,8 @@ export const buildStatsAttemptTelemetry = (
     }
   }
 
-  for (const [questionKey, events] of byQuestion.entries()) {
-    const state = classifyQuestionMemory(events);
+  for (const [questionKey, events] of byBankQuestion.entries()) {
+    const state = classifyQuestionMemory(events, referenceMs);
     memorySummary[state] += 1;
     const bankItem = bankById.get(questionKey) ?? bankByDedupeKey.get(questionKey);
     const meta = bankItem ? questionMetaById.get(bankItem.id) : undefined;
@@ -615,7 +677,7 @@ export const buildStatsAttemptTelemetry = (
     }
   }
 
-  // Long session fatigue (>= 25 questions)
+  // Long session fatigue (>= 25 continuous questions without >20m pauses)
   let longSessionCount = 0;
   let firstHalfSum = 0;
   let firstHalfTotal = 0;
@@ -624,15 +686,34 @@ export const buildStatsAttemptTelemetry = (
 
   for (const events of bySession.values()) {
     if (events.length < 25) continue;
-    longSessionCount += 1;
     const sorted = [...events].sort((a, b) => a.ts - b.ts);
-    const half = Math.ceil(sorted.length / 2);
-    const first = sorted.slice(0, half);
-    const second = sorted.slice(half);
-    firstHalfTotal += first.length;
-    firstHalfSum += first.filter((item) => item.isCorrect).length;
-    secondHalfTotal += second.length;
-    secondHalfSum += second.filter((item) => item.isCorrect).length;
+    const runs: Array<Array<{ ts: number; isCorrect: boolean }>> = [];
+    let currentRun: Array<{ ts: number; isCorrect: boolean }> = [sorted[0]];
+
+    for (let i = 1; i < sorted.length; i += 1) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      const hasRealTs = prev.ts >= MIN_REAL_EPOCH_MS && curr.ts >= MIN_REAL_EPOCH_MS;
+      if (hasRealTs && curr.ts - prev.ts > FATIGUE_PAUSE_BREAK_MS) {
+        runs.push(currentRun);
+        currentRun = [curr];
+      } else {
+        currentRun.push(curr);
+      }
+    }
+    runs.push(currentRun);
+
+    for (const run of runs) {
+      if (run.length < 25) continue;
+      longSessionCount += 1;
+      const half = Math.ceil(run.length / 2);
+      const first = run.slice(0, half);
+      const second = run.slice(half);
+      firstHalfTotal += first.length;
+      firstHalfSum += first.filter((item) => item.isCorrect).length;
+      secondHalfTotal += second.length;
+      secondHalfSum += second.filter((item) => item.isCorrect).length;
+    }
   }
 
   const longSessionFirstHalfAcc =
@@ -662,6 +743,7 @@ export const buildStatsAttemptTelemetry = (
       longSessionFirstHalfAcc,
       longSessionSecondHalfAcc,
       longSessionDropPp,
+      fatigueEnoughData: longSessionCount >= 3,
       timedSampleCount,
       avoidableErrorRate,
       fastErrorRate,

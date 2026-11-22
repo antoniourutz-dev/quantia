@@ -203,6 +203,7 @@ export interface TestAnswer {
   responseTimeMs: number | null;
   timeToFirstSelectionMs: number | null;
   changedAnswer: boolean;
+  changedFromCorrect?: boolean;
 }
 
 export interface FinishedTestPayload {

@@ -88,11 +88,23 @@ export type QuestionRankingSort =
   | 'most_correct'
   | 'most_incorrect';
 
+export const wilsonLowerBound = (successes: number, total: number, z = 1.96): number => {
+  if (total <= 0) return 0;
+  const p = Math.max(0, Math.min(1, successes / total));
+  const z2 = z * z;
+  const denominator = 1 + z2 / total;
+  const center = p + z2 / (2 * total);
+  const margin = z * Math.sqrt((p * (1 - p) + z2 / (4 * total)) / total);
+  return Math.max(0, (center - margin) / denominator);
+};
+
 export const rankQuestionPerformance = (
   blocks: QuestionBlockPerformance[],
   scope: SyllabusType,
   sort: QuestionRankingSort,
+  options?: { strategy?: 'raw' | 'wilson' },
 ): QuestionPerformance[] => {
+  const strategy = options?.strategy ?? 'raw';
   const questions = blocks
     .filter((block) => block.scope === scope)
     .flatMap((block) => block.questions);
@@ -105,14 +117,28 @@ export const rankQuestionPerformance = (
 
   if (sort === 'most_correct' || sort === 'most_incorrect') {
     return [...questions].sort((left, right) => {
-      const leftHasAttempts = left.accuracyRate != null;
-      const rightHasAttempts = right.accuracyRate != null;
+      const leftHasAttempts = left.accuracyRate != null && left.attempts > 0;
+      const rightHasAttempts = right.accuracyRate != null && right.attempts > 0;
       if (leftHasAttempts !== rightHasAttempts) return leftHasAttempts ? -1 : 1;
 
       if (leftHasAttempts && rightHasAttempts) {
-        const accuracyDifference = (left.accuracyRate ?? 0) - (right.accuracyRate ?? 0);
-        if (accuracyDifference !== 0) {
-          return sort === 'most_correct' ? -accuracyDifference : accuracyDifference;
+        if (strategy === 'wilson') {
+          const leftScore =
+            sort === 'most_correct'
+              ? wilsonLowerBound(left.correct, left.attempts)
+              : wilsonLowerBound(left.incorrect, left.attempts);
+          const rightScore =
+            sort === 'most_correct'
+              ? wilsonLowerBound(right.correct, right.attempts)
+              : wilsonLowerBound(right.incorrect, right.attempts);
+          if (Math.abs(rightScore - leftScore) > 1e-9) {
+            return rightScore - leftScore;
+          }
+        } else {
+          const accuracyDifference = (left.accuracyRate ?? 0) - (right.accuracyRate ?? 0);
+          if (accuracyDifference !== 0) {
+            return sort === 'most_correct' ? -accuracyDifference : accuracyDifference;
+          }
         }
         if (left.attempts !== right.attempts) return right.attempts - left.attempts;
         const countDifference = sort === 'most_correct'

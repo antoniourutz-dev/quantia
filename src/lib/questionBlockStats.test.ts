@@ -184,4 +184,46 @@ describe('buildQuestionBlockPerformance', () => {
       'many-errors-low-rate',
     ]);
   });
+
+  it('usa limite inferior de Wilson (95%) cuando strategy es wilson para evitar sesgo de muestras pequenas', () => {
+    const blocks = buildQuestionBlockPerformance(
+      [
+        { id: 'many-correct', number: 1, scope: 'common', text: 'Ocho de diez' },
+        { id: 'perfect-small', number: 2, scope: 'common', text: 'Dos de dos' },
+        { id: 'many-errors', number: 3, scope: 'common', text: 'Seis fallos de diez' },
+        { id: 'single-error', number: 4, scope: 'common', text: 'Un fallo de uno' },
+      ],
+      [
+        ...Array.from({ length: 10 }, (_, index) => ({
+          eventId: `mc-${index}`,
+          questionId: 'many-correct',
+          questionNumber: null,
+          scope: null,
+          isCorrect: index < 8,
+        })),
+        ...Array.from({ length: 2 }, (_, index) => ({
+          eventId: `ps-${index}`,
+          questionId: 'perfect-small',
+          questionNumber: null,
+          scope: null,
+          isCorrect: true,
+        })),
+        ...Array.from({ length: 10 }, (_, index) => ({
+          eventId: `me-${index}`,
+          questionId: 'many-errors',
+          questionNumber: null,
+          scope: null,
+          isCorrect: index < 4,
+        })),
+        { eventId: 'se-0', questionId: 'single-error', questionNumber: null, scope: null, isCorrect: false },
+      ],
+    );
+
+    expect(
+      rankQuestionPerformance(blocks, 'common', 'most_correct', { strategy: 'wilson' }).map((q) => q.id),
+    ).toEqual(['many-correct', 'perfect-small', 'many-errors', 'single-error']);
+    expect(
+      rankQuestionPerformance(blocks, 'common', 'most_incorrect', { strategy: 'wilson' }).map((q) => q.id),
+    ).toEqual(['many-errors', 'single-error', 'many-correct', 'perfect-small']);
+  });
 });

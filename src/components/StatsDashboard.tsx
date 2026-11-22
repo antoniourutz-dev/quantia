@@ -66,6 +66,8 @@ import {
   buildFocusVsMixedSummary,
   buildModeDistribution,
   buildSyllabusSummaries,
+  classifyPracticeSessionKind,
+  formatModalityKindLabel,
   mergeTopicInsights,
   type EvolutionLens,
   type EvolutionWindowDays,
@@ -78,6 +80,9 @@ interface StatsDashboardProps {
   curriculum: string;
   coachPlan?: CoachPlanV2 | null;
   executablePlan?: ExecutableSessionPlan | null;
+  hydrating?: boolean;
+  telemetryError?: string | null;
+  onRetryTelemetry?: () => void;
   onStartRecommended?: () => void;
   onPracticeTopic?: (topicLabel: string, scope: SyllabusType) => void;
   onPracticeBlock?: (start: number, end: number, scope: SyllabusType) => void;
@@ -137,6 +142,9 @@ export default function StatsDashboard({
   curriculum,
   coachPlan = null,
   executablePlan = null,
+  hydrating = false,
+  telemetryError = null,
+  onRetryTelemetry,
   onStartRecommended,
   onPracticeTopic,
   onPracticeBlock,
@@ -527,16 +535,28 @@ export default function StatsDashboard({
   };
   const behavior = statsTelemetry?.behavior ?? null;
 
-  // Calendar Data
+  // Calendar Data (unified with `sessions` and `classifyPracticeSessionKind`)
   const groupedSessions = useMemo(() => {
     const dayGroups = new Map<string, Map<string, { score: number; total: number; count: number }>>();
-    for (const result of results) {
-      if (!dayGroups.has(result.date)) dayGroups.set(result.date, new Map());
-      const typeMap = dayGroups.get(result.date)!;
-      const current = typeMap.get(result.label) ?? { score: 0, total: 0, count: 0 };
-      typeMap.set(result.label, {
-        score: current.score + result.score,
-        total: current.total + result.total,
+    for (const session of sessions) {
+      const total = Math.max(0, Number(session.total) || 0);
+      if (total <= 0) continue;
+      const rawDate = session.finishedAt ?? session.startedAt;
+      if (!rawDate) continue;
+      const parsed = new Date(rawDate);
+      const isoDate = Number.isNaN(parsed.getTime())
+        ? String(rawDate).slice(0, 10)
+        : toIsoDate(parsed);
+      if (!isoDate) continue;
+      const kind = classifyPracticeSessionKind(session);
+      const label = formatModalityKindLabel(kind, locale);
+      if (!dayGroups.has(isoDate)) dayGroups.set(isoDate, new Map());
+      const typeMap = dayGroups.get(isoDate)!;
+      const current = typeMap.get(label) ?? { score: 0, total: 0, count: 0 };
+      const score = Math.max(0, Math.min(total, Number(session.score) || 0));
+      typeMap.set(label, {
+        score: current.score + score,
+        total: current.total + total,
         count: current.count + 1,
       });
     }
@@ -552,7 +572,7 @@ export default function StatsDashboard({
           percentage: stats.total > 0 ? (stats.score / stats.total) * 100 : 0,
         })),
       }));
-  }, [results]);
+  }, [locale, sessions]);
 
   const daySummaryMap = useMemo(() => {
     const map = new Map<
@@ -641,7 +661,9 @@ export default function StatsDashboard({
   const rankedQuestions = useMemo(
     () =>
       blocksExpanded && questionStatsView === 'ranking'
-        ? rankQuestionPerformance(questionBlocks, effectiveBlockScope, questionRankingSort)
+        ? rankQuestionPerformance(questionBlocks, effectiveBlockScope, questionRankingSort, {
+            strategy: 'wilson',
+          })
         : [],
     [blocksExpanded, effectiveBlockScope, questionBlocks, questionRankingSort, questionStatsView],
   );
@@ -742,6 +764,51 @@ export default function StatsDashboard({
 
   return (
     <div className="space-y-5 pb-12 sm:space-y-6 lg:pb-20 animate-in fade-in slide-in-from-bottom-6 duration-500">
+      {hydrating && !statsTelemetry ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-xs font-bold text-indigo-800"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 animate-pulse" aria-hidden="true" />
+            <span>
+              {t(
+                'Actualizando memoria del banco, evolución por temas y comportamiento...',
+                'Bankuaren memoria, gaikako bilakaera eta portaera eguneratzen...',
+              )}
+            </span>
+          </div>
+          <div className="hidden sm:flex items-center gap-1.5" aria-hidden="true">
+            <span className="h-2 w-12 rounded-full bg-indigo-200/80 animate-pulse" />
+            <span className="h-2 w-8 rounded-full bg-indigo-200/60 animate-pulse" />
+          </div>
+        </div>
+      ) : null}
+
+      {telemetryError ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900"
+        >
+          <span>
+            {t(
+              'No se pudo cargar toda la telemetría detallada. Mostrando datos disponibles.',
+              'Ezin izan da telemetria zehatz guztia kargatu. Eskuragarri dauden datuak erakusten.',
+            )}
+          </span>
+          {onRetryTelemetry ? (
+            <button
+              type="button"
+              onClick={onRetryTelemetry}
+              className="rounded-xl bg-amber-700 px-3 py-1.5 text-xs font-black text-white transition hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1"
+            >
+              {t('Reintentar', 'Berriro saiatu')}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* BLOQUE 1: PULSO DEL OPOSITOR */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         <div className="xl:col-span-7 relative overflow-hidden rounded-[2.25rem] border border-white/10 bg-[#0a0a1a] p-6 text-white sm:p-7 flex flex-col justify-between gap-6">
@@ -1783,13 +1850,21 @@ export default function StatsDashboard({
               {behavior?.longSessionFirstHalfAcc != null && behavior.longSessionSecondHalfAcc != null ? (
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">{t('1ª mitad', '1. erdia')}</span>
+                    <span className="text-slate-600">{t('1ª mitad', '1. erdia')}</span>
                     <strong className="text-slate-900">{behavior.longSessionFirstHalfAcc}%</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">{t('Tramo final', 'Azken zatia')}</span>
+                    <span className="text-slate-600">{t('Tramo final', 'Azken zatia')}</span>
                     <strong className="text-slate-900">{behavior.longSessionSecondHalfAcc}%</strong>
                   </div>
+                  {behavior.fatigueEnoughData === false ? (
+                    <p className="pt-1 text-[11px] font-semibold text-slate-600">
+                      {t(
+                        `Orientativo (${behavior.longSessionCount}/3 sesiones continuas).`,
+                        `Orientagarria (${behavior.longSessionCount}/3 saio jarraitu).`,
+                      )}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <p className="text-xs font-medium text-slate-500">

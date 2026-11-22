@@ -7,6 +7,7 @@ import {
   buildStatsAttemptTelemetry,
   buildSyllabusSummaries,
   classifyPracticeSessionKind,
+  classifyQuestionMemory,
   mergeTopicInsights,
 } from './statsInsights';
 
@@ -320,5 +321,114 @@ describe('buildEvolutionChartData & mergeTopicInsights', () => {
     );
 
     expect(summaries[0].deltaPp).toBe(40);
+  });
+
+  it('applies spacing and time-decay in classifyQuestionMemory', () => {
+    const refMs = Date.parse('2026-11-22T12:00:00.000Z');
+    // 3 correct in same 10-minute cramming session -> capped at solid (not mastered)
+    expect(
+      classifyQuestionMemory(
+        [
+          { ts: Date.parse('2026-11-22T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-11-22T10:05:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-11-22T10:10:00.000Z'), isCorrect: true },
+        ],
+        refMs,
+      ),
+    ).toBe('solid');
+
+    // 3 correct spaced across days and recent -> mastered
+    expect(
+      classifyQuestionMemory(
+        [
+          { ts: Date.parse('2026-11-10T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-11-15T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-11-20T10:00:00.000Z'), isCorrect: true },
+        ],
+        refMs,
+      ),
+    ).toBe('mastered');
+
+    // Mastered question untouched for 40 days -> decays to solid
+    expect(
+      classifyQuestionMemory(
+        [
+          { ts: Date.parse('2026-10-01T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-10-05T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-10-12T10:00:00.000Z'), isCorrect: true },
+        ],
+        refMs,
+      ),
+    ).toBe('solid');
+
+    // Mastered question untouched for 70 days -> decays to consolidating
+    expect(
+      classifyQuestionMemory(
+        [
+          { ts: Date.parse('2026-09-01T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-09-05T10:00:00.000Z'), isCorrect: true },
+          { ts: Date.parse('2026-09-12T10:00:00.000Z'), isCorrect: true },
+        ],
+        refMs,
+      ),
+    ).toBe('consolidating');
+
+    // Consolidating question untouched for 20 days -> decays to fragile
+    expect(
+      classifyQuestionMemory(
+        [{ ts: Date.parse('2026-11-01T10:00:00.000Z'), isCorrect: true }],
+        refMs,
+      ),
+    ).toBe('fragile');
+  });
+
+  it('bounds memorySummary to active bank, splits fatigue runs on >20m pauses, and prefers changedFromCorrect', () => {
+    const bank = [
+      { id: 'q1', number: 1, scope: 'common' as const, category: 'Tema 1' },
+      { id: 'q2', number: 2, scope: 'common' as const, category: 'Tema 1' },
+    ];
+    const attempts = [
+      // Orphaned question not in bank should not reduce unseen count
+      {
+        eventId: 'orphan-1',
+        sessionId: 's-orphan',
+        questionId: 'retired-q999',
+        questionNumber: 999,
+        scope: 'common' as const,
+        answeredAt: '2026-11-20T10:00:00.000Z',
+        isCorrect: true,
+      },
+      // 30-question session with a 45-minute break in the middle (15 + 15) -> NOT a continuous >=25q run
+      ...Array.from({ length: 15 }, (_, idx) => ({
+        eventId: `p1-${idx}`,
+        sessionId: 'paused-session',
+        questionId: 'q1',
+        questionNumber: 1,
+        scope: 'common' as const,
+        answeredAt: `2026-11-20T10:${String(idx).padStart(2, '0')}:00.000Z`,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 15 }, (_, idx) => ({
+        eventId: `p2-${idx}`,
+        sessionId: 'paused-session',
+        questionId: 'q1',
+        questionNumber: 1,
+        scope: 'common' as const,
+        answeredAt: `2026-11-20T11:${String(idx).padStart(2, '0')}:00.000Z`,
+        isCorrect: false,
+        changedAnswer: true,
+        changedFromCorrect: idx < 3, // Only 3 of 15 were Correct -> Wrong (20%)
+      })),
+    ];
+
+    const telemetry = buildStatsAttemptTelemetry(bank, attempts, undefined, {
+      referenceDate: new Date('2026-11-22T12:00:00.000Z'),
+    });
+
+    expect(telemetry.memorySummary?.totalQuestions).toBe(2);
+    expect(telemetry.memorySummary?.unseen).toBe(1); // q2 is unseen despite orphan-1
+    expect(telemetry.behavior.longSessionCount).toBe(0);
+    expect(telemetry.behavior.fatigueEnoughData).toBe(false);
+    expect(telemetry.behavior.changedToWrongRate).toBe(20);
   });
 });

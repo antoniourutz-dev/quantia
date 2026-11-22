@@ -58,7 +58,9 @@ import type {
   OptionKey,
   PracticeExamTarget,
   PracticeFilters,
+  PracticeLearningDashboardV2,
   PracticeQuestionScopeFilter,
+  PracticeSessionSummary,
   AdminQuestionDetail,
   AdminQuestionListItem,
   AdminUserDetail,
@@ -2075,7 +2077,38 @@ export const getAvailableCurriculums = async (preferredCurriculum?: string) => {
   );
 };
 
-const getPracticeSessions = async (curriculum: string) => {
+const STATS_CLOUD_CACHE_TTL_MS = 20_000;
+const cloudActivityRowsInFlight = new Map<string, Promise<Array<Record<string, unknown>>>>();
+const cloudActivityRowsCache = new Map<
+  string,
+  { expiresAt: number; data: Array<Record<string, unknown>> }
+>();
+const practiceSessionsInFlight = new Map<string, Promise<PracticeSessionSummary[]>>();
+const practiceSessionsCache = new Map<
+  string,
+  { expiresAt: number; data: PracticeSessionSummary[] }
+>();
+
+export const invalidateCloudStatsCaches = (curriculum?: string) => {
+  if (!curriculum) {
+    cloudActivityRowsInFlight.clear();
+    cloudActivityRowsCache.clear();
+    practiceSessionsInFlight.clear();
+    practiceSessionsCache.clear();
+    return;
+  }
+  const normalized = String(curriculum).trim().toLowerCase();
+  for (const key of cloudActivityRowsCache.keys()) {
+    if (key.endsWith(`:${normalized}`)) cloudActivityRowsCache.delete(key);
+  }
+  for (const key of cloudActivityRowsInFlight.keys()) {
+    if (key.endsWith(`:${normalized}`)) cloudActivityRowsInFlight.delete(key);
+  }
+  practiceSessionsCache.delete(normalized);
+  practiceSessionsInFlight.delete(normalized);
+};
+
+const fetchPracticeSessionsUncached = async (curriculum: string): Promise<PracticeSessionSummary[]> => {
   let lastError: Error | null = null;
   const curriculumCandidates = await resolveCurriculumCandidates(curriculum).catch(() =>
     buildCurriculumCandidates(curriculum),
@@ -2119,6 +2152,31 @@ const getPracticeSessions = async (curriculum: string) => {
 
   if (lastError) throw lastError;
   return [];
+};
+
+const getPracticeSessions = async (curriculum: string): Promise<PracticeSessionSummary[]> => {
+  const cacheKey = String(curriculum ?? '').trim().toLowerCase() || DEFAULT_CURRICULUM;
+  const cached = practiceSessionsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+  const inFlight = practiceSessionsInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const task = fetchPracticeSessionsUncached(curriculum)
+    .then((data) => {
+      practiceSessionsCache.set(cacheKey, {
+        expiresAt: Date.now() + STATS_CLOUD_CACHE_TTL_MS,
+        data,
+      });
+      return data;
+    })
+    .finally(() => {
+      practiceSessionsInFlight.delete(cacheKey);
+    });
+
+  practiceSessionsInFlight.set(cacheKey, task);
+  return task;
 };
 
 const queryQuestionsFromSource = async (
@@ -4168,6 +4226,7 @@ export const buildPracticeSessionSyncPayload = (
         response_time_ms: answer.responseTimeMs,
         time_to_first_selection_ms: answer.timeToFirstSelectionMs,
         changed_answer: answer.changedAnswer,
+        changed_from_correct: answer.changedFromCorrect ?? false,
         error_type_inferred: null,
       };
     })
@@ -4215,6 +4274,7 @@ export const recordPracticeSessionInCloud = async (
 
   const data = await invokePracticeSessionSync(payload);
   if (queued && userId) removeQueuedPracticeSessionSync(userId, session.id);
+  invalidateCloudStatsCaches(curriculum);
   return data;
 };
 
@@ -4230,6 +4290,7 @@ export const retryPendingPracticeSessionsInCloud = async (userId: string) => {
       try {
         await invokePracticeSessionSync(item.payload);
         removeQueuedPracticeSessionSync(userId, item.payload.session.id);
+        invalidateCloudStatsCaches(item.payload.curriculum);
         synced += 1;
       } catch {
         // Se conserva en local para reintentarlo en la próxima sesión o recarga.
@@ -4270,6 +4331,8 @@ export const loadDashboardPrimaryBundle = async (
     questionsCount: inferredQuestionsCount,
     weakCategories: [],
     questionBlocks: [],
+    hydrationStatus: 'primary',
+    telemetryError: null,
   };
 };
 
@@ -4374,7 +4437,7 @@ const mapPracticeActivitySummaryRow = (row: Record<string, unknown>): PracticeAc
   isCorrect: readAttemptCorrectness(row.is_correct),
 });
 
-const getCloudQuestionActivityRows = async (curriculum: string, userId?: string) => {
+const fetchCloudQuestionActivityRowsUncached = async (curriculum: string, userId?: string) => {
   const candidates = await resolveCurriculumCandidates(curriculum).catch(() =>
     buildCurriculumCandidates(curriculum),
   );
@@ -4400,6 +4463,32 @@ const getCloudQuestionActivityRows = async (curriculum: string, userId?: string)
   }
 };
 
+const getCloudQuestionActivityRows = async (curriculum: string, userId?: string) => {
+  const normalized = String(curriculum ?? '').trim().toLowerCase() || DEFAULT_CURRICULUM;
+  const cacheKey = `${userId ?? 'anon'}:${normalized}`;
+  const cached = cloudActivityRowsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+  const inFlight = cloudActivityRowsInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const task = fetchCloudQuestionActivityRowsUncached(curriculum, userId)
+    .then((data) => {
+      cloudActivityRowsCache.set(cacheKey, {
+        expiresAt: Date.now() + STATS_CLOUD_CACHE_TTL_MS,
+        data,
+      });
+      return data;
+    })
+    .finally(() => {
+      cloudActivityRowsInFlight.delete(cacheKey);
+    });
+
+  cloudActivityRowsInFlight.set(cacheKey, task);
+  return task;
+};
+
 const readOptionalBoolean = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') return value;
   if (value === 1 || value === 'true') return true;
@@ -4409,8 +4498,9 @@ const readOptionalBoolean = (value: unknown): boolean | null => {
 
 export const getQuestionBlockStatsWithTelemetry = async (
   curriculum = DEFAULT_CURRICULUM,
-  options?: { mistakeReviewPeriod?: MistakeReviewPeriod },
-): Promise<{ blocks: QuestionBlockPerformance[]; telemetry: StatsAttemptTelemetry }> => {
+  options?: { mistakeReviewPeriod?: MistakeReviewPeriod; includeTelemetry?: boolean },
+): Promise<{ blocks: QuestionBlockPerformance[]; telemetry: StatsAttemptTelemetry | null }> => {
+  const includeTelemetry = options?.includeTelemetry ?? true;
   const [bank, attemptRows, authResult] = await Promise.all([
     getQuestionBankIndex(curriculum, 'all'),
     getGranularAttemptRowsForCurriculum(curriculum),
@@ -4420,7 +4510,7 @@ export const getQuestionBlockStatsWithTelemetry = async (
   const telemetryAttempts: TelemetryAttemptItem[] = [];
   const timingBySessionQuestion = new Map<
     string,
-    { responseTimeMs: number | null; changedAnswer: boolean | null }
+    { responseTimeMs: number | null; changedAnswer: boolean | null; changedFromCorrect: boolean | null }
   >();
   const userId = authResult.data.session?.user.id ?? null;
   if (userId) {
@@ -4463,10 +4553,18 @@ export const getQuestionBlockStatsWithTelemetry = async (
     const changedAnswer = readOptionalBoolean(
       attempt.changed_answer ?? attempt.changedAnswer,
     );
-    if (sessionId && questionId && (responseTimeMs != null || changedAnswer != null)) {
+    const changedFromCorrect = readOptionalBoolean(
+      attempt.changed_from_correct ?? attempt.changedFromCorrect,
+    );
+    if (
+      sessionId &&
+      questionId &&
+      (responseTimeMs != null || changedAnswer != null || changedFromCorrect != null)
+    ) {
       timingBySessionQuestion.set(`${sessionId}:${questionId}`, {
         responseTimeMs,
         changedAnswer,
+        changedFromCorrect,
       });
     }
     if (sessionId && questionId && recordedAnsweredKeys.has(`${sessionId}:${questionId}`)) continue;
@@ -4490,10 +4588,11 @@ export const getQuestionBlockStatsWithTelemetry = async (
       isCorrect,
       responseTimeMs,
       changedAnswer,
+      changedFromCorrect,
       mode: readText(attempt.mode),
     };
     attempts.push(mappedAttempt);
-    telemetryAttempts.push(mappedAttempt);
+    if (includeTelemetry) telemetryAttempts.push(mappedAttempt);
   }
 
   for (const event of cloudActivity) {
@@ -4510,10 +4609,11 @@ export const getQuestionBlockStatsWithTelemetry = async (
       isCorrect: readAttemptCorrectness(event.is_correct),
       responseTimeMs: timing?.responseTimeMs ?? null,
       changedAnswer: timing?.changedAnswer ?? null,
+      changedFromCorrect: timing?.changedFromCorrect ?? null,
       mode: readText(event.mode),
     };
     attempts.push(mapped);
-    if (mapped.isCorrect != null) telemetryAttempts.push(mapped);
+    if (includeTelemetry && mapped.isCorrect != null) telemetryAttempts.push(mapped);
   }
 
   for (const event of pendingLocalActivity) {
@@ -4528,7 +4628,7 @@ export const getQuestionBlockStatsWithTelemetry = async (
       mode: event.mode ?? null,
     };
     attempts.push(mapped);
-    if (mapped.isCorrect != null) telemetryAttempts.push(mapped);
+    if (includeTelemetry && mapped.isCorrect != null) telemetryAttempts.push(mapped);
   }
 
   const filteredAttempts = options?.mistakeReviewPeriod
@@ -4546,18 +4646,20 @@ export const getQuestionBlockStatsWithTelemetry = async (
     filteredAttempts,
   );
 
-  const telemetry = buildStatsAttemptTelemetry(
-    bank.map((question) => ({
-      id: question.id,
-      number: question.number,
-      scope: question.syllabus,
-      category: question.category,
-      topic: question.topic,
-      dedupeKey: question.dedupeKey,
-    })),
-    telemetryAttempts,
-    (category) => getCurriculumCategoryGroupLabel(curriculum, category),
-  );
+  const telemetry = includeTelemetry
+    ? buildStatsAttemptTelemetry(
+        bank.map((question) => ({
+          id: question.id,
+          number: question.number,
+          scope: question.syllabus,
+          category: question.category,
+          topic: question.topic,
+          dedupeKey: question.dedupeKey,
+        })),
+        telemetryAttempts,
+        (category) => getCurriculumCategoryGroupLabel(curriculum, category),
+      )
+    : null;
 
   return { blocks, telemetry };
 };
@@ -4566,7 +4668,10 @@ export const getQuestionBlockStats = async (
   curriculum = DEFAULT_CURRICULUM,
   options?: { mistakeReviewPeriod?: MistakeReviewPeriod },
 ) => {
-  const { blocks } = await getQuestionBlockStatsWithTelemetry(curriculum, options);
+  const { blocks } = await getQuestionBlockStatsWithTelemetry(curriculum, {
+    ...options,
+    includeTelemetry: false,
+  });
   return blocks;
 };
 
@@ -4594,11 +4699,64 @@ export const getMostFailedPracticeBatch = async (params: {
   });
 };
 
+export type SharedCommonOverride = {
+  total: number;
+  unseen: number;
+  attempts: number;
+  correctAttempts: number;
+  accuracyRate: number;
+};
+
+export const applySharedCommonOverrideToLearningV2 = (
+  learningDashboardV2: PracticeLearningDashboardV2,
+  sharedCommonOverride: SharedCommonOverride,
+  normalizedQuestionsCount = 0,
+): PracticeLearningDashboardV2 => {
+  const existingTopics = learningDashboardV2.topicBreakdown ?? [];
+  const previousCommonSeen = existingTopics
+    .filter((topic) => topic.scope === 'common')
+    .reduce(
+      (sum, topic) => sum + Math.max(0, (topic.questionCount ?? 0) - (topic.unseenCount ?? 0)),
+      0,
+    );
+  const sharedCommonSeen = Math.max(0, sharedCommonOverride.total - sharedCommonOverride.unseen);
+  const adjustedSeenQuestions = Math.max(
+    0,
+    (learningDashboardV2.seenQuestions ?? 0) - previousCommonSeen + sharedCommonSeen,
+  );
+  const totalQuestions = Math.max(
+    normalizedQuestionsCount,
+    learningDashboardV2.totalQuestions ?? 0,
+    adjustedSeenQuestions,
+  );
+
+  return {
+    ...learningDashboardV2,
+    totalQuestions,
+    seenQuestions: adjustedSeenQuestions,
+    coverageRate:
+      totalQuestions > 0 ? Math.max(0, Math.min(1, adjustedSeenQuestions / totalQuestions)) : 0,
+    topicBreakdown: [
+      ...existingTopics.filter((topic) => topic.scope !== 'common'),
+      {
+        topicLabel: 'Parte común',
+        scope: 'common' as const,
+        attempts: sharedCommonOverride.attempts,
+        questionCount: sharedCommonOverride.total,
+        unseenCount: sharedCommonOverride.unseen,
+        correctAttempts: sharedCommonOverride.correctAttempts,
+        accuracyRate: sharedCommonOverride.accuracyRate,
+      },
+    ],
+  };
+};
+
 export const hydrateDashboardBundle = async (
   primaryBundle: DashboardBundle,
   curriculum = DEFAULT_CURRICULUM,
   options?: { skipSharedCommonOverride?: boolean },
 ): Promise<DashboardBundle> => {
+  let telemetryError: string | null = null;
   const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories, blockStatsResult] = await Promise.all([
     getMyLearningDashboardV2(curriculum).catch(() => null),
     getMyPressureDashboardV2(curriculum).catch(() => null),
@@ -4606,7 +4764,13 @@ export const hydrateDashboardBundle = async (
       totalQuestions: await getQuestionCountFromTables(curriculum),
     })),
     getWeakCategorySummary(curriculum, 20).catch(() => []),
-    getQuestionBlockStatsWithTelemetry(curriculum).catch(() => ({ blocks: [], telemetry: null })),
+    getQuestionBlockStatsWithTelemetry(curriculum).catch((err: unknown) => {
+      telemetryError =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo cargar la telemetría detallada de estadísticas.';
+      return { blocks: [], telemetry: null };
+    }),
   ]);
   const questionBlocks = blockStatsResult.blocks;
   const statsTelemetry = blockStatsResult.telemetry;
@@ -4616,34 +4780,22 @@ export const hydrateDashboardBundle = async (
     ? null
     : await computeSharedCommonOverride(curriculum, questionBlocks);
 
-  const patchedLearningDashboardV2 =
-    learningDashboardV2 && sharedCommonOverride
-      ? {
-          ...learningDashboardV2,
-          topicBreakdown: [
-            ...(learningDashboardV2.topicBreakdown ?? []).filter(
-              (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte común'),
-            ),
-            {
-              topicLabel: 'Parte común',
-              scope: 'common' as const,
-              attempts: sharedCommonOverride.attempts,
-              questionCount: sharedCommonOverride.total,
-              unseenCount: sharedCommonOverride.unseen,
-              correctAttempts: sharedCommonOverride.correctAttempts,
-              accuracyRate: sharedCommonOverride.accuracyRate,
-            },
-          ],
-        }
-      : learningDashboardV2;
-
   const dashboardReportedQuestions = Math.max(
     primaryBundle.practiceState.learningDashboard?.totalQuestions ?? 0,
-    patchedLearningDashboardV2?.totalQuestions ?? 0,
+    learningDashboardV2?.totalQuestions ?? 0,
     primaryBundle.questionsCount ?? 0,
   );
   const normalizedQuestionsCount =
     catalog.totalQuestions > 0 ? catalog.totalQuestions : dashboardReportedQuestions;
+
+  const patchedLearningDashboardV2 =
+    learningDashboardV2 && sharedCommonOverride
+      ? applySharedCommonOverrideToLearningV2(
+          learningDashboardV2,
+          sharedCommonOverride,
+          normalizedQuestionsCount,
+        )
+      : learningDashboardV2;
 
   const syncedPracticeState: CloudPracticeState = {
     ...primaryBundle.practiceState,
@@ -4676,15 +4828,9 @@ export const hydrateDashboardBundle = async (
     weakCategories,
     questionBlocks,
     statsTelemetry,
+    hydrationStatus: telemetryError ? 'error' : 'ready',
+    telemetryError,
   };
-};
-
-type SharedCommonOverride = {
-  total: number;
-  unseen: number;
-  attempts: number;
-  correctAttempts: number;
-  accuracyRate: number;
 };
 
 export const computeSharedCommonOverride = async (

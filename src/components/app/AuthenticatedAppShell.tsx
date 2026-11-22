@@ -56,8 +56,10 @@ import {
   getQuestionsByNumberRange,
   getStudyData,
   getStudyQuestionsSlice,
+  applySharedCommonOverrideToLearningV2,
   computeSharedCommonOverride,
   hydrateDashboardBundle,
+  invalidateCloudStatsCaches,
   loadDashboardPrimaryBundle,
   recordPracticeSessionInCloud,
   retryPendingPracticeSessionsInCloud,
@@ -476,6 +478,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     setCurrentView(hasManagementAccess ? 'dashboard' : 'test-selection');
   }, [currentView, telemetryEnabled, hasManagementAccess]);
 
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
+
   const refreshDashboard = useCallback(async () => {
     if (!session) return;
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
@@ -500,7 +505,17 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       setDataLoading(false);
       setDashboardSecondaryHydrating(true);
       markHomePrimaryReady(trace);
-      requestIdle(() => {
+
+      const isStatsActive = currentViewRef.current === 'stats';
+      const schedule = (fn: () => void, idleTimeoutMs: number) => {
+        if (isStatsActive) {
+          fn();
+        } else {
+          requestIdle(fn, idleTimeoutMs);
+        }
+      };
+
+      schedule(() => {
         void getRecentSessionsForHome(curriculum)
           .then((recentSessions) => {
             if (dashboardLoadCycleRef.current !== loadCycle) return;
@@ -519,7 +534,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             void 0;
           });
       }, 400);
-      requestIdle(() => {
+      schedule(() => {
         void (async () => {
           try {
             const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum, {
@@ -543,7 +558,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
             setDashboardSecondaryHydrating(false);
             markHomeHydrated(trace);
 
-            requestIdle(() => {
+            schedule(() => {
               void (async () => {
                 const sharedOverride = await computeSharedCommonOverride(
                   curriculum,
@@ -553,36 +568,38 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 if (dashboardLoadCycleRef.current !== loadCycle) return;
                 setBundle((prev) => {
                   if (!prev?.practiceState.learningDashboardV2) return prev;
-                  const learningDashboardV2 = prev.practiceState.learningDashboardV2;
                   return {
                     ...prev,
                     practiceState: {
                       ...prev.practiceState,
-                      learningDashboardV2: {
-                        ...learningDashboardV2,
-                        topicBreakdown: [
-                          ...(learningDashboardV2.topicBreakdown ?? []).filter(
-                            (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte común'),
-                          ),
-                          {
-                            topicLabel: 'Parte común',
-                            scope: 'common' as const,
-                            attempts: sharedOverride.attempts,
-                            questionCount: sharedOverride.total,
-                            unseenCount: sharedOverride.unseen,
-                            correctAttempts: sharedOverride.correctAttempts,
-                            accuracyRate: sharedOverride.accuracyRate,
-                          },
-                        ],
-                      },
+                      learningDashboardV2: applySharedCommonOverrideToLearningV2(
+                        prev.practiceState.learningDashboardV2,
+                        sharedOverride,
+                        prev.questionsCount,
+                      ),
                     },
                   };
                 });
               })();
             }, 2500);
-          } catch {
+          } catch (error) {
             if (dashboardLoadCycleRef.current !== loadCycle) return;
             setDashboardSecondaryHydrating(false);
+            setBundle((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    hydrationStatus: 'error',
+                    telemetryError:
+                      error instanceof Error
+                        ? error.message
+                        : t(
+                            'No se ha podido cargar la telemetría detallada.',
+                            'Ezin izan da telemetria zehatza kargatu.',
+                          ),
+                  }
+                : prev,
+            );
           }
         })();
       }, 1200);
@@ -604,6 +621,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
     const loadCycle = dashboardLoadCycleRef.current;
+    setDashboardSecondaryHydrating(true);
 
     try {
       const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
@@ -621,6 +639,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           },
         };
       });
+      setDashboardSecondaryHydrating(false);
       requestIdle(() => {
         void getRecentSessionsForHome(curriculum)
           .then((recentSessions) => {
@@ -650,34 +669,24 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           if (dashboardLoadCycleRef.current !== loadCycle) return;
           setBundle((prev) => {
             if (!prev?.practiceState.learningDashboardV2) return prev;
-            const learningDashboardV2 = prev.practiceState.learningDashboardV2;
             return {
               ...prev,
               practiceState: {
                 ...prev.practiceState,
-                learningDashboardV2: {
-                  ...learningDashboardV2,
-                  topicBreakdown: [
-                    ...(learningDashboardV2.topicBreakdown ?? []).filter(
-                      (topic) => !(topic.scope === 'common' && topic.topicLabel === 'Parte común'),
-                    ),
-                    {
-                      topicLabel: 'Parte común',
-                      scope: 'common' as const,
-                      attempts: sharedOverride.attempts,
-                      questionCount: sharedOverride.total,
-                      unseenCount: sharedOverride.unseen,
-                      correctAttempts: sharedOverride.correctAttempts,
-                      accuracyRate: sharedOverride.accuracyRate,
-                    },
-                  ],
-                },
+                learningDashboardV2: applySharedCommonOverrideToLearningV2(
+                  prev.practiceState.learningDashboardV2,
+                  sharedOverride,
+                  prev.questionsCount,
+                ),
               },
             };
           });
         })();
       }, 2500);
     } catch {
+      if (dashboardLoadCycleRef.current === loadCycle) {
+        setDashboardSecondaryHydrating(false);
+      }
       void 0;
     }
   }, [curriculum, restrictedCurriculum, session]);
@@ -3499,6 +3508,12 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               curriculum={curriculum}
               coachPlan={coachPlan}
               executablePlan={coachExecutablePlan}
+              hydrating={dashboardSecondaryHydrating}
+              telemetryError={bundle?.telemetryError ?? dataError}
+              onRetryTelemetry={() => {
+                invalidateCloudStatsCaches(curriculum);
+                void refreshDashboardSilently();
+              }}
               onStartRecommended={() => {
                 trackEffect({
                   surface: 'stats',

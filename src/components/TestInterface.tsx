@@ -246,15 +246,25 @@ export default function TestInterface({
     const answeredAt = new Date().toISOString();
     const responseTimeMs = Math.max(0, Date.now() - questionStartAt);
     const previousDetail = activeAnswerDetails[currentIndex];
+    const isCorrect = optionId === currentQuestion.correctAnswer;
+    const changedAnswer = previousDetail ? previousDetail.selectedOption !== optionId : false;
+    const changedFromCorrect =
+      !isCorrect &&
+      Boolean(
+        previousDetail &&
+          ((previousDetail.selectedOption !== optionId && previousDetail.isCorrect) ||
+            previousDetail.changedFromCorrect),
+      );
     const detail: TestAnswer = {
       questionId: currentQuestion.id,
       selectedOption: optionId,
       correctOption: currentQuestion.correctAnswer,
-      isCorrect: optionId === currentQuestion.correctAnswer,
+      isCorrect,
       answeredAt,
       responseTimeMs,
       timeToFirstSelectionMs: previousDetail?.timeToFirstSelectionMs ?? responseTimeMs,
-      changedAnswer: previousDetail ? previousDetail.selectedOption !== optionId : false,
+      changedAnswer,
+      changedFromCorrect,
     };
     if (currentQuestion.correctAnswer && activityUserId && activityCurriculum && currentViewEventIdRef.current) {
       recordQuestionAnswer({

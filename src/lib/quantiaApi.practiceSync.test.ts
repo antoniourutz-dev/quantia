@@ -133,7 +133,65 @@ describe('buildPracticeSessionSyncPayload', () => {
     expect(administrationPayload).toEqual(expect.objectContaining({
       curriculum: 'osakidetza_tecnico_medio_administracion_gestion',
       session: expect.objectContaining({ mode: 'review' }),
-      attempts: [expect.objectContaining({ question_id: sharedQuestion.id, is_correct: false })],
+      attempts: [expect.objectContaining({ question_id: sharedQuestion.id, is_correct: false, changed_from_correct: false })],
     }));
+  });
+});
+
+describe('applySharedCommonOverrideToLearningV2', () => {
+  it('ajusta seenQuestions y coverageRate sin doble conteo de temas comunes', async () => {
+    const { applySharedCommonOverrideToLearningV2 } = await import('./quantiaApi');
+    const patched = applySharedCommonOverrideToLearningV2(
+      {
+        curriculum: 'osakidetza_mantenimiento_instalaciones',
+        totalQuestions: 200,
+        seenQuestions: 60, // 50 specific + 10 stale common
+        coverageRate: 0.3,
+        masteredCount: 20,
+        solidCount: 20,
+        consolidatingCount: 10,
+        fragileCount: 10,
+        readinessScore: 55,
+        readinessLabel: 'En camino',
+        estimatedAccuracy: 0.72,
+        estimatedAccuracyCiLow: 0.66,
+        estimatedAccuracyCiHigh: 0.78,
+        topicBreakdown: [
+          {
+            topicLabel: 'Constitución',
+            scope: 'common',
+            attempts: 10,
+            questionCount: 20,
+            unseenCount: 10,
+            correctAttempts: 8,
+            accuracyRate: 0.8,
+          },
+          {
+            topicLabel: 'Tema 1 · Instalaciones',
+            scope: 'specific',
+            attempts: 50,
+            questionCount: 100,
+            unseenCount: 50,
+            correctAttempts: 36,
+            accuracyRate: 0.72,
+          },
+        ],
+      },
+      {
+        total: 100,
+        unseen: 20, // 80 seen in shared common
+        attempts: 120,
+        correctAttempts: 96,
+        accuracyRate: 0.8,
+      },
+      200,
+    );
+
+    // 60 - 10 (old common seen) + 80 (shared common seen) = 130
+    expect(patched.seenQuestions).toBe(130);
+    expect(patched.coverageRate).toBeCloseTo(0.65, 4);
+    expect(patched.topicBreakdown?.filter((t) => t.scope === 'common')).toHaveLength(1);
+    expect(patched.topicBreakdown?.find((t) => t.scope === 'common')?.topicLabel).toBe('Parte común');
+    expect(patched.topicBreakdown?.find((t) => t.scope === 'specific')?.topicLabel).toBe('Tema 1 · Instalaciones');
   });
 });

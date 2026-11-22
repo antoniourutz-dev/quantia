@@ -337,4 +337,43 @@ describe('StatsDashboard', () => {
     expect(screen.getByTitle('Dominadas: 75')).toBeInTheDocument();
     expect(screen.getByTitle('Frágiles: 5')).toBeInTheDocument();
   });
+
+  it('muestra estado de carga mientras hidrata telemetria y boton de reintentar ante error', async () => {
+    const user = userEvent.setup();
+    const onRetryTelemetry = vi.fn();
+    const primaryOnlyBundle = buildBundle();
+    primaryOnlyBundle.statsTelemetry = null;
+
+    const { rerender } = render(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={results}
+          bundle={primaryOnlyBundle}
+          curriculum="osakidetza_admin"
+          hydrating
+          telemetryError={null}
+          onRetryTelemetry={onRetryTelemetry}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Actualizando memoria del banco/i);
+
+    rerender(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={results}
+          bundle={primaryOnlyBundle}
+          curriculum="osakidetza_admin"
+          hydrating={false}
+          telemetryError="Timeout"
+          onRetryTelemetry={onRetryTelemetry}
+        />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/No se pudo cargar toda la telemetría/i);
+    await user.click(screen.getByRole('button', { name: /Reintentar/i }));
+    expect(onRetryTelemetry).toHaveBeenCalledTimes(1);
+  });
 });
