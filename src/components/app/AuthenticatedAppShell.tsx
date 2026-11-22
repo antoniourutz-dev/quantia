@@ -3504,6 +3504,28 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 });
                 void handleStartCoachSession();
               }}
+              onPracticeTopic={(topicLabel, scope) => {
+                if (isLawSelectionCurriculum) {
+                  void handleStartLawTest(topicLabel, 20);
+                  return;
+                }
+                void handleStartCustomPractice({
+                  curriculum,
+                  contentScope: scope === 'common' ? 'common_only' : 'specific_only',
+                  topicMode: { type: 'single_topic', topicId: topicLabel },
+                  sessionLength: 20,
+                  order: 'random',
+                  supportMode: customPracticeSupport,
+                });
+              }}
+              onPracticeBlock={(start, end, scope) => {
+                void handleStartCustomTest({
+                  from: start,
+                  to: end,
+                  randomize: false,
+                  syllabus: scope,
+                });
+              }}
             />
           </Suspense>
         ) : null}

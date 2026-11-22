@@ -28,6 +28,11 @@ import {
 import { getPendingQuestionActivity, syncQuestionActivity } from './questionActivity';
 import { mergePracticeSessionHistory, type PracticeActivitySummaryRow } from './practiceStatistics';
 import {
+  buildStatsAttemptTelemetry,
+  type StatsAttemptTelemetry,
+  type TelemetryAttemptItem,
+} from './statsInsights';
+import {
   enqueuePracticeSessionSync,
   readQueuedPracticeSessionSyncs,
   removeQueuedPracticeSessionSync,
@@ -4357,16 +4362,28 @@ const getCloudQuestionActivityRows = async (curriculum: string, userId?: string)
   }
 };
 
-export const getQuestionBlockStats = async (
+const readOptionalBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === 'true') return true;
+  if (value === 0 || value === 'false') return false;
+  return null;
+};
+
+export const getQuestionBlockStatsWithTelemetry = async (
   curriculum = DEFAULT_CURRICULUM,
   options?: { mistakeReviewPeriod?: MistakeReviewPeriod },
-) => {
+): Promise<{ blocks: QuestionBlockPerformance[]; telemetry: StatsAttemptTelemetry }> => {
   const [bank, attemptRows, authResult] = await Promise.all([
     getQuestionBankIndex(curriculum, 'all'),
     getGranularAttemptRowsForCurriculum(curriculum),
     supabase.auth.getSession(),
   ]);
   const attempts: QuestionBlockAttempt[] = [];
+  const telemetryAttempts: TelemetryAttemptItem[] = [];
+  const timingBySessionQuestion = new Map<
+    string,
+    { responseTimeMs: number | null; changedAnswer: boolean | null }
+  >();
   const userId = authResult.data.session?.user.id ?? null;
   if (userId) {
     await syncQuestionActivity({ userId, curriculum }).catch(() => undefined);
@@ -4402,8 +4419,20 @@ export const getQuestionBlockStats = async (
     const sessionId = readText(
       attempt.__sessionId ?? attempt.session_id ?? attempt.sessionId ?? attempt.practice_session_id,
     );
+    const responseTimeMs = readOptionalNumber(
+      attempt.response_time_ms ?? attempt.responseTimeMs,
+    );
+    const changedAnswer = readOptionalBoolean(
+      attempt.changed_answer ?? attempt.changedAnswer,
+    );
+    if (sessionId && questionId && (responseTimeMs != null || changedAnswer != null)) {
+      timingBySessionQuestion.set(`${sessionId}:${questionId}`, {
+        responseTimeMs,
+        changedAnswer,
+      });
+    }
     if (sessionId && questionId && recordedAnsweredKeys.has(`${sessionId}:${questionId}`)) continue;
-    attempts.push({
+    const mappedAttempt: TelemetryAttemptItem = {
       eventId: readText(attempt.event_id ?? attempt.eventId ?? attempt.attempt_id) ??
         (sessionId && questionId ? `cloud:${sessionId}:${questionId}` : null),
       sessionId,
@@ -4421,23 +4450,36 @@ export const getQuestionBlockStats = async (
       dedupeKey: buildAttemptQuestionDedupKey(attempt),
       answeredAt: readText(attempt.answered_at ?? attempt.answeredAt ?? attempt.completed_at ?? attempt.completedAt),
       isCorrect,
-    });
+      responseTimeMs,
+      changedAnswer,
+      mode: readText(attempt.mode),
+    };
+    attempts.push(mappedAttempt);
+    telemetryAttempts.push(mappedAttempt);
   }
 
-  attempts.push(
-    ...cloudActivity.map((event) => ({
+  for (const event of cloudActivity) {
+    const sessionId = readText(event.session_id);
+    const questionId = readText(event.question_id);
+    const timing = sessionId && questionId ? timingBySessionQuestion.get(`${sessionId}:${questionId}`) : undefined;
+    const mapped: TelemetryAttemptItem = {
       eventId: readText(event.event_id),
-      sessionId: readText(event.session_id),
-      questionId: readText(event.question_id),
+      sessionId,
+      questionId,
       questionNumber: readOptionalNumber(event.question_number),
       scope: normalizeQuestionScope(event.question_scope),
       answeredAt: readText(event.answered_at ?? event.viewed_at),
       isCorrect: readAttemptCorrectness(event.is_correct),
-    })),
-  );
+      responseTimeMs: timing?.responseTimeMs ?? null,
+      changedAnswer: timing?.changedAnswer ?? null,
+      mode: readText(event.mode),
+    };
+    attempts.push(mapped);
+    if (mapped.isCorrect != null) telemetryAttempts.push(mapped);
+  }
 
-  attempts.push(
-    ...pendingLocalActivity.map((event) => ({
+  for (const event of pendingLocalActivity) {
+    const mapped: TelemetryAttemptItem = {
       eventId: event.eventId,
       sessionId: event.sessionId,
       questionId: event.questionId,
@@ -4445,14 +4487,17 @@ export const getQuestionBlockStats = async (
       scope: event.scope,
       answeredAt: event.answeredAt ?? event.viewedAt,
       isCorrect: event.isCorrect,
-    })),
-  );
+      mode: event.mode ?? null,
+    };
+    attempts.push(mapped);
+    if (mapped.isCorrect != null) telemetryAttempts.push(mapped);
+  }
 
   const filteredAttempts = options?.mistakeReviewPeriod
     ? filterAttemptsForMistakeReview(attempts, options.mistakeReviewPeriod)
     : attempts;
 
-  return buildQuestionBlockPerformance(
+  const blocks = buildQuestionBlockPerformance(
     bank.map((question) => ({
       id: question.id,
       number: question.number,
@@ -4462,6 +4507,29 @@ export const getQuestionBlockStats = async (
     })),
     filteredAttempts,
   );
+
+  const telemetry = buildStatsAttemptTelemetry(
+    bank.map((question) => ({
+      id: question.id,
+      number: question.number,
+      scope: question.syllabus,
+      category: question.category,
+      topic: question.topic,
+      dedupeKey: question.dedupeKey,
+    })),
+    telemetryAttempts,
+    (category) => getCurriculumCategoryGroupLabel(curriculum, category),
+  );
+
+  return { blocks, telemetry };
+};
+
+export const getQuestionBlockStats = async (
+  curriculum = DEFAULT_CURRICULUM,
+  options?: { mistakeReviewPeriod?: MistakeReviewPeriod },
+) => {
+  const { blocks } = await getQuestionBlockStatsWithTelemetry(curriculum, options);
+  return blocks;
 };
 
 export const getMostFailedPracticeBatch = async (params: {
@@ -4493,15 +4561,17 @@ export const hydrateDashboardBundle = async (
   curriculum = DEFAULT_CURRICULUM,
   options?: { skipSharedCommonOverride?: boolean },
 ): Promise<DashboardBundle> => {
-  const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories, questionBlocks] = await Promise.all([
+  const [learningDashboardV2, pressureInsightsV2, catalog, weakCategories, blockStatsResult] = await Promise.all([
     getMyLearningDashboardV2(curriculum).catch(() => null),
     getMyPressureDashboardV2(curriculum).catch(() => null),
     getPracticeCatalogSummary(curriculum).catch(async () => ({
       totalQuestions: await getQuestionCountFromTables(curriculum),
     })),
-    getWeakCategorySummary(curriculum, 5).catch(() => []),
-    getQuestionBlockStats(curriculum).catch(() => []),
+    getWeakCategorySummary(curriculum, 20).catch(() => []),
+    getQuestionBlockStatsWithTelemetry(curriculum).catch(() => ({ blocks: [], telemetry: null })),
   ]);
+  const questionBlocks = blockStatsResult.blocks;
+  const statsTelemetry = blockStatsResult.telemetry;
 
   const skipSharedCommonOverride = options?.skipSharedCommonOverride ?? false;
   const sharedCommonOverride = skipSharedCommonOverride
@@ -4567,6 +4637,7 @@ export const hydrateDashboardBundle = async (
     questionsCount: normalizedQuestionsCount,
     weakCategories,
     questionBlocks,
+    statsTelemetry,
   };
 };
 

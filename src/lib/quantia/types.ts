@@ -5,6 +5,7 @@ import type {
   PracticeSessionSummary,
 } from '../../types';
 import type { QuestionBlockPerformance } from '../questionBlockStats';
+import type { StatsAttemptTelemetry } from '../statsInsights';
 
 export type DashboardBundle = {
   identity: AccountIdentity;
@@ -13,6 +14,7 @@ export type DashboardBundle = {
   questionsCount: number;
   weakCategories: PracticeCategoryRiskSummary[];
   questionBlocks: QuestionBlockPerformance[];
+  statsTelemetry?: StatsAttemptTelemetry | null;
 };
 
 export type CurriculumOption = {
