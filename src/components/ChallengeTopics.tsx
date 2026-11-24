@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, Info, Zap } from 'lucide-react';
 import TopicQuestionBattery from './TopicQuestionBattery';
 import { orderTopicQuestions } from '../lib/challenge';
-import type { Question, TopicPracticeContext } from '../types';
+import type { Question, SyllabusType, TopicPracticeContext } from '../types';
+import { isSingleScopeCurriculum, isLawSelectionCurriculum } from '../lib/locale';
 import { getCurriculumCategoryGroupLabel, getQuestionBankSnapshot } from '../lib/quantiaApi';
 import { getChallengeTopicEnergy, summarizeTopicEnergy, type QuestionEnergy } from '../lib/challengeTopicEnergy';
 
@@ -15,35 +16,51 @@ type Props = {
   onRandomizeChange: (value: boolean) => void;
   onStart: (questions: Question[], title: string, topic: TopicPracticeContext) => void;
 };
-type Topic = { label: string; questions: Question[] };
+type Topic = { scope: SyllabusType; label: string; questions: Question[] };
+const topicKey = (topic: Topic) => `${topic.scope}:${topic.label}`;
 
 export default function ChallengeTopics({ curriculum, userId, syncing, isBasque, randomize, onRandomizeChange, onStart }: Props) {
   const [topics, setTopics] = useState<Topic[] | null>(null);
   const [bankError, setBankError] = useState(false);
+  const [partialError, setPartialError] = useState(false);
+  const [selectedScope, setSelectedScope] = useState<SyllabusType>('specific');
   const [energy, setEnergy] = useState<Map<string, QuestionEnergy> | null>(null);
   const [energyError, setEnergyError] = useState(false);
   const [openTopic, setOpenTopic] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void getQuestionBankSnapshot({ curriculum, questionScope: 'specific', maxQuestions: 5000 }).then(
-      (questions) => {
-        if (!active) return;
-        const groups = new Map<string, Question[]>();
-        const seen = new Set<string>();
-        for (const question of questions) {
-          const label = getCurriculumCategoryGroupLabel(curriculum, question.category);
-          if (!label || !/^Temas?\s+\d+/i.test(label) || seen.has(question.id)) continue;
-          seen.add(question.id);
-          const group = groups.get(label) ?? [];
-          group.push(question);
-          groups.set(label, group);
-        }
-        setTopics(Array.from(groups, ([label, questions]) => ({ label, questions }))
-          .sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true })));
-      },
-      () => { if (active) setBankError(true); },
-    );
+    setTopics(null);
+    setBankError(false);
+    setPartialError(false);
+    setEnergy(null);
+    setEnergyError(false);
+    setOpenTopic(null);
+    const scopes: SyllabusType[] = isSingleScopeCurriculum(curriculum) || isLawSelectionCurriculum(curriculum)
+      ? ['specific']
+      : ['common', 'specific'];
+    void Promise.allSettled(scopes.map(async (scope) => {
+      const questions = await getQuestionBankSnapshot({ curriculum, questionScope: scope, maxQuestions: 5000 });
+      const groups = new Map<string, Question[]>();
+      const seen = new Set<string>();
+      for (const question of questions) {
+        const label = getCurriculumCategoryGroupLabel(curriculum, question.category);
+        if (!label || !/^Temas?\s+\d+/i.test(label) || seen.has(question.id)) continue;
+        seen.add(question.id);
+        const group = groups.get(label) ?? [];
+        group.push(question);
+        groups.set(label, group);
+      }
+      return Array.from(groups, ([label, questions]) => ({ scope, label, questions }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true }));
+    })).then((results) => {
+      if (!active) return;
+      const loaded = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+      const failures = results.filter(result => result.status === 'rejected').length;
+      setBankError(failures > 0 && loaded.length === 0);
+      setPartialError(failures > 0 && loaded.length > 0);
+      setTopics(loaded);
+    });
     return () => { active = false; };
   }, [curriculum]);
 
@@ -63,11 +80,18 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
   }, [syncing, topics, userId]);
 
   if (bankError) return <p role="alert" className="text-sm text-rose-700">{isBasque ? 'Ezin izan dira gaiak kargatu.' : 'No se han podido cargar los temas.'}</p>;
-  if (!topics) return <p role="status" className="text-sm text-slate-600">{isBasque ? 'Gaiak kargatzen…' : 'Cargando temario específico…'}</p>;
+  if (!topics) return <p role="status" className="text-sm text-slate-600">{isBasque ? 'Gaiak kargatzen…' : 'Cargando temas…'}</p>;
   if (!topics.length) return <p className="text-sm text-slate-600">{isBasque ? 'Oposizio honek ez du gai ofizialik esleituta.' : 'Esta oposición aún no tiene preguntas agrupadas por temas oficiales.'}</p>;
 
-  const startTopic = (questions: Question[], topic: TopicPracticeContext) => {
-    onStart(orderTopicQuestions(questions, topic.randomize), `Temas · ${topic.label}`, topic);
+  const scopeLabel = (scope: SyllabusType) => scope === 'common'
+    ? (isBasque ? 'Gai-zerrenda orokorra' : 'Temario común')
+    : (isBasque ? 'Gai-zerrenda espezifikoa' : 'Temario específico');
+  const availableScopes = (['common', 'specific'] as const).filter(scope => topics.some(topic => topic.scope === scope));
+  const activeScope = availableScopes.includes(selectedScope) ? selectedScope : availableScopes[0];
+  const scopeTopics = topics.filter(topic => topic.scope === activeScope);
+  const startTopic = (questions: Question[], topic: TopicPracticeContext, scope: SyllabusType) => {
+    const prefix = scope === 'common' ? 'Temas · Común' : 'Temas';
+    onStart(orderTopicQuestions(questions, topic.randomize), `${prefix} · ${topic.label}`, topic);
   };
 
   return (
@@ -86,16 +110,32 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
       </label>
       {energyError ? <p role="status" className="text-sm text-rose-700">{isBasque ? 'Ezin izan da energia kargatu.' : 'No se ha podido cargar la energía. Puedes hacer los tests igualmente.'}</p>
         : userId && (syncing || !energy) ? <p role="status" className="text-sm text-slate-600">{isBasque ? 'Energia eguneratzen…' : 'Actualizando energía…'}</p> : null}
+      {partialError && <p role="alert" className="text-sm text-rose-700">{isBasque ? 'Ezin izan dira gai-zerrenda guztiak kargatu.' : 'No se ha podido cargar uno de los temarios. Puedes practicar los temas disponibles.'}</p>}
+      {availableScopes.length > 1 && <div role="group" aria-label={isBasque ? 'Gai-zerrenda' : 'Temario'} className="grid grid-cols-2 gap-2">
+        {availableScopes.map(scope => {
+          const entries = topics.filter(topic => topic.scope === scope);
+          const count = entries.reduce((sum, topic) => sum + topic.questions.length, 0);
+          return <button key={scope} type="button" aria-pressed={activeScope === scope}
+            onClick={() => { setSelectedScope(scope); setOpenTopic(null); }}
+            className={`min-h-11 rounded-xl border-2 px-3 py-3 text-left text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${activeScope === scope ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 bg-white text-slate-700'}`}>
+            <span className="block">{scopeLabel(scope)}</span>
+            <span className="block text-xs font-medium">{entries.length} {isBasque ? 'gai' : 'temas'} · {count} {isBasque ? 'galdera' : 'preguntas'}</span>
+          </button>;
+        })}
+      </div>}
       <ul className="grid gap-3 lg:grid-cols-2">
-        {topics.map(({ label, questions }, index) => {
+        {scopeTopics.map((entry, index) => {
+          const { label, questions, scope } = entry;
+          const key = topicKey(entry);
+          const detailId = `topic-details-${scope}-${index}`;
           const topic = { label, questions, randomize };
           const progress = energy && !energyError ? summarizeTopicEnergy(questions, energy) : null;
           const rate = progress?.rate ?? null;
           const status = rate != null ? `${rate}%` : (energyError || (!energy && userId)) ? '—' : isBasque ? 'Entrenatu gabe' : 'Sin entrenar';
           return (
-            <li key={label} className={openTopic === label ? "lg:col-span-2" : undefined}>
+            <li key={key} className={openTopic === key ? "lg:col-span-2" : undefined}>
               <div className="relative rounded-2xl border border-indigo-100 bg-white shadow-sm">
-              <button type="button" onClick={() => startTopic(questions, topic)}
+              <button type="button" onClick={() => startTopic(questions, topic, scope)}
                 className="group flex h-full w-full items-center gap-3 rounded-2xl p-4 pr-16 text-left transition hover:bg-indigo-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 motion-reduce:transition-none">
                 <span className="min-w-0 flex-1 space-y-2">
                   <span className="block text-sm font-bold text-slate-900 sm:text-base">{label}</span>
@@ -113,17 +153,17 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
                 </span>
                 <ChevronRight size={20} className="shrink-0 text-indigo-700" aria-hidden="true" />
               </button>
-                <button type="button" aria-expanded={openTopic === label}
-                  aria-controls={openTopic === label ? `topic-details-${index}` : undefined}
+                <button type="button" aria-expanded={openTopic === key}
+                  aria-controls={openTopic === key ? detailId : undefined}
                   aria-label={isBasque ? `${label}: galderen xehetasunak` : `${label}: detalle de las preguntas`}
-                  onClick={() => setOpenTopic(current => current === label ? null : label)}
+                  onClick={() => setOpenTopic(current => current === key ? null : key)}
                   className="absolute right-3 top-3 inline-flex size-10 items-center justify-center rounded-full border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600">
                   <Info size={18} aria-hidden="true" />
                 </button>
               </div>
-              {openTopic === label && <div id={`topic-details-${index}`} className="mt-2">
+              {openTopic === key && <div id={detailId} className="mt-2">
                 <TopicQuestionBattery questions={questions} energy={energyError ? null : energy} isBasque={isBasque}
-                  onStart={selected => onStart(orderTopicQuestions(selected, randomize), `Temas · Más falladas · ${label}`, topic)} />
+                  onStart={selected => onStart(orderTopicQuestions(selected, randomize), `Temas · ${scope === 'common' ? 'Común · ' : ''}Más falladas · ${label}`, topic)} />
               </div>}
             </li>
           );
