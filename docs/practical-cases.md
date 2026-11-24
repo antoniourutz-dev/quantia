@@ -11,7 +11,9 @@ including simulacros and error review. It disables answers until the context and
 any original images have been verified. Errors offer retry. Case changes clear
 stale context, and original images can be enlarged in a keyboard accessible dialog.
 The mobile shortcut returns to the full statement. Images retain their original
-aspect ratio and orientation.
+aspect ratio. The OSANEBI map is displayed rotated clockwise by 90 degrees for
+reading, with a 520 px preview and a 900 px enlarged view; its stored PNG bytes
+and integrity hash are unchanged.
 
 ## Data and access
 
@@ -41,7 +43,8 @@ The referenced ZIP was unavailable on this machine. The original attached PDF wa
 available and was used instead. Seven statements were extracted from pages
 102–118. The map (page 103) and three graph rows including their accompanying
 percentages (page 109) were cropped directly from the PDF at 216 dpi. They were
-not redrawn. Original orientation is preserved, including the rotated map.
+not redrawn. The original stored images are preserved; map rotation is a display
+transform that embeds the same PNG in an SVG viewport.
 
 Case question counts: 6, 8, 6, 8, 6, 6, 1. Existing numbers 460–500 map to primary
 keys 5608–5648 in the specific Organización bank. The combined full-row MD5 before

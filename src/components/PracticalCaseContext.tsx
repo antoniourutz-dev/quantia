@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCaseAssets, getQuestionCase, type PracticalCase, type CaseAsset } from '../lib/practicalCases';
+import PracticalCaseImage from './PracticalCaseImage';
 
 export default function PracticalCaseContext({ questionId, onStatusChange }: {
   questionId: string; onStatusChange?: (questionId: string, ready: boolean) => void;
@@ -46,11 +47,13 @@ export default function PracticalCaseContext({ questionId, onStatusChange }: {
       <button type="button" aria-expanded={expanded} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-indigo-700" onClick={() => setExpanded(v => !v)}>{expanded ? 'Reducir enunciado' : 'Leer enunciado completo'}</button>
     </div>
     <div className={`overflow-y-auto p-4 ${expanded ? 'max-h-[65dvh]' : 'max-h-56'}`} tabIndex={0} aria-label="Texto y recursos del caso">
-      <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800 sm:text-base">{c.statement}</p>
+      <div className="space-y-3 text-sm leading-relaxed text-slate-800 sm:text-base">
+        {c.statement.split(/\n\s*\n/).map((paragraph, index) => <p key={index} className={paragraph.startsWith('• ') ? 'pl-5 -indent-4' : undefined}>{paragraph.replace(/\s+/g, ' ').trim()}</p>)}
+      </div>
       <div className="mt-4 grid gap-4">
         {state.assets.map(a => <figure key={a.id}>
           <button type="button" onClick={() => setImage(a)} aria-label={`Ampliar ${a.title}`} className="block w-full rounded-lg border border-slate-200 bg-white p-2 focus-visible:ring-2 focus-visible:ring-indigo-500">
-            <img src={a.url} alt={a.title} className="mx-auto h-auto max-w-full" />
+            <PracticalCaseImage asset={a} />
             <span className="block p-2 text-sm font-bold text-indigo-700">Ampliar imagen original</span>
           </button>
           <figcaption className="mt-1 text-xs text-slate-600">{a.title} · {c.source_title}, pág. {a.source_page}</figcaption>
@@ -59,7 +62,7 @@ export default function PracticalCaseContext({ questionId, onStatusChange }: {
       <p className="mt-4 text-xs text-slate-500">Fuente: {c.source_title} · págs. {c.source_pages.join(', ')}</p>
     </div>
     <dialog ref={dialog} onCancel={() => setImage(null)} onClose={() => setImage(null)} className="h-[95dvh] w-[96vw] max-w-none rounded-2xl p-3 backdrop:bg-slate-950/80">
-      {image && <><div className="sticky top-0 flex items-center justify-between gap-3 bg-white p-2"><span className="text-sm font-bold">{image.title} · pág. {image.source_page}</span><button type="button" autoFocus onClick={() => setImage(null)} className="rounded-lg bg-slate-900 px-4 py-2 text-white">Cerrar</button></div><p className="p-2 text-xs text-slate-600">Desplázate para consultar la imagen a tamaño original.</p><div className="overflow-auto"><img src={image.url} alt={image.title} className="h-auto max-w-none" /></div></>}
+      {image && <><div className="sticky top-0 flex items-center justify-between gap-3 bg-white p-2"><span className="text-sm font-bold">{image.title} · pág. {image.source_page}</span><button type="button" autoFocus onClick={() => setImage(null)} className="rounded-lg bg-slate-900 px-4 py-2 text-white">Cerrar</button></div><p className="p-2 text-xs text-slate-600">Desplázate para consultar la imagen ampliada.</p><div className="overflow-auto"><PracticalCaseImage asset={image} enlarged /></div></>}
     </dialog>
   </section>;
 }
