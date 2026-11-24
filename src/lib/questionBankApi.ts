@@ -575,3 +575,63 @@ export const getQuestionBankQuestionDetail = async (params: {
   questionBankDetailCache.set(questionId, question);
   return question;
 };
+
+export const getQuestionsByIds = async (
+  questionIds: string[],
+): Promise<Record<string, Question & { curriculum?: string | null }>> => {
+  const uniqueIds = Array.from(
+    new Set(
+      questionIds
+        .map((id) => String(id ?? '').trim())
+        .filter(Boolean),
+    ),
+  );
+  if (uniqueIds.length === 0) return {};
+
+  const result: Record<string, Question & { curriculum?: string | null }> = {};
+  const missingIds: string[] = [];
+
+  for (const id of uniqueIds) {
+    const cached = questionBankDetailCache.get(id);
+    if (cached) {
+      result[id] = cached;
+    } else {
+      missingIds.push(id);
+    }
+  }
+
+  const chunkSize = 50;
+  for (let offset = 0; offset < missingIds.length; offset += chunkSize) {
+    const chunk = missingIds.slice(offset, offset + chunkSize);
+    const resolvedChunk = chunk.map((id) => (/^\d+$/.test(id) ? Number(id) : id));
+    let data: unknown[] | null = null;
+    try {
+      const response = await supabase
+        .from('preguntas')
+        .select('*')
+        .in('id', resolvedChunk);
+      if (response.error) continue;
+      data = (response.data as unknown[] | null) ?? null;
+    } catch {
+      continue;
+    }
+
+    if (!data) continue;
+    for (const row of data as Array<Record<string, unknown>>) {
+      const mapped = mapQuestion(row);
+      if (!mapped) continue;
+      const rawCurriculum =
+        typeof row.curriculum === 'string'
+          ? row.curriculum
+          : typeof row.oposicion === 'string'
+            ? row.oposicion
+            : null;
+      const enriched = { ...mapped, curriculum: rawCurriculum };
+      questionBankDetailCache.set(mapped.id, enriched);
+      result[mapped.id] = enriched;
+    }
+  }
+
+  return result;
+};
+

@@ -93,6 +93,7 @@ type BuildCoachPlanV2Input = {
   recommendedBatchNumber: number;
   totalBatches: number;
   batchSize: number;
+  locale?: 'es' | 'eu';
 };
 
 export type CoachTwoLineMessage = {
@@ -204,6 +205,7 @@ const buildReasons = ({
   signals,
   safety,
   isGrayZone,
+  locale = 'es',
 }: {
   primaryAction: CoachPlanV2['primaryAction'];
   signals: {
@@ -220,24 +222,66 @@ const buildReasons = ({
     avoidPressureFirst: boolean;
   };
   isGrayZone: boolean;
+  locale?: 'es' | 'eu';
 }) => {
+  const isBasque = locale === 'eu';
   const reasons: string[] = [];
-  if (isGrayZone) reasons.push('La senal aun no es nitida y hoy conviene una decision conservadora.');
-  if (safety.avoidPressureFirst) reasons.push('La base todavia no es estable para entrar a simulacro con calidad.');
+  if (isGrayZone) {
+    reasons.push(
+      isBasque
+        ? 'Seinalea oraindik ez da guztiz argia, eta gaur erabaki zuhurra komeni da.'
+        : 'La señal aún no es nítida y hoy conviene una decisión conservadora.',
+    );
+  }
+  if (safety.avoidPressureFirst) {
+    reasons.push(
+      isBasque
+        ? 'Oinarria oraindik ez dago nahikoa egonkor simulakroan kalitatez sartzeko.'
+        : 'La base todavía no es estable para entrar a simulacro con calidad.',
+    );
+  }
   if (signals.backlogPressure >= 55 || signals.backlogOverdue >= 10) {
-    reasons.push('Hay repaso vencido suficiente como para consolidar antes de apretar.');
+    reasons.push(
+      isBasque
+        ? 'Pilatutako errepaso nahikoa dago estutu aurretik sendotzeko.'
+        : 'Hay repaso vencido suficiente como para consolidar antes de apretar.',
+    );
   }
   if (signals.daysSinceLastSession !== null && signals.daysSinceLastSession >= 3) {
-    reasons.push('Tras varios dias sin sesion, una reentrada corta tiene mejor retorno.');
+    reasons.push(
+      isBasque
+        ? 'Hainbat egun saiorik gabe egon ondoren, berrartze labur batek etekin hobea ematen du.'
+        : 'Tras varios días sin sesión, una reentrada corta tiene mejor retorno.',
+    );
   }
   if (signals.pressureGap !== null && signals.pressureGap >= 0.12 && primaryAction !== 'simulacro') {
-    reasons.push('La brecha bajo presion existe, pero hoy va mejor estabilizar primero.');
+    reasons.push(
+      isBasque
+        ? 'Presiopean aldea badago, baina gaur hobe da lehenengo egonkortzea.'
+        : 'La brecha bajo presión existe, pero hoy va mejor estabilizar primero.',
+    );
   }
   if (signals.accuracyRecent !== null && signals.accuracyRecent < 0.55) {
-    reasons.push('El acierto reciente es bajo y conviene quitar ruido antes de subir exigencia.');
+    reasons.push(
+      isBasque
+        ? 'Azken asmatze-tasa baxua da eta exijentzia igo aurretik zarata kentzea komeni da.'
+        : 'El acierto reciente es bajo y conviene quitar ruido antes de subir exigencia.',
+    );
   }
-  if (safety.forbidHighIntensity) reasons.push('La intensidad se recorta porque aparece riesgo de fatiga.');
-  if (reasons.length === 0) reasons.push('Las senales permiten una siguiente sesion clara y ejecutable.');
+  if (safety.forbidHighIntensity) {
+    reasons.push(
+      isBasque
+        ? 'Intentsitatea murrizten da neke-arriskua agertzen delako.'
+        : 'La intensidad se recorta porque aparece riesgo de fatiga.',
+    );
+  }
+  if (reasons.length === 0) {
+    reasons.push(
+      isBasque
+        ? 'Seinaleek hurrengo saio argi eta egingarria ahalbidetzen dute.'
+        : 'Las señales permiten una siguiente sesión clara y ejecutable.',
+    );
+  }
   return reasons.slice(0, 4);
 };
 
@@ -389,18 +433,37 @@ export const buildCoachPlanV2 = (
   const signalCompleteness = signalCount / 5;
   const defaultsUsed = defaults.values();
 
+  const locale = input.locale ?? 'es';
+  const isBasque = locale === 'eu';
+
   const supportingSignals: string[] = [];
   if (daysSinceLastSession !== null && daysSinceLastSession > 0) {
-    supportingSignals.push(`Ultima sesion hace ${daysSinceLastSession}d`);
+    supportingSignals.push(
+      isBasque
+        ? `Azken saioa duela ${daysSinceLastSession} egun`
+        : `Última sesión hace ${daysSinceLastSession}d`,
+    );
   }
   if (accuracyRecent !== null) {
-    supportingSignals.push(`Acierto reciente ${formatPercent(accuracyRecent)}`);
+    supportingSignals.push(
+      isBasque
+        ? `Azken asmatzea ${formatPercent(accuracyRecent)}`
+        : `Acierto reciente ${formatPercent(accuracyRecent)}`,
+    );
   }
   if (pressureGap !== null && pressureGap !== undefined) {
-    supportingSignals.push(`Brecha presion ${Math.round(Math.abs(pressureGap) * 100)} pts`);
+    supportingSignals.push(
+      isBasque
+        ? `Presio-aldea ${Math.round(Math.abs(pressureGap) * 100)} pt`
+        : `Brecha de presión ${Math.round(Math.abs(pressureGap) * 100)} pts`,
+    );
   }
   if (backlogOverdue > 0) {
-    supportingSignals.push(`Repasos urgentes ${backlogOverdue}`);
+    supportingSignals.push(
+      isBasque
+        ? `Premiazko errepasoak ${backlogOverdue}`
+        : `Repasos urgentes ${backlogOverdue}`,
+    );
   }
 
   return {
@@ -427,20 +490,33 @@ export const buildCoachPlanV2 = (
       },
       safety,
       isGrayZone,
+      locale,
     }),
     evidence: {
       dominantProblem:
         primaryAction === 'recovery'
-          ? 'Perdida de ritmo'
+          ? isBasque
+            ? 'Erritmo-galera'
+            : 'Pérdida de ritmo'
           : primaryAction === 'review'
-            ? 'Base con deuda'
+            ? isBasque
+              ? 'Oinarrian zorra'
+              : 'Base con deuda'
             : primaryAction === 'anti_trap'
-              ? 'Errores de lectura'
+              ? isBasque
+                ? 'Irakurketa-akatsak'
+                : 'Errores de lectura'
               : primaryAction === 'simulacro'
-                ? 'Presion de examen'
+                ? isBasque
+                  ? 'Azterketa-presioa'
+                  : 'Presión de examen'
                 : primaryAction === 'push'
-                  ? 'Momento aprovechable'
-                  : 'Continuidad',
+                  ? isBasque
+                    ? 'Une aprobetxagarria'
+                    : 'Momento aprovechable'
+                  : isBasque
+                    ? 'Jarraitutasuna'
+                    : 'Continuidad',
       supportingSignals: supportingSignals.slice(0, 4),
     },
     sessionSpec: buildSessionSpec(primaryAction, intensity, duration),
@@ -459,19 +535,71 @@ export const buildCoachPlanV2 = (
   };
 };
 
-export const buildCoachTwoLineMessageV2 = (planV2: CoachPlanV2): CoachTwoLineMessage => {
+export const buildCoachTwoLineMessageV2 = (
+  planV2: CoachPlanV2,
+  localeOrOptions:
+    | 'es'
+    | 'eu'
+    | {
+        contextLabel?: string;
+        locale?: 'es' | 'eu';
+      } = 'es',
+): CoachTwoLineMessage => {
+  const locale =
+    typeof localeOrOptions === 'string'
+      ? localeOrOptions
+      : localeOrOptions?.locale ?? 'es';
+  const isBasque = locale === 'eu';
   switch (planV2.primaryAction) {
-    case 'review':
-      return { line1: 'Tienes repaso rentable delante.', line2: 'Hoy va mejor consolidar antes de seguir.', text: 'Tienes repaso rentable delante. Hoy va mejor consolidar antes de seguir.' };
-    case 'recovery':
-      return { line1: 'Lo importante hoy es volver a entrar.', line2: 'Una sesion corta ya cambia la dinamica.', text: 'Lo importante hoy es volver a entrar. Una sesion corta ya cambia la dinamica.' };
-    case 'simulacro':
-      return { line1: 'Toca medirte en condiciones de examen.', line2: 'La foto real necesita presion y cierre completo.', text: 'Toca medirte en condiciones de examen. La foto real necesita presion y cierre completo.' };
-    case 'anti_trap':
-      return { line1: 'Estan pesando errores de lectura.', line2: 'Hoy va mejor afinar trampas antes de ampliar.', text: 'Estan pesando errores de lectura. Hoy va mejor afinar trampas antes de ampliar.' };
-    case 'push':
-      return { line1: 'Tu base aguanta una marcha mas.', line2: 'Hoy puedes subir exigencia con control.', text: 'Tu base aguanta una marcha mas. Hoy puedes subir exigencia con control.' };
-    default:
-      return { line1: 'Hay una siguiente sesion clara.', line2: 'Hoy conviene mantener continuidad y senal.', text: 'Hay una siguiente sesion clara. Hoy conviene mantener continuidad y senal.' };
+    case 'review': {
+      const line1 = isBasque ? 'Errepaso errentagarria duzu aurrean.' : 'Tienes repaso rentable delante.';
+      const line2 = isBasque
+        ? 'Gaur hobe da aurrera egin aurretik sendotzea.'
+        : 'Hoy va mejor consolidar antes de seguir.';
+      return { line1, line2, text: `${line1} ${line2}` };
+    }
+    case 'recovery': {
+      const line1 = isBasque
+        ? 'Gaur garrantzitsuena berriro martxan jartzea da.'
+        : 'Lo importante hoy es volver a entrar.';
+      const line2 = isBasque
+        ? 'Saio labur batek dinamika aldatzen du.'
+        : 'Una sesión corta ya cambia la dinámica.';
+      return { line1, line2, text: `${line1} ${line2}` };
+    }
+    case 'simulacro': {
+      const line1 = isBasque
+        ? 'Azterketa-baldintzetan neurtzeko unea da.'
+        : 'Toca medirte en condiciones de examen.';
+      const line2 = isBasque
+        ? 'Benetako argazkiak presioa eta itxiera osoa behar ditu.'
+        : 'La foto real necesita presión y cierre completo.';
+      return { line1, line2, text: `${line1} ${line2}` };
+    }
+    case 'anti_trap': {
+      const line1 = isBasque
+        ? 'Irakurketa-akatsak pisua hartzen ari dira.'
+        : 'Están pesando errores de lectura.';
+      const line2 = isBasque
+        ? 'Gaur hobe da tranpak fintzea zabaldu aurretik.'
+        : 'Hoy va mejor afinar trampas antes de ampliar.';
+      return { line1, line2, text: `${line1} ${line2}` };
+    }
+    case 'push': {
+      const line1 = isBasque
+        ? 'Zure oinarriak martxa bat gehiago eusten du.'
+        : 'Tu base aguanta una marcha más.';
+      const line2 = isBasque
+        ? 'Gaur exijentzia kontrolpean igo dezakezu.'
+        : 'Hoy puedes subir exigencia con control.';
+      return { line1, line2, text: `${line1} ${line2}` };
+    }
+    default: {
+      const line1 = isBasque ? 'Hurrengo saio argi bat duzu.' : 'Hay una siguiente sesión clara.';
+      const line2 = isBasque
+        ? 'Gaur jarraitutasuna eta seinalea mantentzea komeni da.'
+        : 'Hoy conviene mantener continuidad y señal.';
+      return { line1, line2, text: `${line1} ${line2}` };
+    }
   }
 };

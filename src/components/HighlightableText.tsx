@@ -42,6 +42,16 @@ export default function HighlightableText({
   const [selectionRange, setSelectionRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
   const [popupPos, setPopupPos] = useState<{ top: number; left: number } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; top: number; left: number } | null>(null);
+  const dismissedRangeRef = useRef<string | null>(null);
+
+  const dismissSelection = () => {
+    if (selectionRange) {
+      dismissedRangeRef.current = `${selectionRange.startIndex}:${selectionRange.endIndex}`;
+    }
+    window.getSelection()?.removeAllRanges();
+    setSelectionRange(null);
+    setPopupPos(null);
+  };
 
   const getAbsoluteOffset = useCallback((container: Node, targetNode: Node, localOffset: number) => {
     const treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
@@ -59,6 +69,7 @@ export default function HighlightableText({
     if (readOnly) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !containerRef.current) {
+      dismissedRangeRef.current = null;
       setSelectionRange(null);
       setPopupPos(null);
       return;
@@ -83,6 +94,12 @@ export default function HighlightableText({
     }
 
     if (end > start) {
+      // Ignore a selection the user has just applied or dismissed until it changes
+      // (some browsers keep the range alive briefly after removeAllRanges()).
+      if (dismissedRangeRef.current === `${start}:${end}`) {
+        return;
+      }
+      dismissedRangeRef.current = null;
       if (typeof maxSelectionChars === 'number' && maxSelectionChars > 0) {
         const selectionLength = end - start;
         if (selectionLength > maxSelectionChars) {
@@ -212,8 +229,7 @@ export default function HighlightableText({
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'core_concept' });
-              window.getSelection()?.removeAllRanges();
-              setPopupPos(null);
+              dismissSelection();
             }}
             className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-emerald-500/20 text-emerald-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -227,8 +243,7 @@ export default function HighlightableText({
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'law_reference' });
-              window.getSelection()?.removeAllRanges();
-              setPopupPos(null);
+              dismissSelection();
             }}
             className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-blue-500/20 text-blue-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -242,8 +257,7 @@ export default function HighlightableText({
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'deadline' });
-              window.getSelection()?.removeAllRanges();
-              setPopupPos(null);
+              dismissSelection();
             }}
             className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-orange-500/20 text-orange-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -257,8 +271,7 @@ export default function HighlightableText({
             onClick={(e) => {
               e.preventDefault();
               onAddHighlight({ ...selectionRange, type: 'exception' });
-              window.getSelection()?.removeAllRanges();
-              setPopupPos(null);
+              dismissSelection();
             }}
             className="w-11 h-11 flex flex-col items-center justify-center rounded-xl hover:bg-rose-500/20 text-rose-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}
@@ -274,8 +287,7 @@ export default function HighlightableText({
             aria-label={isBasque ? 'Itxi' : 'Cerrar'}
             onClick={(e) => {
               e.preventDefault();
-              window.getSelection()?.removeAllRanges();
-              setPopupPos(null);
+              dismissSelection();
             }}
             className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 text-slate-400 transition-all active:scale-95"
             style={{ WebkitTapHighlightColor: 'transparent' }}

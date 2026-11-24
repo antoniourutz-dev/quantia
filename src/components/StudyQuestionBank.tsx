@@ -15,6 +15,7 @@ import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from 
 import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail, getQuestionBankTopicOptions, type CurriculumTopicOption } from '../lib/quantiaApi';
 import EditorialExplanation from './EditorialExplanation';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
+import StudySubNav, { type StudySubView } from './StudySubNav';
 import { createId } from '../lib/id';
 import { recordQuestionView } from '../lib/questionActivity';
 
@@ -58,6 +59,7 @@ export default function StudyQuestionBank({
   onClearGeneralLawArticleGroup,
   onStartOfficialPractice,
   onOpenGuidedStudy,
+  onOpenNotesLibrary,
 }: {
   curriculum: string;
   generalLaw?: GeneralLaw | null;
@@ -86,6 +88,7 @@ export default function StudyQuestionBank({
   onClearGeneralLawArticleGroup?: (articleIds: string[]) => void;
   onStartOfficialPractice?: (questions: Question[], title: string) => void;
   onOpenGuidedStudy?: (() => void) | null;
+  onOpenNotesLibrary?: (() => void) | null;
 }) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -306,7 +309,15 @@ export default function StudyQuestionBank({
           </p>
         </div>
 
-        {onOpenGuidedStudy ? (
+        {onOpenNotesLibrary ? (
+          <StudySubNav
+            activeTab="study-bank"
+            onChangeTab={(tab: StudySubView) => {
+              if (tab === 'study') onOpenGuidedStudy?.();
+              if (tab === 'study-notes') onOpenNotesLibrary();
+            }}
+          />
+        ) : onOpenGuidedStudy ? (
           <button
             type="button"
             onClick={onOpenGuidedStudy}

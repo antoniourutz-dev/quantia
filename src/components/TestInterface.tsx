@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  FileText,
   Flag,
   LayoutGrid,
   RotateCcw,
@@ -18,6 +19,13 @@ import { useAppLocale } from '../lib/locale';
 import type { StudyQuestionData } from '../lib/quantiaApi';
 import HighlightableText from './HighlightableText';
 import EditorialExplanation from './EditorialExplanation';
+import QuestionNoteDrawer from './QuestionNoteDrawer';
+import QuestionErrataPanel from './QuestionErrataPanel';
+import { useStudyAnnotations } from '../hooks/useStudyAnnotations';
+import {
+  getUserErrataReportsForQuestions,
+  type QuestionErrataReport,
+} from '../lib/questionErrataApi';
 import { recordQuestionAnswer, recordQuestionView } from '../lib/questionActivity';
 
 interface TestInterfaceProps {
@@ -102,6 +110,45 @@ export default function TestInterface({
   const activityUserId = activityContext?.userId ?? null;
   const activityCurriculum = activityContext?.curriculum ?? null;
   const activitySessionId = activityContext?.sessionId ?? null;
+  const canActiveStudyCurrent =
+    !isSimulacro && (selectedAnswer !== null || isMistakeReview);
+
+  const allQuestionIds = useMemo(() => questions.map((q) => q.id), [questions]);
+  const {
+    highlightsMap,
+    notesMap,
+    addHighlight,
+    removeHighlight,
+    saveNote,
+  } = useStudyAnnotations({
+    questionIds: allQuestionIds,
+    initialData: studyData,
+    enabled: !isSimulacro || showMarks || showNotes,
+  });
+
+  const [noteDrawerOpen, setNoteDrawerOpen] = useState(false);
+  const [errataReportsMap, setErrataReportsMap] = useState<
+    Record<string, QuestionErrataReport[]>
+  >({});
+
+  useEffect(() => {
+    setNoteDrawerOpen(false);
+  }, [currentIndex, currentQuestion?.id, isMistakeReview]);
+
+  useEffect(() => {
+    if (allQuestionIds.length === 0) return;
+    let cancelled = false;
+    getUserErrataReportsForQuestions(allQuestionIds, activityUserId)
+      .then((reports) => {
+        if (!cancelled) setErrataReportsMap(reports);
+      })
+      .catch(() => {
+        // Ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activityUserId, allQuestionIds]);
   const questionTextSizeClass = isFocusMode
     ? focusTextSize === 'large'
       ? 'text-lg sm:text-xl'
@@ -869,13 +916,23 @@ export default function TestInterface({
 
               <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
                 {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="mr-1 font-black text-amber-600">*</span>}
-                {showMarks ? (
+                {canActiveStudyCurrent || showMarks ? (
                   <HighlightableText
                     text={currentQuestion.text}
-                    highlights={studyData?.highlights?.[currentQuestion.id] ?? []}
-                    onAddHighlight={() => {}}
-                    onRemoveHighlight={() => {}}
-                    readOnly
+                    highlights={highlightsMap[currentQuestion.id] ?? []}
+                    onAddHighlight={(hl) =>
+                      void addHighlight(currentQuestion.id, hl, {
+                        contentType: 'question',
+                        category: currentQuestion.category ?? null,
+                      })
+                    }
+                    onRemoveHighlight={(id) =>
+                      void removeHighlight(currentQuestion.id, id, {
+                        contentType: 'question',
+                        category: currentQuestion.category ?? null,
+                      })
+                    }
+                    readOnly={!canActiveStudyCurrent}
                     maxSelectionChars={120}
                   />
                 ) : (
@@ -883,10 +940,10 @@ export default function TestInterface({
                 )}
               </h2>
               {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{currentQuestion.auditSeverity === 'warning' ? (isBasque ? 'Erantzun balioztatua araudi-oharrarekin. Ikusi azalpena.' : 'Respuesta validada con advertencia normativa. Consulta la explicación.') : currentQuestion.auditSeverity === 'pending' ? (isBasque ? 'Dokumentazioaren zain: gordetako erantzuna ez dago balioztatuta. Ikusi azalpena.' : 'Pendiente de documentación: la letra registrada es orientativa y no está validada. Consulta la explicación.') : (isBasque ? 'Galdera gatazkatsua: bankuko erantzuna ez da zalantzarik gabekoa.' : 'Pregunta conflictiva: la clave registrada es operativa y puede no ser jurídicamente inequívoca. Consulta la explicación.')}</p>}
-              {showNotes ? (
+              {showNotes && !canActiveStudyCurrent ? (
                 <div className="mt-3">
                   {(() => {
-                    const note = studyData?.notes?.[currentQuestion.id] ?? '';
+                    const note = notesMap[currentQuestion.id] ?? '';
                     const trimmed = String(note).trim();
                     if (!trimmed) return null;
                     return (
@@ -908,9 +965,9 @@ export default function TestInterface({
                   })()}
                 </div>
               ) : null}
-              {showNotes && noteOpen ? (
+              {showNotes && !canActiveStudyCurrent && noteOpen ? (
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-700">
-                  {studyData?.notes?.[currentQuestion.id]}
+                  {notesMap[currentQuestion.id]}
                 </div>
               ) : null}
             </div>
@@ -925,6 +982,7 @@ export default function TestInterface({
               {currentQuestion.options.map((option, optionIndex) => {
                 const isSelected = selectedAnswer === option.id;
                 const isAnswerCorrect = option.id === currentQuestion.correctAnswer;
+                const isLockedAnswered = !isSimulacro && selectedAnswer !== null;
 
                 let itemClass = `relative flex w-full items-center justify-between overflow-hidden text-left transition-all duration-300 group ${
                   isFocusMode ? 'p-3 sm:p-3.5' : 'p-4 sm:p-5'
@@ -946,13 +1004,9 @@ export default function TestInterface({
                   itemClass += 'opacity-30 grayscale-[0.8] border-transparent';
                 }
 
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => handleAnswer(option.id)}
-                    disabled={closingSession || (!isSimulacro && selectedAnswer !== null)}
-                    className={itemClass}
-                  >
+                const answerKey = `${currentQuestion.id}_ans_${optionIndex}`;
+                const optionInner = (
+                  <>
                     {isSelected && (
                       <div
                         className={`absolute left-0 top-0 bottom-0 w-1 ${
@@ -980,17 +1034,35 @@ export default function TestInterface({
                         {option.id.toUpperCase()}
                       </span>
                       <span
-                        className={`font-bold leading-snug transition-colors duration-300 ${answerTextSizeClass} ${
+                        onMouseDown={(event) => {
+                          if (canActiveStudyCurrent) event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                          if (canActiveStudyCurrent) event.stopPropagation();
+                        }}
+                        className={`select-text font-bold leading-snug transition-colors duration-300 ${answerTextSizeClass} ${
                           isSelected || (!isSimulacro && isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                         }`}
                       >
-                        {showMarks ? (
+                        {canActiveStudyCurrent || showMarks ? (
                           <HighlightableText
                             text={option.text}
-                            highlights={studyData?.highlights?.[`${currentQuestion.id}_ans_${optionIndex}`] ?? []}
-                            onAddHighlight={() => {}}
-                            onRemoveHighlight={() => {}}
-                            readOnly
+                            highlights={highlightsMap[answerKey] ?? []}
+                            onAddHighlight={(hl) =>
+                              void addHighlight(currentQuestion.id, hl, {
+                                contentType: 'answer',
+                                answerIndex: optionIndex,
+                                category: currentQuestion.category ?? null,
+                              })
+                            }
+                            onRemoveHighlight={(id) =>
+                              void removeHighlight(currentQuestion.id, id, {
+                                contentType: 'answer',
+                                answerIndex: optionIndex,
+                                category: currentQuestion.category ?? null,
+                              })
+                            }
+                            readOnly={!canActiveStudyCurrent}
                             maxSelectionChars={90}
                           />
                         ) : (
@@ -1011,10 +1083,99 @@ export default function TestInterface({
                         </div>
                       )}
                     </div>
+                  </>
+                );
+
+                // When answered in non-simulacro mode, render as a non-disabled div container so browsers allow text selection for highlighting
+                if (isLockedAnswered) {
+                  return (
+                    <div
+                      key={option.id}
+                      role="group"
+                      aria-label={`${option.id.toUpperCase()}. ${option.text}`}
+                      className={`${itemClass} select-text`}
+                    >
+                      {optionInner}
+                    </div>
+                  );
+                }
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleAnswer(option.id)}
+                    disabled={closingSession}
+                    className={itemClass}
+                  >
+                    {optionInner}
                   </button>
                 );
               })}
             </div>
+
+            {canActiveStudyCurrent ? (
+              <div className="px-4 sm:px-0 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNoteDrawerOpen((prev) => !prev)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-black transition ${
+                        (notesMap[currentQuestion.id] ?? '').trim()
+                          ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <FileText size={14} />
+                      {(notesMap[currentQuestion.id] ?? '').trim()
+                        ? isBasque
+                          ? 'Oharra editatu'
+                          : 'Editar nota'
+                        : isBasque
+                          ? 'Oharra gehitu'
+                          : 'Añadir nota'}
+                    </button>
+                    <QuestionErrataPanel
+                      key={currentQuestion.id}
+                      questionId={currentQuestion.id}
+                      curriculum={activityCurriculum ?? 'osakidetza_admin'}
+                      userId={activityUserId}
+                      existingReports={errataReportsMap[currentQuestion.id] ?? []}
+                      onSubmitted={(report) =>
+                        setErrataReportsMap((prev) => ({
+                          ...prev,
+                          [currentQuestion.id]: [report, ...(prev[currentQuestion.id] ?? [])],
+                        }))
+                      }
+                    />
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-400">
+                    {isBasque
+                      ? 'Hautatu testua azpimarratzeko'
+                      : 'Selecciona texto para subrayar'}
+                  </span>
+                </div>
+
+                {(notesMap[currentQuestion.id] ?? '').trim() && !noteDrawerOpen ? (
+                  <div className="mt-2.5 rounded-2xl border border-amber-200 bg-amber-50/60 px-3.5 py-2.5 text-xs font-medium text-amber-950">
+                    <span className="font-black text-amber-800">
+                      {isBasque ? 'Zure oharra: ' : 'Tu nota: '}
+                    </span>
+                    {notesMap[currentQuestion.id]}
+                  </div>
+                ) : null}
+
+                <QuestionNoteDrawer
+                  open={noteDrawerOpen}
+                  questionId={currentQuestion.id}
+                  questionNumber={currentQuestion.number}
+                  note={notesMap[currentQuestion.id] ?? ''}
+                  onClose={() => setNoteDrawerOpen(false)}
+                  onSave={(note) => saveNote(currentQuestion.id, note)}
+                />
+              </div>
+            ) : null}
 
             {showExplanation && !isSimulacro && (!isFocusMode || manualExplanationOpen) && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-500 px-4 sm:px-0 py-4 sm:py-0 sm:mt-4">
@@ -1037,13 +1198,29 @@ export default function TestInterface({
                         onClick={() => setManualExplanationOpen(false)}
                         className="text-[10px] font-black text-slate-400 hover:text-indigo-600 uppercase tracking-[0.2em] transition-colors"
                       >
-                        {isBasque ? 'Itxi' : 'Cerrar'}
+                        {isBasque ? 'Ezkutatu' : 'Ocultar'}
                       </button>
                     </div>
                     <EditorialExplanation
                       text={currentQuestion.explanation}
-                      highlights={showMarks ? studyData?.highlights?.[`${currentQuestion.id}_exp`] ?? [] : []}
-                      readOnly
+                      highlights={
+                        canActiveStudyCurrent || showMarks
+                          ? highlightsMap[`${currentQuestion.id}_exp`] ?? []
+                          : []
+                      }
+                      onAddHighlight={(hl) =>
+                        void addHighlight(currentQuestion.id, hl, {
+                          contentType: 'explanation',
+                          category: currentQuestion.category ?? null,
+                        })
+                      }
+                      onRemoveHighlight={(id) =>
+                        void removeHighlight(currentQuestion.id, id, {
+                          contentType: 'explanation',
+                          category: currentQuestion.category ?? null,
+                        })
+                      }
+                      readOnly={!canActiveStudyCurrent}
                       emptyLabel={isBasque ? 'Ez dago azalpenik.' : 'Sin explicación disponible.'}
                     />
                     {officialMetadata ? (

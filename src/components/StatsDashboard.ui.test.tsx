@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import StatsDashboard from './StatsDashboard';
@@ -237,16 +237,17 @@ describe('StatsDashboard', () => {
     );
 
     // Pulso general y transferencia sin simulacros visibles desde el primer vistazo
-    expect(screen.getByText('68%')).toBeInTheDocument();
+    expect(screen.getAllByText('68%').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/62% – 74%/)).toBeInTheDocument();
     expect(screen.getByText(/En foco \(1 tema\) vs\. Mezclado \/ Largo/i)).toBeInTheDocument();
     expect(screen.getByText(/Temas \(en foco\)/i)).toBeInTheDocument();
     expect(screen.getByText('Desafío')).toBeInTheDocument();
     expect(screen.getByText(/60% recuperadas/i)).toBeInTheDocument();
 
-    // Temas individuales están comprimidos inicialmente para no generar scroll largo
-    expect(screen.queryByText('Tema 1 · Constitución')).not.toBeInTheDocument();
-    expect(screen.queryByText('Tema 6 · Contratación')).not.toBeInTheDocument();
+    // Temas individuales están comprimidos inicialmente en Bloque 3 para no generar scroll largo
+    const topicsBreakdown = screen.getByTestId('topics-breakdown-section');
+    expect(within(topicsBreakdown).queryByText('Tema 1 · Constitución')).not.toBeInTheDocument();
+    expect(within(topicsBreakdown).queryByText('Tema 6 · Contratación')).not.toBeInTheDocument();
     expect(screen.queryByText('Pregunta constitucional')).not.toBeInTheDocument();
 
     // Desplegar el acordeón del Temario Común
@@ -455,4 +456,93 @@ describe('StatsDashboard', () => {
     await user.click(screen.getByRole('button', { name: /Practicar ley/i }));
     expect(onPracticeLaw).toHaveBeenCalledWith('Ley 39/2015');
   });
+
+  it('permite simular nota neta con 0 / -0,25 / -0,33 y lanzar práctica 1-clic desde Priorizador ROI', async () => {
+    const user = userEvent.setup();
+    const onChangePenaltyRule = vi.fn();
+    const onPracticeTopic = vi.fn();
+
+    render(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={results}
+          bundle={buildBundle()}
+          curriculum="osakidetza_admin"
+          penaltyRule="none"
+          onChangePenaltyRule={onChangePenaltyRule}
+          onPracticeTopic={onPracticeTopic}
+        />
+      </LocaleProvider>,
+    );
+
+    const simulator = screen.getByRole('region', {
+      name: /Simulador de nota neta y priorizador ROI/i,
+    });
+    expect(within(simulator).getByText('6,80')).toBeInTheDocument();
+
+    // Cambiar regla a -0,25: 68 - 32 * 0.25 = 60 -> 6,00 / 10
+    const ruleGroup = within(simulator).getByRole('radiogroup', {
+      name: /Regla de penalización del simulador/i,
+    });
+    await user.click(within(ruleGroup).getByRole('radio', { name: '-0,25' }));
+    expect(onChangePenaltyRule).toHaveBeenCalledWith('quarter');
+    expect(within(simulator).getByText('6,00')).toBeInTheDocument();
+
+    // Cambiar regla a -0,33: 68 - 32 / 3 = 57.333... -> 5,73 / 10
+    await user.click(within(ruleGroup).getByRole('radio', { name: '-0,33' }));
+    expect(onChangePenaltyRule).toHaveBeenCalledWith('third');
+    expect(within(simulator).getByText('5,73')).toBeInTheDocument();
+
+    // Ajustar longitud de examen a 50 preguntas y % respondidas a 80%
+    await user.click(within(simulator).getByRole('button', { name: '50' }));
+    const answerRateSlider = within(simulator).getByLabelText(/Estrategia \(% respondidas\)/i);
+    fireEvent.change(answerRateSlider, { target: { value: '80' } });
+    // 50 * 0.8 = 40 answered -> 10 blanks
+    expect(within(simulator).getByText('10')).toBeInTheDocument();
+
+    // Priorizador ROI lista primero el tema de mayor retorno (Tema 6 · Contratación) y permite 1 clic
+    const roiButtons = within(simulator).getAllByRole('button', { name: 'Practicar' });
+    expect(roiButtons.length).toBeGreaterThanOrEqual(1);
+    await user.click(roiButtons[0]);
+    expect(onPracticeTopic).toHaveBeenCalledWith('Tema 6 · Contratación', 'specific');
+  });
+
+  it('usa fallback de lawBreakdown en el Priorizador ROI cuando no hay topicBreakdown', async () => {
+    const user = userEvent.setup();
+    const onPracticeLaw = vi.fn();
+    const lawOnlyBundle = buildBundle();
+    lawOnlyBundle.practiceState.learningDashboardV2!.topicBreakdown = [];
+    lawOnlyBundle.practiceState.learningDashboardV2!.lawBreakdown = [
+      {
+        lawId: 'law-39',
+        ley_referencia: 'Ley 39/2015',
+        shortTitle: 'Ley 39/2015 LPACAP',
+        attempts: 25,
+        questionCount: 40,
+        consolidatedCount: 10,
+        correctAttempts: 14,
+        accuracyRate: 0.56,
+      },
+    ];
+
+    render(
+      <LocaleProvider locale="es">
+        <StatsDashboard
+          results={results}
+          bundle={lawOnlyBundle}
+          curriculum="leyes-generales"
+          penaltyRule="quarter"
+          onPracticeLaw={onPracticeLaw}
+        />
+      </LocaleProvider>,
+    );
+
+    const simulator = screen.getByRole('region', {
+      name: /Simulador de nota neta y priorizador ROI/i,
+    });
+    expect(within(simulator).getByText('Ley 39/2015')).toBeInTheDocument();
+    await user.click(within(simulator).getByRole('button', { name: 'Practicar' }));
+    expect(onPracticeLaw).toHaveBeenCalledWith('Ley 39/2015');
+  });
 });
+

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Calendar, CheckCircle2, AlertTriangle, Save, ListChecks, SlidersHorizontal } from 'lucide-react';
+import { Calendar, CheckCircle2, AlertTriangle, Save, ListChecks, SlidersHorizontal, Scale } from 'lucide-react';
 import type { PracticeExamTarget } from '../types';
 import { useAppLocale } from '../lib/locale';
 import type { CurriculumOption } from '../lib/quantia/types';
 import { PRACTICE_MODE_IDS, type PracticeModeVisibilityId } from '../lib/practiceModeVisibility';
 import type { CustomPracticeSupportMode } from '../domain/customPractice/customPracticeTypes';
+import { PENALTY_RULE_ORDER, PENALTY_RULES, type PenaltyRuleId } from '../lib/netScore';
 
 interface SettingsPanelProps {
   examTarget: PracticeExamTarget | null;
@@ -14,6 +15,7 @@ interface SettingsPanelProps {
   visibleCurriculumIds: string[];
   visiblePracticeModeIds: PracticeModeVisibilityId[];
   customSupportMode: CustomPracticeSupportMode;
+  penaltyRule: PenaltyRuleId;
   onSave: (next: {
     examDate: string | null;
     dailyReviewCapacity: number;
@@ -21,6 +23,7 @@ interface SettingsPanelProps {
     visibleCurriculumIds: string[];
     visiblePracticeModeIds: PracticeModeVisibilityId[];
     customSupportMode: CustomPracticeSupportMode;
+    penaltyRule: PenaltyRuleId;
   }) => Promise<void>;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
@@ -32,7 +35,7 @@ const clampInt = (value: number, min: number, max: number) => {
   return Math.min(max, Math.max(min, Math.round(value)));
 };
 
-export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, visiblePracticeModeIds, customSupportMode, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
+export default function SettingsPanel({ examTarget, saving, notice, curriculumOptions, visibleCurriculumIds, visiblePracticeModeIds, customSupportMode, penaltyRule, onSave, isAdmin = false, onOpenAdmin, onOpenTelemetry }: SettingsPanelProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const telemetryEnabled = useMemo(() => {
@@ -58,6 +61,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
   const [selectedCurriculumIds, setSelectedCurriculumIds] = useState<string[]>(visibleCurriculumIds);
   const [selectedPracticeModeIds, setSelectedPracticeModeIds] = useState<PracticeModeVisibilityId[]>(visiblePracticeModeIds);
   const [selectedCustomSupport, setSelectedCustomSupport] = useState<CustomPracticeSupportMode>(customSupportMode);
+  const [selectedPenaltyRule, setSelectedPenaltyRule] = useState<PenaltyRuleId>(penaltyRule);
 
   useEffect(() => {
     setExamDate(examTarget?.examDate ?? '');
@@ -77,11 +81,32 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
     setSelectedCustomSupport(customSupportMode);
   }, [customSupportMode]);
 
+  useEffect(() => {
+    setSelectedPenaltyRule(penaltyRule);
+  }, [penaltyRule]);
+
   const practiceModeOptions: Array<{ id: PracticeModeVisibilityId; label: string; description: string }> = [
+    {
+      id: 'standard',
+      label: isBasque ? 'Temario bidezko testa' : 'Test por temario',
+      description: isBasque
+        ? 'Aukeratu landu nahi duzun blokea (5 galderako bloke azkarrak barne).'
+        : 'Elige el bloque que quieres trabajar (incluye bloques rápidos de 5 preguntas).',
+    },
+    {
+      id: 'errors',
+      label: isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos',
+      description: isBasque ? 'Gehien kostatzen direnak errepasatu.' : 'Repasa las preguntas que más cuestan.',
+    },
     {
       id: 'topics',
       label: isBasque ? 'Gaiak' : 'Temas',
       description: isBasque ? 'Ikusi gaien energia eta landu huts gehienak.' : 'Consulta tu progreso por tema y repasa las preguntas más falladas.',
+    },
+    {
+      id: 'simulacro',
+      label: isBasque ? 'Simulakroa' : 'Simulacro',
+      description: isBasque ? 'Erantzunak amaieran ikusi.' : 'Responde sin ver el resultado hasta el final.',
     },
     {
       id: 'challenge',
@@ -91,27 +116,9 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
     {
       id: 'custom',
       label: isBasque ? 'Zure neurrira' : 'A tu medida',
-      description: isBasque ? 'Aukeratu edukia, gaia eta luzera.' : 'Elige contenido, tema y longitud.',
-    },
-    {
-      id: 'errors',
-      label: isBasque ? 'Hutsegiteak zuzendu' : 'Corregir fallos',
-      description: isBasque ? 'Gehien kostatzen direnak errepasatu.' : 'Repasa las preguntas que más cuestan.',
-    },
-    {
-      id: 'standard',
-      label: isBasque ? 'Temario bidezko testa' : 'Test por temario',
-      description: isBasque ? 'Aukeratu landu nahi duzun blokea.' : 'Elige el bloque que quieres trabajar.',
-    },
-    {
-      id: 'quick',
-      label: isBasque ? 'Bloke laburra' : 'Bloque corto',
-      description: isBasque ? 'Bost galderako saio azkarra.' : 'Una sesión rápida de cinco preguntas.',
-    },
-    {
-      id: 'simulacro',
-      label: isBasque ? 'Simulakroa' : 'Simulacro',
-      description: isBasque ? 'Erantzunak amaieran ikusi.' : 'Responde sin ver el resultado hasta el final.',
+      description: isBasque
+        ? 'Aukeratu edukia, gaia, zenbaki-tartea eta luzera.'
+        : 'Elige contenido, tema, rango numérico y longitud.',
     },
   ];
   const allPracticeModesSelected = selectedPracticeModeIds.length === PRACTICE_MODE_IDS.length;
@@ -321,6 +328,82 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
           </div>
         </div>
 
+        <div className="mt-6 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:mt-10 sm:rounded-[2rem] sm:p-8">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
+              <Scale size={20} />
+            </div>
+            <div>
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                {isBasque ? 'Zigor-araua / Nota garbia' : 'Regla de penalización / Nota neta'}
+              </div>
+              <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">
+                {isBasque
+                  ? 'Aukeratu zure oposizioko hutsen zigorra. Test amaierako emaitzan eta Estatistiken Simulatzailean aplikatuko da.'
+                  : 'Elige la penalización por fallo de tu oposición. Se aplicará al cierre de cada test y al Simulador de Estadísticas.'}
+              </p>
+            </div>
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label={isBasque ? 'Zigor-araua' : 'Regla de penalización'}
+            className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3"
+          >
+            {PENALTY_RULE_ORDER.map((ruleId) => {
+              const meta = PENALTY_RULES[ruleId];
+              const isSelected = selectedPenaltyRule === ruleId;
+              const title =
+                ruleId === 'none'
+                  ? isBasque
+                    ? 'Zigorrik gabe'
+                    : 'Sin penalización'
+                  : ruleId === 'quarter'
+                    ? isBasque
+                      ? '4 hutsek zuzen 1 kentzen dute'
+                      : '4 fallos restan 1 acierto'
+                    : isBasque
+                      ? '3 hutsek zuzen 1 kentzen dute'
+                      : '3 fallos restan 1 acierto';
+              const detail =
+                ruleId === 'none'
+                  ? isBasque
+                    ? 'Zuri uzteak ez du abantailarik.'
+                    : 'Dejar en blanco no aporta ventaja.'
+                  : isBasque
+                    ? `Errentagarria >%${meta.breakEvenPct} segurtasunarekin.`
+                    : `Compensa arriesgar con >${meta.breakEvenPct}% de certeza.`;
+
+              return (
+                <button
+                  key={ruleId}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  onClick={() => setSelectedPenaltyRule(ruleId)}
+                  className={`flex flex-col items-start rounded-2xl border-2 p-4 text-left transition-all ${
+                    isSelected
+                      ? 'border-indigo-600 bg-indigo-50/70 text-slate-900 shadow-sm'
+                      : 'border-slate-100 bg-white text-slate-600 hover:border-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-flex items-center rounded-xl px-2.5 py-1 text-base font-black tabular-nums ${
+                      isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-800'
+                    }`}
+                  >
+                    {meta.shortLabel}
+                  </span>
+                  <span className="mt-3 text-sm font-black text-slate-900">{title}</span>
+                  <span className="mt-1 text-xs font-medium leading-relaxed text-slate-500">
+                    {detail}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="mt-6 grid grid-cols-1 gap-4 sm:mt-10 md:grid-cols-2 md:gap-8">
           <div className="space-y-5 rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5 sm:rounded-[2rem] sm:p-8 sm:space-y-6">
             <div>
@@ -416,6 +499,7 @@ export default function SettingsPanel({ examTarget, saving, notice, curriculumOp
                 visibleCurriculumIds: selectedCurriculumIds,
                 visiblePracticeModeIds: selectedPracticeModeIds,
                 customSupportMode: selectedCustomSupport,
+                penaltyRule: selectedPenaltyRule,
               })
             }
             disabled={saving}

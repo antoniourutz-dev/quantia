@@ -4,6 +4,7 @@ import type { DashboardBundle } from '../lib/quantiaApi';
 import { getCurriculumCategoryGroupLabel, getCurriculumQuestionNumberBounds, getLastVisitedStudyQuestion } from '../lib/quantiaApi';
 import { formatSyllabusLabel, type SyllabusType } from '../types';
 import { useAppLocale } from '../lib/locale';
+import StudySubNav, { type StudySubView } from './StudySubNav';
 
 type StudyScope = 'all' | SyllabusType;
 export type StudyModeType = 'topic' | 'range';
@@ -22,9 +23,16 @@ interface StudyExplorerProps {
   bundle: DashboardBundle | null;
   onStartStudy: (params: StudyStartParams) => Promise<void>;
   onOpenQuestionBank: () => void;
+  onOpenNotesLibrary?: (() => void) | null;
 }
 
-export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpenQuestionBank }: StudyExplorerProps) {
+export default function StudyExplorer({
+  curriculum,
+  bundle,
+  onStartStudy,
+  onOpenQuestionBank,
+  onOpenNotesLibrary,
+}: StudyExplorerProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
   const MAX_RANGE_QUESTIONS = 300;
@@ -186,15 +194,25 @@ export default function StudyExplorer({ curriculum, bundle, onStartStudy, onOpen
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenQuestionBank}
-          className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-slate-200 bg-white px-5 py-4 text-slate-700 font-black text-base shadow-sm hover:bg-slate-50 transition-all"
-        >
-          <BookOpen size={18} className="text-indigo-600" />
-          <span className="hidden sm:inline">{isBasque ? 'Galdera-bankua' : 'Banco de preguntas'}</span>
-          <span className="sm:hidden">{isBasque ? 'Bankua' : 'Banco'}</span>
-        </button>
+        {onOpenNotesLibrary ? (
+          <StudySubNav
+            activeTab="study"
+            onChangeTab={(tab: StudySubView) => {
+              if (tab === 'study-bank') onOpenQuestionBank();
+              if (tab === 'study-notes') onOpenNotesLibrary();
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenQuestionBank}
+            className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-slate-200 bg-white px-5 py-4 text-slate-700 font-black text-base shadow-sm hover:bg-slate-50 transition-all"
+          >
+            <BookOpen size={18} className="text-indigo-600" />
+            <span className="hidden sm:inline">{isBasque ? 'Galdera-bankua' : 'Banco de preguntas'}</span>
+            <span className="sm:hidden">{isBasque ? 'Bankua' : 'Banco'}</span>
+          </button>
+        )}
       </div>
 
       {lastVisitedId && (

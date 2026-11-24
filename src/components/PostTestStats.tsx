@@ -8,9 +8,11 @@ import {
   RotateCcw,
   LayoutDashboard,
   Clock,
+  FileText,
   Flag,
   Zap,
   Info,
+  Scale,
 } from 'lucide-react';
 import type {
   ActivePracticeSession,
@@ -25,7 +27,15 @@ import { storeSessionCloseSummary } from '../lib/continuity';
 import { trackDecision, trackEffect } from '../lib/telemetry';
 import { buildSessionEndExperience } from '../lib/sessionEndExperience';
 import { getCurriculumCategoryGroupLabel } from '../lib/quantiaApi';
+import HighlightableText from './HighlightableText';
 import EditorialExplanation from './EditorialExplanation';
+import QuestionNoteDrawer from './QuestionNoteDrawer';
+import QuestionErrataPanel from './QuestionErrataPanel';
+import { useStudyAnnotations } from '../hooks/useStudyAnnotations';
+import {
+  getUserErrataReportsForQuestions,
+  type QuestionErrataReport,
+} from '../lib/questionErrataApi';
 import {
   createAnalysisLoadTrace,
   markAnalysisCtaVisible,
@@ -33,6 +43,13 @@ import {
   markAnalysisLevel1Ready,
   markAnalysisReviewVisible,
 } from '../lib/analysisLoadMetrics';
+import {
+  calculateNetScore,
+  DEFAULT_PENALTY_RULE,
+  formatNetScore,
+  PENALTY_RULES,
+  type PenaltyRuleId,
+} from '../lib/netScore';
 
 type ReviewFilter = 'all' | 'incorrect' | 'unanswered' | 'flagged';
 
@@ -53,6 +70,8 @@ interface PostTestStatsProps {
   onGoBack: () => void;
   onGoHome: () => void;
   homeVariant?: 'dashboard' | 'test-selection';
+  penaltyRule?: PenaltyRuleId;
+  userId?: string | null;
 }
 
 export default function PostTestStats({
@@ -68,6 +87,8 @@ export default function PostTestStats({
   onGoBack,
   onGoHome,
   homeVariant = 'dashboard',
+  penaltyRule = DEFAULT_PENALTY_RULE,
+  userId = null,
 }: PostTestStatsProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -99,6 +120,19 @@ export default function PostTestStats({
     [flaggedSet, scorableQuestions],
   );
   const mostlyBlank = unansweredCount > 0 && unansweredCount > answeredCount;
+  const hasPenalty = penaltyRule !== 'none';
+  const penaltyMeta = PENALTY_RULES[penaltyRule];
+  const netScore = useMemo(
+    () =>
+      calculateNetScore({
+        correct: score,
+        incorrect: incorrectCount,
+        unanswered: unansweredCount,
+        total,
+        penaltyRule,
+      }),
+    [incorrectCount, penaltyRule, score, total, unansweredCount],
+  );
 
   const answeredEntries = useMemo(
     () => answers.filter((a) => a.selectedOption != null),
@@ -113,6 +147,40 @@ export default function PostTestStats({
   const [showReview, setShowReview] = useState(false);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [showReviewExplanation, setShowReviewExplanation] = useState(false);
+  const [reviewNoteDrawerOpen, setReviewNoteDrawerOpen] = useState(false);
+  const [errataReportsMap, setErrataReportsMap] = useState<
+    Record<string, QuestionErrataReport[]>
+  >({});
+
+  const scorableQuestionIds = useMemo(
+    () => scorableQuestions.map((q) => q.id),
+    [scorableQuestions],
+  );
+  const {
+    highlightsMap,
+    notesMap,
+    addHighlight,
+    removeHighlight,
+    saveNote,
+  } = useStudyAnnotations({
+    questionIds: scorableQuestionIds,
+    enabled: showReview,
+  });
+
+  useEffect(() => {
+    if (!showReview || scorableQuestionIds.length === 0) return;
+    let cancelled = false;
+    getUserErrataReportsForQuestions(scorableQuestionIds, userId)
+      .then((reports) => {
+        if (!cancelled) setErrataReportsMap(reports);
+      })
+      .catch(() => {
+        // Ignore
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scorableQuestionIds, showReview]);
 
   const sessionEnd = useMemo(
     () =>
@@ -154,23 +222,41 @@ export default function PostTestStats({
         getCurriculumCategoryGroupLabel(curriculum, q.category)?.trim() ||
         (q.category ?? '').trim() ||
         (isBasque ? 'Beste arauak' : 'Otras normas');
-      if (!acc[law]) acc[law] = { total: 0, correct: 0 };
+      if (!acc[law]) acc[law] = { total: 0, correct: 0, incorrect: 0, unanswered: 0 };
       acc[law].total += 1;
       const answer = answerMap.get(q.id) ?? null;
-      if (answer?.isCorrect) acc[law].correct += 1;
+      if (!answer || answer.selectedOption == null) {
+        acc[law].unanswered += 1;
+      } else if (answer.isCorrect) {
+        acc[law].correct += 1;
+      } else {
+        acc[law].incorrect += 1;
+      }
       return acc;
-    }, {} as Record<string, { total: number; correct: number }>);
+    }, {} as Record<string, { total: number; correct: number; incorrect: number; unanswered: number }>);
 
     return Object.entries(lawStats)
-      .map(([fullName, stats]) => ({
-        fullName,
-        name: fullName.length > 36 ? `${fullName.substring(0, 33)}...` : fullName,
-        accuracy: Math.round((stats.correct / Math.max(1, stats.total)) * 100),
-        correct: stats.correct,
-        total: stats.total,
-      }))
+      .map(([fullName, stats]) => {
+        const lawNet = calculateNetScore({
+          correct: stats.correct,
+          incorrect: stats.incorrect,
+          unanswered: stats.unanswered,
+          total: stats.total,
+          penaltyRule,
+        });
+        return {
+          fullName,
+          name: fullName.length > 36 ? `${fullName.substring(0, 33)}...` : fullName,
+          accuracy: Math.round((stats.correct / Math.max(1, stats.total)) * 100),
+          correct: stats.correct,
+          incorrect: stats.incorrect,
+          unanswered: stats.unanswered,
+          total: stats.total,
+          netScoreBase10: lawNet.scoreBase10,
+        };
+      })
       .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
-  }, [analysisHydrated, answerMap, curriculum, isBasque, scorableQuestions]);
+  }, [analysisHydrated, answerMap, curriculum, isBasque, penaltyRule, scorableQuestions]);
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
 
   const reviewItems = useMemo(() => {
@@ -284,6 +370,7 @@ export default function PostTestStats({
 
   useEffect(() => {
     setShowReviewExplanation(false);
+    setReviewNoteDrawerOpen(false);
   }, [reviewIndex, reviewFilter, showReview]);
 
   const openMistakeReview = (preferredFilter?: ReviewFilter) => {
@@ -373,23 +460,63 @@ export default function PostTestStats({
         {/* TOP ROW: Score Badge + Continuity */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex flex-col items-center justify-center px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 min-w-[3.5rem]">
-              <span
-                className={`text-[18px] leading-none font-black tabular-nums ${
-                  percentage >= 70 ? 'text-emerald-600' : percentage >= 50 ? 'text-amber-600' : 'text-rose-600'
-                }`}
-              >
-                {percentage}%
-              </span>
-            </div>
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">
-                {isBasque ? 'Emaitza' : 'Resultado'}
-              </div>
-              <div className="text-[13px] font-bold text-slate-600 leading-none tabular-nums">
-                {score}/{total} {isBasque ? 'zuzen' : 'aciertos'}
-              </div>
-            </div>
+            {hasPenalty ? (
+              <>
+                <div className="flex flex-col items-center justify-center px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 min-w-[4.5rem]">
+                  <span
+                    className={`text-[18px] leading-none font-black tabular-nums ${
+                      netScore.scoreBase10 >= 7
+                        ? 'text-emerald-600'
+                        : netScore.scoreBase10 >= 5
+                          ? 'text-amber-600'
+                          : 'text-rose-600'
+                    }`}
+                  >
+                    {formatNetScore(netScore.scoreBase10)}/10
+                  </span>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none">
+                      {isBasque ? 'Nota garbia' : 'Nota neta'}
+                    </span>
+                    <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-800 tabular-nums leading-none">
+                      {penaltyMeta.shortLabel}
+                    </span>
+                  </div>
+                  <div className="text-[13px] font-bold text-slate-600 leading-tight tabular-nums">
+                    {percentage}% · {score}/{total} {isBasque ? 'zuzen' : 'aciertos'}
+                  </div>
+                  {netScore.rawNetPoints < 0 ? (
+                    <div className="mt-0.5 text-[11px] font-semibold text-rose-600 tabular-nums">
+                      {isBasque
+                        ? `Garbi gordina: ${formatNetScore(netScore.rawScoreBase10)}/10`
+                        : `Neto bruto: ${formatNetScore(netScore.rawScoreBase10)}/10`}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col items-center justify-center px-3 py-2 rounded-xl bg-slate-50 border border-slate-100 min-w-[3.5rem]">
+                  <span
+                    className={`text-[18px] leading-none font-black tabular-nums ${
+                      percentage >= 70 ? 'text-emerald-600' : percentage >= 50 ? 'text-amber-600' : 'text-rose-600'
+                    }`}
+                  >
+                    {percentage}%
+                  </span>
+                </div>
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1">
+                    {isBasque ? 'Emaitza' : 'Resultado'}
+                  </div>
+                  <div className="text-[13px] font-bold text-slate-600 leading-none tabular-nums">
+                    {score}/{total} {isBasque ? 'zuzen' : 'aciertos'} · {formatNetScore(netScore.scoreBase10)}/10
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           {sessionEnd.continuityLine ? (
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-1.5 text-[11px] font-bold text-indigo-700">
@@ -469,6 +596,29 @@ export default function PostTestStats({
           </div>
         </div>
 
+        {hasPenalty && (incorrectCount > 0 || unansweredCount > 0) ? (
+          <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-xs font-semibold text-amber-950">
+            <span className="inline-flex items-center gap-1.5 font-black text-amber-800">
+              <Scale size={14} className="shrink-0" />
+              {isBasque ? `Zigor-araua (${penaltyMeta.shortLabel}):` : `Penalización (${penaltyMeta.shortLabel}):`}
+            </span>
+            {incorrectCount > 0 ? (
+              <span className="tabular-nums text-rose-700 font-bold">
+                {isBasque
+                  ? `-${formatNetScore(netScore.penaltyLostPoints)} pt (-${formatNetScore(netScore.penaltyLostBase10)}/10) ${incorrectCount} hutsegiteengatik`
+                  : `-${formatNetScore(netScore.penaltyLostPoints)} pts (-${formatNetScore(netScore.penaltyLostBase10)}/10) por ${incorrectCount} ${incorrectCount === 1 ? 'fallo' : 'fallos'}`}
+              </span>
+            ) : null}
+            {unansweredCount > 0 ? (
+              <span className="tabular-nums text-slate-700 font-bold">
+                {isBasque
+                  ? `${unansweredCount} zuri zigorrik gabe (0 pt)`
+                  : `${unansweredCount} en blanco sin penalización (0 pts)`}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         {/* ACTIONS: At most 1 primary next-practice action + 1 secondary review-this-test action */}
         <div className="space-y-3">
           {topicReview}
@@ -538,7 +688,7 @@ export default function PostTestStats({
               {lawData.slice(0, 12).map((law) => (
                 <div key={law.fullName} className="px-4 py-3 flex items-center justify-between gap-4 bg-white">
                   <div className="truncate font-bold text-slate-700 text-xs sm:text-sm">{law.fullName}</div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2.5">
                     <span className="text-xs font-bold text-slate-500 tabular-nums">
                       {law.correct}/{law.total}
                     </span>
@@ -553,6 +703,19 @@ export default function PostTestStats({
                     >
                       {law.accuracy}%
                     </span>
+                    {hasPenalty ? (
+                      <span
+                        className={`rounded-lg border px-2 py-0.5 text-xs font-black tabular-nums ${
+                          law.netScoreBase10 >= 7
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : law.netScoreBase10 >= 5
+                              ? 'border-amber-200 bg-amber-50 text-amber-700'
+                              : 'border-rose-200 bg-rose-50 text-rose-700'
+                        }`}
+                      >
+                        {formatNetScore(law.netScoreBase10)}/10
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -636,7 +799,25 @@ export default function PostTestStats({
                         </span>
                       ) : null}
                     </div>
-                    <div className="text-lg font-black text-slate-900 leading-snug">{item.text}</div>
+                    <div className="text-lg font-black text-slate-900 leading-snug select-text">
+                      <HighlightableText
+                        text={item.text}
+                        highlights={highlightsMap[item.id] ?? []}
+                        onAddHighlight={(hl) =>
+                          void addHighlight(item.id, hl, {
+                            contentType: 'question',
+                            category: item.topic ?? null,
+                          })
+                        }
+                        onRemoveHighlight={(id) =>
+                          void removeHighlight(item.id, id, {
+                            contentType: 'question',
+                            category: item.topic ?? null,
+                          })
+                        }
+                        maxSelectionChars={120}
+                      />
+                    </div>
                   </div>
 
                   <div className="shrink-0">
@@ -652,7 +833,7 @@ export default function PostTestStats({
                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                     {isBasque ? 'Erantzun aukerak' : 'Opciones de respuesta'}
                   </div>
-                  {item.options.map((option) => {
+                  {item.options.map((option, optionIndex) => {
                     const isSelected = option.id === item.selected;
                     const isCorrectOption = option.id === item.correct;
                     const optionClass = isCorrectOption
@@ -660,15 +841,36 @@ export default function PostTestStats({
                       : isSelected
                         ? 'border-rose-300 bg-rose-50 text-rose-950'
                         : 'border-slate-200 bg-white text-slate-700';
+                    const answerKey = `${item.id}_ans_${optionIndex}`;
 
                     return (
                       <div
                         key={option.id}
                         className={`flex flex-col gap-3 rounded-2xl border-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${optionClass}`}
                       >
-                        <div className="flex min-w-0 items-start gap-3 text-sm font-bold leading-relaxed">
+                        <div className="flex min-w-0 items-start gap-3 text-sm font-bold leading-relaxed select-text">
                           <span className="shrink-0 font-black uppercase">{option.id}.</span>
-                          <span>{option.text}</span>
+                          <span>
+                            <HighlightableText
+                              text={option.text}
+                              highlights={highlightsMap[answerKey] ?? []}
+                              onAddHighlight={(hl) =>
+                                void addHighlight(item.id, hl, {
+                                  contentType: 'answer',
+                                  answerIndex: optionIndex,
+                                  category: item.topic ?? null,
+                                })
+                              }
+                              onRemoveHighlight={(id) =>
+                                void removeHighlight(item.id, id, {
+                                  contentType: 'answer',
+                                  answerIndex: optionIndex,
+                                  category: item.topic ?? null,
+                                })
+                              }
+                              maxSelectionChars={90}
+                            />
+                          </span>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
                           {isSelected ? (
@@ -692,6 +894,68 @@ export default function PostTestStats({
                       {isBasque ? 'Galdera erantzun gabe utzi zenuen.' : 'Dejaste esta pregunta sin responder.'}
                     </div>
                   ) : null}
+                </div>
+
+                {/* Active Study Bar: Note + Errata report */}
+                <div className="mt-5 border-t border-slate-200/80 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setReviewNoteDrawerOpen((prev) => !prev)}
+                        className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-black transition ${
+                          (notesMap[item.id] ?? '').trim()
+                            ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <FileText size={14} />
+                        {(notesMap[item.id] ?? '').trim()
+                          ? isBasque
+                            ? 'Oharra editatu'
+                            : 'Editar nota'
+                          : isBasque
+                            ? 'Oharra gehitu'
+                            : 'Añadir nota'}
+                      </button>
+                      <QuestionErrataPanel
+                        key={item.id}
+                        questionId={item.id}
+                        curriculum={curriculum}
+                        userId={userId}
+                        existingReports={errataReportsMap[item.id] ?? []}
+                        onSubmitted={(report) =>
+                          setErrataReportsMap((prev) => ({
+                            ...prev,
+                            [item.id]: [report, ...(prev[item.id] ?? [])],
+                          }))
+                        }
+                      />
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-400">
+                      {isBasque
+                        ? 'Hautatu testua azpimarratzeko'
+                        : 'Selecciona texto para subrayar'}
+                    </span>
+                  </div>
+
+                  {(notesMap[item.id] ?? '').trim() && !reviewNoteDrawerOpen ? (
+                    <div className="mt-2.5 rounded-2xl border border-amber-200 bg-amber-50/60 px-3.5 py-2.5 text-xs font-medium text-amber-950">
+                      <span className="font-black text-amber-800">
+                        {isBasque ? 'Zure oharra: ' : 'Tu nota: '}
+                      </span>
+                      {notesMap[item.id]}
+                    </div>
+                  ) : null}
+
+                  <QuestionNoteDrawer
+                    open={reviewNoteDrawerOpen}
+                    questionId={item.id}
+                    questionNumber={item.index}
+                    note={notesMap[item.id] ?? ''}
+                    onClose={() => setReviewNoteDrawerOpen(false)}
+                    onSave={(note) => saveNote(item.id, note)}
+                  />
                 </div>
 
                 {item.explanation?.trim() ? (
@@ -720,7 +984,23 @@ export default function PostTestStats({
                             {isBasque ? 'Itxi' : 'Cerrar'}
                           </button>
                         </div>
-                        <EditorialExplanation text={item.explanation} readOnly />
+                        <EditorialExplanation
+                          text={item.explanation}
+                          highlights={highlightsMap[`${item.id}_exp`] ?? []}
+                          onAddHighlight={(hl) =>
+                            void addHighlight(item.id, hl, {
+                              contentType: 'explanation',
+                              category: item.topic ?? null,
+                            })
+                          }
+                          onRemoveHighlight={(id) =>
+                            void removeHighlight(item.id, id, {
+                              contentType: 'explanation',
+                              category: item.topic ?? null,
+                            })
+                          }
+                          readOnly={false}
+                        />
                       </div>
                     )}
                   </div>

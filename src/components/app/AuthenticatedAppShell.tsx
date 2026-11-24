@@ -38,6 +38,7 @@ import type { ShellView as View, TestReturnTarget } from '../../features/authent
 import MobileTabBar from '../MobileTabBar';
 import MobileTopBar from '../MobileTopBar';
 import Dashboard from '../dashboard/Dashboard';
+import TodayPlanStrip from '../TodayPlanStrip';
 import { createId } from '../../lib/id';
 import {
   buildFallbackCurriculumOptions,
@@ -99,6 +100,11 @@ import {
   readCustomPracticeSupport,
   writeCustomPracticeSupport,
 } from '../../lib/customPracticePreferences';
+import {
+  readPenaltyRule,
+  writePenaltyRule,
+  type PenaltyRuleId,
+} from '../../lib/netScore';
 import { getBalancedMixedPracticeBatch } from '../../lib/mixedPracticeBatch';
 import {
   buildPracticeEmptyStateModel,
@@ -115,6 +121,7 @@ const loadStudyExplorer = () => import('../StudyExplorer');
 const loadSettingsPanel = () => import('../SettingsPanel');
 const loadStatsDashboard = () => import('../StatsDashboard');
 const loadStudyQuestionBank = () => import('../StudyQuestionBank');
+const loadMyNotesAndHighlights = () => import('../MyNotesAndHighlights');
 const loadTelemetryDebugPanel = () => import('../TelemetryDebugPanel');
 const loadAdminQuestions = () => import('../admin/AdminQuestions');
 const loadAdminDashboard = () => import('../admin/AdminDashboard');
@@ -130,6 +137,7 @@ const StudyExplorer = lazy(loadStudyExplorer);
 const SettingsPanel = lazy(loadSettingsPanel);
 const StatsDashboard = lazy(loadStatsDashboard);
 const StudyQuestionBank = lazy(loadStudyQuestionBank);
+const MyNotesAndHighlights = lazy(loadMyNotesAndHighlights);
 const TelemetryDebugPanel = lazy(loadTelemetryDebugPanel);
 const AdminQuestions = lazy(loadAdminQuestions);
 const AdminDashboard = lazy(loadAdminDashboard);
@@ -234,6 +242,13 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   const [customPracticeSupport, setCustomPracticeSupport] = useState(() =>
     readCustomPracticeSupport(session.user.id),
   );
+  const [penaltyRule, setPenaltyRule] = useState<PenaltyRuleId>(() =>
+    readPenaltyRule(session.user.id),
+  );
+
+  useEffect(() => {
+    setPenaltyRule(readPenaltyRule(session.user.id));
+  }, [session.user.id]);
   const [curriculumMenuOpen, setCurriculumMenuOpen] = useState(false);
   const [curriculumMenuStyle, setCurriculumMenuStyle] = useState<{
     top: number;
@@ -278,6 +293,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   const curriculumMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const preferredCurriculumAppliedRef = useRef<string | null>(null);
   const dashboardLoadCycleRef = useRef(0);
+  const bundleCurriculumRef = useRef<string | null>(null);
+  const hydratedCurriculumRef = useRef<string | null>(null);
+  const silentHydrationInFlightRef = useRef<string | null>(null);
   const homeLoadTraceRef = useRef<HomeLoadTrace | null>(null);
   const homeHeroMarkedRef = useRef(false);
   const homeCtaMarkedRef = useRef(false);
@@ -486,6 +504,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
     const loadCycle = ++dashboardLoadCycleRef.current;
+    hydratedCurriculumRef.current = curriculum;
     const trace = createHomeLoadTrace(curriculum);
     homeLoadTraceRef.current = trace;
     homeHeroMarkedRef.current = false;
@@ -501,6 +520,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
       if (dashboardLoadCycleRef.current !== loadCycle) return;
 
+      bundleCurriculumRef.current = curriculum;
       setBundle(primaryBundle);
       setDataLoading(false);
       setDashboardSecondaryHydrating(true);
@@ -620,18 +640,55 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (!session) return;
     if (restrictedCurriculum && !isGoiTeknikariaCurriculum(curriculum)) return;
 
-    const loadCycle = dashboardLoadCycleRef.current;
+    const loadCycle = ++dashboardLoadCycleRef.current;
+    hydratedCurriculumRef.current = curriculum;
+    silentHydrationInFlightRef.current = curriculum;
     setDashboardSecondaryHydrating(true);
+
+    const hadSameCurriculumBundle = bundleCurriculumRef.current === curriculum;
+    if (bundleCurriculumRef.current !== null && !hadSameCurriculumBundle) {
+      bundleCurriculumRef.current = null;
+      setBundle(null);
+    }
 
     try {
       const primaryBundle = await loadDashboardPrimaryBundle(curriculum);
       if (dashboardLoadCycleRef.current !== loadCycle) return;
-      setBundle((prev) => prev ?? primaryBundle);
+
+      bundleCurriculumRef.current = curriculum;
+      setBundle((prev) => (hadSameCurriculumBundle && prev ? prev : primaryBundle));
+
+      const recentSessionsPromise = getRecentSessionsForHome(curriculum)
+        .then((recentSessions) => {
+          if (dashboardLoadCycleRef.current !== loadCycle) return null;
+          setBundle((prev) => {
+            if (!prev || bundleCurriculumRef.current !== curriculum) return prev;
+            return {
+              ...prev,
+              practiceState: {
+                ...prev.practiceState,
+                recentSessions,
+              },
+            };
+          });
+          return recentSessions;
+        })
+        .catch(() => null);
+
       const nextBundle = await hydrateDashboardBundle(primaryBundle, curriculum, { skipSharedCommonOverride: true });
       if (dashboardLoadCycleRef.current !== loadCycle) return;
+
+      const resolvedRecentSessions = await recentSessionsPromise;
+      if (dashboardLoadCycleRef.current !== loadCycle) return;
+
+      bundleCurriculumRef.current = curriculum;
       setBundle((prev) => {
         const recentSessions =
-          prev?.practiceState.recentSessions?.length ? prev.practiceState.recentSessions : nextBundle.practiceState.recentSessions;
+          resolvedRecentSessions?.length
+            ? resolvedRecentSessions
+            : prev && bundleCurriculumRef.current === curriculum && prev.practiceState.recentSessions?.length
+              ? prev.practiceState.recentSessions
+              : nextBundle.practiceState.recentSessions;
         return {
           ...nextBundle,
           practiceState: {
@@ -641,25 +698,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         };
       });
       setDashboardSecondaryHydrating(false);
-      requestIdle(() => {
-        void getRecentSessionsForHome(curriculum)
-          .then((recentSessions) => {
-            if (dashboardLoadCycleRef.current !== loadCycle) return;
-            setBundle((prev) => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                practiceState: {
-                  ...prev.practiceState,
-                  recentSessions,
-                },
-              };
-            });
-          })
-          .catch(() => {
-            void 0;
-          });
-      }, 400);
+
       requestIdle(() => {
         void (async () => {
           const sharedOverride = await computeSharedCommonOverride(
@@ -669,7 +708,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           if (!sharedOverride) return;
           if (dashboardLoadCycleRef.current !== loadCycle) return;
           setBundle((prev) => {
-            if (!prev?.practiceState.learningDashboardV2) return prev;
+            if (!prev?.practiceState.learningDashboardV2 || bundleCurriculumRef.current !== curriculum) return prev;
             return {
               ...prev,
               practiceState: {
@@ -686,9 +725,14 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       }, 2500);
     } catch {
       if (dashboardLoadCycleRef.current === loadCycle) {
+        hydratedCurriculumRef.current = null;
         setDashboardSecondaryHydrating(false);
       }
       void 0;
+    } finally {
+      if (dashboardLoadCycleRef.current === loadCycle) {
+        silentHydrationInFlightRef.current = null;
+      }
     }
   }, [curriculum, restrictedCurriculum, session]);
 
@@ -976,9 +1020,14 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       return;
     }
     if (!hasManagementAccess) {
-      void refreshDashboardSilently();
+      if (
+        hydratedCurriculumRef.current !== curriculum &&
+        silentHydrationInFlightRef.current !== curriculum
+      ) {
+        void refreshDashboardSilently();
+      }
     }
-  }, [currentView, hasManagementAccess, refreshDashboard, refreshDashboardSilently, session]);
+  }, [curriculum, currentView, hasManagementAccess, refreshDashboard, refreshDashboardSilently, session]);
 
   useEffect(() => {
     if (currentView !== 'dashboard') return;
@@ -1042,8 +1091,22 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       recommendedBatchNumber: 1,
       totalBatches,
       batchSize: 20,
+      locale,
     });
-  }, [bundle]);
+  }, [bundle, locale]);
+  const todayPlanSessionMeta = useMemo(() => {
+    const targetQuestions = coachPlan?.sessionSpec.targetQuestions;
+    const targetMinutes = coachPlan?.sessionSpec.targetMinutes;
+    if (!targetQuestions && !targetMinutes) return null;
+    const parts: string[] = [];
+    if (targetQuestions) {
+      parts.push(isBasque ? `${targetQuestions} gald.` : `${targetQuestions} preg.`);
+    }
+    if (targetMinutes) {
+      parts.push(`~${targetMinutes} min`);
+    }
+    return parts.join(' · ');
+  }, [coachPlan?.sessionSpec.targetMinutes, coachPlan?.sessionSpec.targetQuestions, isBasque]);
   const coachSurfaceState = useMemo(
     () => resolveCoachSurfaceState(coachPlan, bundle),
     [bundle, coachPlan],
@@ -1179,7 +1242,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       bundle.practiceState.pressureInsightsV2?.confidenceFlag ??
       null;
 
-    if (currentView === 'dashboard') {
+    if (currentView === 'dashboard' || currentView === 'test-selection') {
       trackDecisionOnce(
         `home:${curriculum}:${coachSurfaceState}:${coachPlan?.primaryAction ?? ''}:${heroCopy.cta ?? ''}`,
         {
@@ -2238,6 +2301,14 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     };
   }, [curriculumMenuOpen]);
 
+  const handleChangePenaltyRule = useCallback(
+    (nextRule: PenaltyRuleId) => {
+      writePenaltyRule(session.user.id, nextRule);
+      setPenaltyRule(nextRule);
+    },
+    [session.user.id],
+  );
+
   const handleSaveExamTarget = useCallback(
     async (next: {
       examDate: string | null;
@@ -2246,6 +2317,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       visibleCurriculumIds: string[];
       visiblePracticeModeIds: PracticeModeVisibilityId[];
       customSupportMode: { showMarks: boolean; showNotes: boolean };
+      penaltyRule: PenaltyRuleId;
     }) => {
       setSettingsSaving(true);
       setSettingsNotice(null);
@@ -2262,6 +2334,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         setVisiblePracticeModeIds(next.visiblePracticeModeIds);
         writeCustomPracticeSupport(session.user.id, next.customSupportMode);
         setCustomPracticeSupport(next.customSupportMode);
+        writePenaltyRule(session.user.id, next.penaltyRule);
+        setPenaltyRule(next.penaltyRule);
         await refreshDashboard();
         setSettingsNotice({ kind: 'success', text: t('Ajustes guardados.', 'Doikuntzak gorde dira.') });
       } catch (error) {
@@ -2387,6 +2461,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       } catch {
         // ignore
       }
+      bundleCurriculumRef.current = null;
+      hydratedCurriculumRef.current = null;
+      silentHydrationInFlightRef.current = null;
       setBundle(null);
       setDataError(null);
       setLastTestPayload(null);
@@ -2465,7 +2542,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     currentView === 'admin-questions' ||
     currentView === 'admin-catalogs' ||
     currentView === 'admin-quality';
-  const isStudyView = currentView === 'study' || currentView === 'study-bank';
+  const isStudyView =
+    currentView === 'study' || currentView === 'study-bank' || currentView === 'study-notes';
   const showMobileTopBar = !isTesting && !isAdminView && currentView !== 'telemetry';
   const showMobileBottomNav = showMobileTopBar && currentView !== 'test-results';
   const activeMobileTab = (() => {
@@ -2498,6 +2576,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     }
     if (currentView === 'study-bank') return t('Banco de preguntas', 'Galdera-bankua');
     if (currentView === 'study') return t('Sesiones de estudio', 'Ikasketa-saioak');
+    if (currentView === 'study-notes') return t('Mis notas y subrayados', 'Nire oharrak eta azpimarrak');
     if (currentView === 'test-selection') {
       return t('Prepara el bloque exacto que quieres hacer', 'Prestatu egin nahi duzun bloke zehatza');
     }
@@ -2736,7 +2815,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   <div className="flex items-center gap-2">
                     <Flame size={16} className="text-amber-500 fill-amber-500/20 animate-pulse shrink-0" />
                     <span className="text-xl [@media(max-height:800px)]:text-lg font-black truncate">
-                      {gamification.streak} {t('dias', 'egun')}
+                      {gamification.streak} {t('días', 'egun')}
                     </span>
                   </div>
                 </div>
@@ -2961,7 +3040,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 {currentView === 'dashboard' && `${t('Hola', 'Kaixo')}, ${session.user.email?.split('@')[0]}`}
                 {currentView === 'study-bank' && t('Estudio', 'Ikasketa')}
                 {currentView === 'study' && t('Estudio guiado', 'Ikasketa gidatua')}
-                {currentView === 'test-selection' && t('Configuracion de entrenamiento', 'Entrenamenduaren konfigurazioa')}
+                {currentView === 'study-notes' && t('Mis notas y subrayados', 'Nire oharrak eta azpimarrak')}
+                {currentView === 'test-selection' && t('Configuración de entrenamiento', 'Entrenamenduaren konfigurazioa')}
                 {currentView === 'stats' && t('Inteligencia de datos', 'Datuen adimena')}
                 {currentView === 'test-results' && t('Analisis de sesion', 'Saioaren analisia')}
                 {currentView === 'settings' && t('Ajustes', 'Doikuntzak')}
@@ -3215,61 +3295,101 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         ) : null}
 
         {currentView === 'test-selection' ? (
-          <Suspense fallback={screenLoader}>
-            <TestSelection
-              curriculum={curriculum}
-              lawOptions={lawOptions}
-              lawOptionsLoading={discoveredLawOptionsLoading}
-              initialLaw={selectedLawFilter}
-              initialState={testSelectionState}
-              visiblePracticeModeIds={visiblePracticeModeIds}
-              customSupportMode={customPracticeSupport}
-              onStart={handleStartTest}
-              onStartChallenge={handleStartChallenge}
-              syncingChallenge={syncingSession}
-              onStartLawTest={(law, count) =>
-                handleStartLawTest(
-                  law,
-                  count,
-                  isLawSelectionCurriculum ? activeGeneralLawPracticeFilters : null,
-                )
+          <div className="mx-auto max-w-7xl space-y-4">
+            <TodayPlanStrip
+              streakDays={gamification.streak}
+              hydrated={Boolean(bundle)}
+              disabled={syncingSession}
+              eyebrow={t('Tu plan de hoy', 'Zure gaurko plana')}
+              title={
+                bundle
+                  ? heroCopy.line1
+                  : homeFirstPaintModel?.coachTitle ??
+                    t('Preparando tu recomendación de hoy', 'Zure gaurko gomendioa prestatzen')
               }
-              onStartCustomTest={(params) => void handleStartCustomTest(params)}
-              onStartCustomPractice={handleStartCustomPractice}
-              initialSyllabus={selectedSyllabus}
-              onStateChange={setTestSelectionState}
-              generalLaws={generalLawOptions}
-              userId={session.user.id}
-              activeGeneralLawId={activeGeneralLawId}
-              onSelectGeneralLaw={(lawId) => {
-                setGeneralLawBlockSelectionError(null);
-                setActiveGeneralLawId(lawId);
+              subtitle={
+                bundle
+                  ? heroCopy.line2 ?? continuityLine ?? null
+                  : homeFirstPaintModel?.coachDescription ?? null
+              }
+              sessionMetaLabel={bundle ? todayPlanSessionMeta : null}
+              ctaLabel={
+                bundle
+                  ? heroCopy.cta ?? t('Empezar sesión', 'Saioa hasi')
+                  : homeFirstPaintModel?.coachCtaLabel ?? t('Practicar ahora', 'Orain praktikatu')
+              }
+              tone={coachPlan?.tone ?? 'maintain'}
+              locale={locale}
+              onStartPlan={() => {
+                trackEffect({
+                  surface: 'home',
+                  curriculum,
+                  action: 'cta_clicked',
+                  context: {
+                    cta: heroCopy.cta ?? null,
+                    primaryAction: coachPlan?.primaryAction ?? null,
+                    source: 'todayPlanStrip',
+                  },
+                });
+                void handleStartCoachSession();
               }}
-              generalLawBlocks={generalLawBlocks}
-              generalLawArticles={generalLawArticles}
-              officialArticleCounts={officialArticleCounts}
-              generalLawSelection={generalLawTrainingSelection.selection}
-              selectedGeneralLawBlockIds={selectedGeneralLawBlockIds}
-              selectedGeneralLawArticleIds={selectedGeneralLawArticleIds}
-              generalLawBlocksLoading={generalLawBlocksLoading}
-              generalLawArticlesLoading={generalLawArticlesLoading}
-              generalLawBlockSelectionError={generalLawBlockSelectionError}
-              generalLawArticlesError={generalLawArticlesError}
-              onSetGeneralLawSelectionMode={setGeneralLawSelectionMode}
-              onToggleGeneralLawBlock={toggleGeneralLawBlock}
-              onSelectOnlyGeneralLawBlock={selectOnlyGeneralLawBlock}
-              onSelectAllGeneralLawBlocks={selectAllGeneralLawBlocks}
-              onClearGeneralLawBlocks={clearGeneralLawBlocks}
-              onSelectGeneralLawBlockGroup={selectGeneralLawBlockGroup}
-              onClearGeneralLawBlockGroup={clearGeneralLawBlockGroup}
-              onToggleGeneralLawArticle={toggleGeneralLawArticle}
-              onSelectAllGeneralLawArticles={selectAllGeneralLawArticles}
-              onClearGeneralLawArticles={clearGeneralLawArticles}
-              onSelectGeneralLawArticleGroup={selectGeneralLawArticleGroup}
-              onClearGeneralLawArticleGroup={clearGeneralLawArticleGroup}
-              onStartOfficialPractice={handleStartOfficialPractice}
             />
-          </Suspense>
+            <Suspense fallback={screenLoader}>
+              <TestSelection
+                curriculum={curriculum}
+                lawOptions={lawOptions}
+                lawOptionsLoading={discoveredLawOptionsLoading}
+                initialLaw={selectedLawFilter}
+                initialState={testSelectionState}
+                visiblePracticeModeIds={visiblePracticeModeIds}
+                customSupportMode={customPracticeSupport}
+                onStart={handleStartTest}
+                onStartChallenge={handleStartChallenge}
+                syncingChallenge={syncingSession}
+                onStartLawTest={(law, count) =>
+                  handleStartLawTest(
+                    law,
+                    count,
+                    isLawSelectionCurriculum ? activeGeneralLawPracticeFilters : null,
+                  )
+                }
+                onStartCustomTest={(params) => void handleStartCustomTest(params)}
+                onStartCustomPractice={handleStartCustomPractice}
+                initialSyllabus={selectedSyllabus}
+                onStateChange={setTestSelectionState}
+                generalLaws={generalLawOptions}
+                userId={session.user.id}
+                activeGeneralLawId={activeGeneralLawId}
+                onSelectGeneralLaw={(lawId) => {
+                  setGeneralLawBlockSelectionError(null);
+                  setActiveGeneralLawId(lawId);
+                }}
+                generalLawBlocks={generalLawBlocks}
+                generalLawArticles={generalLawArticles}
+                officialArticleCounts={officialArticleCounts}
+                generalLawSelection={generalLawTrainingSelection.selection}
+                selectedGeneralLawBlockIds={selectedGeneralLawBlockIds}
+                selectedGeneralLawArticleIds={selectedGeneralLawArticleIds}
+                generalLawBlocksLoading={generalLawBlocksLoading}
+                generalLawArticlesLoading={generalLawArticlesLoading}
+                generalLawBlockSelectionError={generalLawBlockSelectionError}
+                generalLawArticlesError={generalLawArticlesError}
+                onSetGeneralLawSelectionMode={setGeneralLawSelectionMode}
+                onToggleGeneralLawBlock={toggleGeneralLawBlock}
+                onSelectOnlyGeneralLawBlock={selectOnlyGeneralLawBlock}
+                onSelectAllGeneralLawBlocks={selectAllGeneralLawBlocks}
+                onClearGeneralLawBlocks={clearGeneralLawBlocks}
+                onSelectGeneralLawBlockGroup={selectGeneralLawBlockGroup}
+                onClearGeneralLawBlockGroup={clearGeneralLawBlockGroup}
+                onToggleGeneralLawArticle={toggleGeneralLawArticle}
+                onSelectAllGeneralLawArticles={selectAllGeneralLawArticles}
+                onClearGeneralLawArticles={clearGeneralLawArticles}
+                onSelectGeneralLawArticleGroup={selectGeneralLawArticleGroup}
+                onClearGeneralLawArticleGroup={clearGeneralLawArticleGroup}
+                onStartOfficialPractice={handleStartOfficialPractice}
+              />
+            </Suspense>
+          </div>
         ) : null}
 
         {currentView === 'study' ? (
@@ -3279,6 +3399,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               bundle={bundle}
               onStartStudy={handleStartStudy}
               onOpenQuestionBank={() => setCurrentView('study-bank')}
+              onOpenNotesLibrary={() => setCurrentView('study-notes')}
             />
           </Suspense>
         ) : null}
@@ -3313,6 +3434,32 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               onClearGeneralLawArticleGroup={clearGeneralLawArticleGroup}
               onStartOfficialPractice={handleStartOfficialPractice}
               onOpenGuidedStudy={() => setCurrentView('study')}
+              onOpenNotesLibrary={() => setCurrentView('study-notes')}
+            />
+          </Suspense>
+        ) : null}
+
+        {currentView === 'study-notes' ? (
+          <Suspense fallback={screenLoader}>
+            <MyNotesAndHighlights
+              curriculum={curriculum}
+              userId={session.user.id}
+              onOpenStudyBank={() => setCurrentView('study-bank')}
+              onNavigateStudyTab={(tab) => setCurrentView(tab)}
+              onStudyQuestion={(question) => {
+                setActiveStudySession({
+                  id: createId(),
+                  mode: 'standard',
+                  title: t('Mis notas y subrayados', 'Nire oharrak eta azpimarrak'),
+                  startedAt: new Date().toISOString(),
+                  questions: [question],
+                  batchNumber: 1,
+                  totalBatches: 1,
+                  batchStartIndex: null,
+                  nextStandardBatchStartIndex: null,
+                });
+                setCurrentView('study-active');
+              }}
             />
           </Suspense>
         ) : null}
@@ -3387,6 +3534,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               visibleCurriculumIds={visibleCurriculumOptions.map((option) => option.id)}
               visiblePracticeModeIds={visiblePracticeModeIds}
               customSupportMode={customPracticeSupport}
+              penaltyRule={penaltyRule}
               onSave={handleSaveExamTarget}
               isAdmin={hasManagementAccess}
               onOpenAdmin={() => setCurrentView('admin-dashboard')}
@@ -3455,6 +3603,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               questions={activeSession.questions}
               mode={activeSession.mode}
               curriculum={curriculum}
+              penaltyRule={penaltyRule}
+              userId={session.user.id}
               username={bundle?.identity.current_username ?? session?.user.email ?? null}
               coachContext={activeSession.coach ?? null}
               homeVariant={hasManagementAccess ? 'dashboard' : 'test-selection'}
@@ -3511,6 +3661,8 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
               results={statsResults}
               bundle={bundle}
               curriculum={curriculum}
+              penaltyRule={penaltyRule}
+              onChangePenaltyRule={handleChangePenaltyRule}
               coachPlan={coachPlan}
               executablePlan={coachExecutablePlan}
               hydrating={dashboardSecondaryHydrating}

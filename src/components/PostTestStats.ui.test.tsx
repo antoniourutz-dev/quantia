@@ -358,4 +358,126 @@ describe('PostTestStats', () => {
     expect(screen.getByText('Pregunta acertada con duda')).toBeInTheDocument();
     expect(screen.getByText('DUDA')).toBeInTheDocument();
   });
+
+  it('muestra Nota Neta /10, pérdida por penalización frente a blancos y nota neta por ley con -0,25', () => {
+    const questions: Question[] = Array.from({ length: 10 }, (_, idx) => ({
+      id: `q${idx + 1}`,
+      number: idx + 1,
+      text: `Pregunta ${idx + 1}`,
+      options: [
+        { id: 'a', text: 'A' },
+        { id: 'b', text: 'B' },
+      ],
+      correctAnswer: 'a',
+      explanation: `Exp ${idx + 1}`,
+      syllabus: 'common',
+      category: idx < 5 ? 'Ley 39/2015' : 'Ley 40/2015',
+      questionScope: 'common',
+    }));
+
+    // 5 correct (4 in Ley 39, 1 in Ley 40), 4 incorrect (1 in Ley 39, 3 in Ley 40), 1 blank (Ley 40)
+    const answers = [
+      ...['q1', 'q2', 'q3', 'q4', 'q6'].map((id) => ({
+        questionId: id,
+        selectedOption: 'a',
+        correctOption: 'a',
+        isCorrect: true,
+        answeredAt: '2026-10-26T10:00:00.000Z',
+        responseTimeMs: 3000,
+        timeToFirstSelectionMs: 3000,
+        changedAnswer: false,
+      })),
+      ...['q5', 'q7', 'q8', 'q9'].map((id) => ({
+        questionId: id,
+        selectedOption: 'b',
+        correctOption: 'a',
+        isCorrect: false,
+        answeredAt: '2026-10-26T10:00:05.000Z',
+        responseTimeMs: 3000,
+        timeToFirstSelectionMs: 3000,
+        changedAnswer: false,
+      })),
+    ];
+
+    render(
+      <PostTestStats
+        payload={{ score: 5, answers }}
+        questions={questions}
+        mode="simulacro"
+        curriculum="osakidetza_admin"
+        penaltyRule="quarter"
+        onRestart={() => undefined}
+        onGoBack={() => undefined}
+        onGoHome={() => undefined}
+      />,
+    );
+
+    // 5 - 4 * 0.25 = 4.00 / 10 -> 4,00/10
+    expect(screen.getByText('Nota neta')).toBeInTheDocument();
+    expect(screen.getByText('-0,25')).toBeInTheDocument();
+    expect(screen.getByText('4,00/10')).toBeInTheDocument();
+    expect(screen.getByText(/-1,00 pts \(-1,00\/10\) por 4 fallos/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 en blanco sin penalización \(0 pts\)/i)).toBeInTheDocument();
+    // Per-law net scores: Ley 39 (4 - 0.25 = 3.75/5 = 7,50/10), Ley 40 (1 - 0.75 = 0.25/5 = 0,50/10)
+    expect(screen.getByText('7,50/10')).toBeInTheDocument();
+    expect(screen.getByText('0,50/10')).toBeInTheDocument();
+  });
+
+  it('calcula exactamente -1,00 pt por 3 fallos con regla -0,33 (1/3 exacto)', () => {
+    const questions: Question[] = Array.from({ length: 10 }, (_, idx) => ({
+      id: `q${idx + 1}`,
+      number: idx + 1,
+      text: `Pregunta ${idx + 1}`,
+      options: [
+        { id: 'a', text: 'A' },
+        { id: 'b', text: 'B' },
+      ],
+      correctAnswer: 'a',
+      explanation: `Exp ${idx + 1}`,
+      syllabus: 'common',
+      category: 'Tema 1',
+      questionScope: 'common',
+    }));
+
+    const answers = [
+      ...questions.slice(0, 7).map((q) => ({
+        questionId: q.id,
+        selectedOption: 'a',
+        correctOption: 'a',
+        isCorrect: true,
+        answeredAt: '2026-10-26T10:00:00.000Z',
+        responseTimeMs: 2500,
+        timeToFirstSelectionMs: 2500,
+        changedAnswer: false,
+      })),
+      ...questions.slice(7).map((q) => ({
+        questionId: q.id,
+        selectedOption: 'b',
+        correctOption: 'a',
+        isCorrect: false,
+        answeredAt: '2026-10-26T10:00:05.000Z',
+        responseTimeMs: 2500,
+        timeToFirstSelectionMs: 2500,
+        changedAnswer: false,
+      })),
+    ];
+
+    render(
+      <PostTestStats
+        payload={{ score: 7, answers }}
+        questions={questions}
+        mode="standard"
+        curriculum="osakidetza_admin"
+        penaltyRule="third"
+        onRestart={() => undefined}
+        onGoBack={() => undefined}
+        onGoHome={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText('-0,33')).toBeInTheDocument();
+    expect(screen.getByText('6,00/10')).toBeInTheDocument();
+    expect(screen.getByText(/-1,00 pts \(-1,00\/10\) por 3 fallos/i)).toBeInTheDocument();
+  });
 });
+

@@ -1374,6 +1374,33 @@ const writeStudyState = (state: StudyQuestionData) => {
   }
 };
 
+const mergeUniqueHighlights = (
+  existing: TextHighlight[] | undefined,
+  incoming: TextHighlight[],
+): TextHighlight[] => {
+  const bySignature = new Map<string, TextHighlight>();
+  for (const item of existing ?? []) {
+    if (!item || !Number.isFinite(item.startIndex) || !Number.isFinite(item.endIndex)) continue;
+    if (!isHighlightType(item.type)) continue;
+    const sig = buildSpanId(item);
+    bySignature.set(sig, item);
+  }
+  for (const item of incoming) {
+    if (!item || !Number.isFinite(item.startIndex) || !Number.isFinite(item.endIndex)) continue;
+    if (!isHighlightType(item.type)) continue;
+    const sig = buildSpanId(item);
+    bySignature.set(sig, item);
+  }
+  return Array.from(bySignature.values());
+};
+
+export interface UserStudyLibraryData {
+  highlights: Record<string, TextHighlight[]>;
+  notes: Record<string, string>;
+  questionIds: string[];
+  updatedAtByQuestionId: Record<string, string>;
+}
+
 export const getStudyData = async (questionIds: string[]): Promise<StudyQuestionData> => {
   const session = await getSafeSupabaseSession();
   const userId = session?.user?.id;
@@ -1382,15 +1409,21 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
   const res: StudyQuestionData = { highlights: {}, notes: {} };
 
   for (const qid of questionIds) {
-    if (state.highlights[qid]) res.highlights[qid] = state.highlights[qid];
+    if (state.highlights[qid]) {
+      res.highlights[qid] = mergeUniqueHighlights(undefined, state.highlights[qid]);
+    }
     if (state.notes[qid]) res.notes[qid] = state.notes[qid];
 
     const expKey = `${qid}_exp`;
-    if (state.highlights[expKey]) res.highlights[expKey] = state.highlights[expKey];
+    if (state.highlights[expKey]) {
+      res.highlights[expKey] = mergeUniqueHighlights(undefined, state.highlights[expKey]);
+    }
 
     for (let index = 0; index < 4; index += 1) {
       const answerKey = `${qid}_ans_${index}`;
-      if (state.highlights[answerKey]) res.highlights[answerKey] = state.highlights[answerKey];
+      if (state.highlights[answerKey]) {
+        res.highlights[answerKey] = mergeUniqueHighlights(undefined, state.highlights[answerKey]);
+      }
     }
   }
 
@@ -1407,6 +1440,7 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
       .eq('user_id', userId);
 
     if (!h2Error && cloudHighlightsV2) {
+      const cloudByKey = new Map<string, TextHighlight[]>();
       for (const row of cloudHighlightsV2 as Array<Record<string, unknown>>) {
         const questionId = String(row.question_id ?? '');
         const contentType = String(row.content_type ?? '') as StudyHighlightContentType;
@@ -1416,7 +1450,7 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
             : null;
         const spans = Array.isArray(row.spans) ? row.spans : [];
         const key = buildStudyKey({ questionId, contentType, answerIndex });
-        if (!res.highlights[key]) res.highlights[key] = [];
+        const parsedSpans: TextHighlight[] = [];
         for (const span of spans) {
           if (!span || typeof span !== 'object' || Array.isArray(span)) continue;
           const spanRecord = span as Record<string, unknown>;
@@ -1425,13 +1459,17 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
           if (!isHighlightType(spanRecord.type)) continue;
           const type = spanRecord.type;
           if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) continue;
-          res.highlights[key].push({
+          parsedSpans.push({
             id: buildSpanId({ startIndex, endIndex, type }),
             startIndex,
             endIndex,
             type,
           });
         }
+        cloudByKey.set(key, mergeUniqueHighlights(cloudByKey.get(key), parsedSpans));
+      }
+      for (const [key, spans] of cloudByKey.entries()) {
+        res.highlights[key] = mergeUniqueHighlights(res.highlights[key], spans);
       }
     } else {
       const { data: cloudHighlights, error: hError } = await supabase
@@ -1441,20 +1479,25 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
         .eq('user_id', userId);
 
       if (!hError && cloudHighlights) {
+        const cloudByKey = new Map<string, TextHighlight[]>();
         (cloudHighlights as Array<Record<string, unknown>>).forEach((item) => {
           const questionId = String(item.question_id ?? '');
           const startIndex = Number(item.start_index);
           const endIndex = Number(item.end_index);
           if (!questionId || !Number.isFinite(startIndex) || !Number.isFinite(endIndex)) return;
           if (!isHighlightType(item.type)) return;
-          if (!res.highlights[questionId]) res.highlights[questionId] = [];
-          res.highlights[questionId].push({
+          const next = cloudByKey.get(questionId) ?? [];
+          next.push({
             id: String(item.id ?? buildSpanId({ startIndex, endIndex, type: item.type })),
             startIndex,
             endIndex,
             type: item.type,
           });
+          cloudByKey.set(questionId, next);
         });
+        for (const [key, spans] of cloudByKey.entries()) {
+          res.highlights[key] = mergeUniqueHighlights(res.highlights[key], spans);
+        }
       }
     }
 
@@ -1475,15 +1518,138 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
 
     // Sync back to local storage for offline use
     const newState = { ...state };
-    Object.keys(res.highlights).forEach(qid => { newState.highlights[qid] = res.highlights[qid]; });
-    Object.keys(res.notes).forEach(qid => { newState.notes[qid] = res.notes[qid]; });
+    Object.keys(res.highlights).forEach((qid) => {
+      newState.highlights[qid] = res.highlights[qid];
+    });
+    Object.keys(res.notes).forEach((qid) => {
+      newState.notes[qid] = res.notes[qid];
+    });
     writeStudyState(newState);
-
   } catch (err) {
     console.error('Error fetching study data from Supabase:', err);
   }
 
   return res;
+};
+
+export const getAllUserStudyData = async (): Promise<UserStudyLibraryData> => {
+  const session = await getSafeSupabaseSession().catch(() => null);
+  const userId = session?.user?.id ?? null;
+  const state = readStudyState();
+  const highlights: Record<string, TextHighlight[]> = {};
+  const notes: Record<string, string> = {};
+  const updatedAtByQuestionId: Record<string, string> = {};
+
+  for (const [key, list] of Object.entries(state.highlights ?? {})) {
+    const deduped = mergeUniqueHighlights(undefined, Array.isArray(list) ? list : []);
+    if (deduped.length > 0) {
+      highlights[key] = deduped;
+    }
+  }
+  for (const [key, content] of Object.entries(state.notes ?? {})) {
+    const trimmed = String(content ?? '').trim();
+    if (trimmed) {
+      notes[key] = String(content);
+    }
+  }
+
+  if (userId) {
+    try {
+      const { data: cloudHighlightsV2, error: h2Error } = await supabase
+        .from('user_highlights_v2')
+        .select('question_id, content_type, answer_index, spans, updated_at')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+
+      if (!h2Error && cloudHighlightsV2) {
+        for (const row of cloudHighlightsV2 as Array<Record<string, unknown>>) {
+          const questionId = String(row.question_id ?? '').trim();
+          if (!questionId) continue;
+          const contentType = String(row.content_type ?? '') as StudyHighlightContentType;
+          const answerIndex =
+            contentType === 'answer' && typeof row.answer_index === 'number'
+              ? Math.max(0, Math.trunc(row.answer_index))
+              : null;
+          const spans = Array.isArray(row.spans) ? row.spans : [];
+          const key = buildStudyKey({ questionId, contentType, answerIndex });
+          const parsedSpans: TextHighlight[] = [];
+          for (const span of spans) {
+            if (!span || typeof span !== 'object' || Array.isArray(span)) continue;
+            const spanRecord = span as Record<string, unknown>;
+            const startIndex = Number(spanRecord.start_index);
+            const endIndex = Number(spanRecord.end_index);
+            if (!isHighlightType(spanRecord.type)) continue;
+            if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) continue;
+            parsedSpans.push({
+              id: buildSpanId({ startIndex, endIndex, type: spanRecord.type }),
+              startIndex,
+              endIndex,
+              type: spanRecord.type,
+            });
+          }
+          const merged = mergeUniqueHighlights(highlights[key], parsedSpans);
+          if (merged.length > 0) {
+            highlights[key] = merged;
+            const updatedAt = readText(row.updated_at);
+            if (
+              updatedAt &&
+              (!updatedAtByQuestionId[questionId] || updatedAt > updatedAtByQuestionId[questionId])
+            ) {
+              updatedAtByQuestionId[questionId] = updatedAt;
+            }
+          }
+        }
+      }
+
+      const { data: cloudNotes, error: nError } = await supabase
+        .from('user_notes')
+        .select('question_id, content, updated_at')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+
+      if (!nError && cloudNotes) {
+        for (const row of cloudNotes as Array<Record<string, unknown>>) {
+          const questionId = String(row.question_id ?? '').trim();
+          const content = String(row.content ?? '');
+          if (!questionId || !content.trim()) continue;
+          notes[questionId] = content;
+          const updatedAt = readText(row.updated_at);
+          if (
+            updatedAt &&
+            (!updatedAtByQuestionId[questionId] || updatedAt > updatedAtByQuestionId[questionId])
+          ) {
+            updatedAtByQuestionId[questionId] = updatedAt;
+          }
+        }
+      }
+    } catch {
+      // Keep local data on error
+    }
+  }
+
+  const baseIdSet = new Set<string>();
+  for (const [key, list] of Object.entries(highlights)) {
+    if (list.length === 0) continue;
+    const { baseQuestionId } = parseStudyKey(key);
+    if (baseQuestionId) baseIdSet.add(baseQuestionId);
+  }
+  for (const [qid, note] of Object.entries(notes)) {
+    if (String(note ?? '').trim()) baseIdSet.add(qid);
+  }
+
+  const questionIds = Array.from(baseIdSet).sort((left, right) => {
+    const leftTs = updatedAtByQuestionId[left] ?? '';
+    const rightTs = updatedAtByQuestionId[right] ?? '';
+    if (leftTs !== rightTs) return rightTs.localeCompare(leftTs);
+    return left.localeCompare(right);
+  });
+
+  return {
+    highlights,
+    notes,
+    questionIds,
+    updatedAtByQuestionId,
+  };
 };
 
 export const saveStudyData = async (

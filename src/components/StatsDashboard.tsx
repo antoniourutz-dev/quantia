@@ -73,11 +73,15 @@ import {
   type EvolutionWindowDays,
   type TopicInsightItem,
 } from '../lib/statsInsights';
+import { DEFAULT_PENALTY_RULE, type PenaltyRuleId } from '../lib/netScore';
+import NetScoreSimulatorCard from './stats/NetScoreSimulatorCard';
 
 interface StatsDashboardProps {
   results: TestResult[];
   bundle: DashboardBundle | null;
   curriculum: string;
+  penaltyRule?: PenaltyRuleId;
+  onChangePenaltyRule?: (rule: PenaltyRuleId) => void;
   coachPlan?: CoachPlanV2 | null;
   executablePlan?: ExecutableSessionPlan | null;
   hydrating?: boolean;
@@ -150,6 +154,8 @@ export default function StatsDashboard({
   results,
   bundle,
   curriculum,
+  penaltyRule = DEFAULT_PENALTY_RULE,
+  onChangePenaltyRule,
   coachPlan = null,
   executablePlan = null,
   hydrating = false,
@@ -1271,6 +1277,20 @@ export default function StatsDashboard({
         </div>
       </div>
 
+      {/* SIMULADOR DE NOTA NETA + PRIORIZADOR ROI */}
+      <NetScoreSimulatorCard
+        penaltyRule={penaltyRule}
+        onChangePenaltyRule={onChangePenaltyRule}
+        readinessPct={readiness}
+        observedAccuracyPct={observedAccuracy}
+        topicInsights={topicInsights}
+        lawBreakdown={lawBreakdown}
+        singleScope={singleScope}
+        lawCurriculum={lawCurriculum}
+        onPracticeTopic={onPracticeTopic}
+        onPracticeLaw={onPracticeLaw}
+      />
+
       {/* BLOQUE 2: EVOLUCIÓN TEMPORAL CONTEXTUALIZADA */}
       <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1475,7 +1495,10 @@ export default function StatsDashboard({
       </div>
 
       {/* BLOQUE 3: DESGLOSE POR TEMARIOS Y TEMAS (COMPRIMIDO INICIALMENTE) */}
-      <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-5">
+      <div
+        data-testid="topics-breakdown-section"
+        className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7 space-y-5"
+      >
         <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-500">
