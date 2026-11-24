@@ -17,7 +17,7 @@ import {
 import { FinishedTestPayload, OptionKey, PracticeMode, Question, TestAnswer } from '../types';
 import { useAppLocale } from '../lib/locale';
 import type { StudyQuestionData } from '../lib/quantiaApi';
-import HighlightableText from './HighlightableText';
+import HighlightableText, { type TextHighlight } from './HighlightableText';
 import EditorialExplanation from './EditorialExplanation';
 import QuestionNoteDrawer from './QuestionNoteDrawer';
 import QuestionErrataPanel from './QuestionErrataPanel';
@@ -127,12 +127,14 @@ export default function TestInterface({
   });
 
   const [noteDrawerOpen, setNoteDrawerOpen] = useState(false);
+  const [ephemeralHighlights, setEphemeralHighlights] = useState<TextHighlight[]>([]);
   const [errataReportsMap, setErrataReportsMap] = useState<
     Record<string, QuestionErrataReport[]>
   >({});
 
   useEffect(() => {
     setNoteDrawerOpen(false);
+    setEphemeralHighlights([]);
   }, [currentIndex, currentQuestion?.id, isMistakeReview]);
 
   useEffect(() => {
@@ -394,6 +396,7 @@ export default function TestInterface({
         setSelectedAnswers(nextSelected);
         setAnswerDetails(nextDetails);
       }
+      setEphemeralHighlights([]);
       setShowExplanation(!isSimulacro);
       setManualExplanationOpen(false);
 
@@ -916,7 +919,7 @@ export default function TestInterface({
 
               <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
                 {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="mr-1 font-black text-amber-600">*</span>}
-                {canActiveStudyCurrent || showMarks ? (
+                {canActiveStudyCurrent ? (
                   <HighlightableText
                     text={currentQuestion.text}
                     highlights={highlightsMap[currentQuestion.id] ?? []}
@@ -932,13 +935,61 @@ export default function TestInterface({
                         category: currentQuestion.category ?? null,
                       })
                     }
-                    readOnly={!canActiveStudyCurrent}
+                    readOnly={false}
+                    maxSelectionChars={120}
+                  />
+                ) : selectedAnswer === null && !isMistakeReview ? (
+                  <HighlightableText
+                    text={currentQuestion.text}
+                    highlights={
+                      showMarks
+                        ? [...(highlightsMap[currentQuestion.id] ?? []), ...ephemeralHighlights]
+                        : ephemeralHighlights
+                    }
+                    onAddHighlight={(hl) =>
+                      setEphemeralHighlights((prev) => [
+                        ...prev,
+                        {
+                          ...hl,
+                          id: `ephemeral-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                        },
+                      ])
+                    }
+                    onRemoveHighlight={(id) =>
+                      setEphemeralHighlights((prev) => prev.filter((item) => item.id !== id))
+                    }
+                    ephemeral={true}
+                    maxSelectionChars={120}
+                  />
+                ) : showMarks ? (
+                  <HighlightableText
+                    text={currentQuestion.text}
+                    highlights={highlightsMap[currentQuestion.id] ?? []}
+                    onAddHighlight={() => {}}
+                    onRemoveHighlight={() => {}}
+                    readOnly={true}
                     maxSelectionChars={120}
                   />
                 ) : (
                   currentQuestion.text
                 )}
               </h2>
+              {selectedAnswer === null && !isMistakeReview && ephemeralHighlights.length > 0 ? (
+                <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-500">
+                  <span>
+                    {isBasque
+                      ? 'Zirriborro-azpimarrak · erantzutean ezabatuko dira'
+                      : 'Subrayado borrador · se borrará al responder'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEphemeralHighlights([])}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-black text-slate-600 hover:bg-slate-50"
+                  >
+                    {isBasque ? 'Garbitu' : 'Limpiar'}
+                  </button>
+                </div>
+              ) : null}
               {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{currentQuestion.auditSeverity === 'warning' ? (isBasque ? 'Erantzun balioztatua araudi-oharrarekin. Ikusi azalpena.' : 'Respuesta validada con advertencia normativa. Consulta la explicación.') : currentQuestion.auditSeverity === 'pending' ? (isBasque ? 'Dokumentazioaren zain: gordetako erantzuna ez dago balioztatuta. Ikusi azalpena.' : 'Pendiente de documentación: la letra registrada es orientativa y no está validada. Consulta la explicación.') : (isBasque ? 'Galdera gatazkatsua: bankuko erantzuna ez da zalantzarik gabekoa.' : 'Pregunta conflictiva: la clave registrada es operativa y puede no ser jurídicamente inequívoca. Consulta la explicación.')}</p>}
               {showNotes && !canActiveStudyCurrent ? (
                 <div className="mt-3">

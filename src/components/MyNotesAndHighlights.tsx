@@ -69,6 +69,11 @@ const HIGHLIGHT_TYPE_META: Record<
     eu: 'Salb.',
     badgeClass: 'border-rose-200 bg-rose-50 text-rose-900',
   },
+  free: {
+    es: 'Libre',
+    eu: 'Librea',
+    badgeClass: 'border-yellow-200 bg-yellow-50 text-yellow-900',
+  },
 };
 
 export default function MyNotesAndHighlights({

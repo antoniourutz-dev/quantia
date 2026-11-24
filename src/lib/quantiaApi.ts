@@ -1306,7 +1306,11 @@ const extractCurriculumId = (row: Record<string, unknown>) => {
 // STUDY MODE LOCAL ACTIONS
 // ==========================================
 
-import type { HighlightType, TextHighlight } from '../components/HighlightableText';
+import type {
+  FreeHighlightColor,
+  HighlightType,
+  TextHighlight,
+} from '../components/HighlightableText';
 
 type StudyHighlightContentType = 'question' | 'explanation' | 'answer';
 
@@ -1314,16 +1318,32 @@ type StudyHighlightSpan = {
   start_index: number;
   end_index: number;
   type: HighlightType;
+  color?: FreeHighlightColor;
 };
 
 const isHighlightType = (value: unknown): value is HighlightType =>
   value === 'law_reference' ||
   value === 'deadline' ||
   value === 'exception' ||
-  value === 'core_concept';
+  value === 'core_concept' ||
+  value === 'free';
 
-const buildSpanId = (span: { startIndex: number; endIndex: number; type: HighlightType }) =>
-  `${span.startIndex}:${span.endIndex}:${span.type}`;
+const isFreeHighlightColor = (value: unknown): value is FreeHighlightColor =>
+  value === 'yellow' ||
+  value === 'purple' ||
+  value === 'cyan' ||
+  value === 'pink' ||
+  value === 'lime';
+
+const buildSpanId = (span: {
+  startIndex: number;
+  endIndex: number;
+  type: HighlightType;
+  color?: FreeHighlightColor;
+}) =>
+  span.type === 'free' && span.color
+    ? `${span.startIndex}:${span.endIndex}:${span.type}:${span.color}`
+    : `${span.startIndex}:${span.endIndex}:${span.type}`;
 
 const buildStudyKey = (params: {
   questionId: string;
@@ -1458,12 +1478,14 @@ export const getStudyData = async (questionIds: string[]): Promise<StudyQuestion
           const endIndex = Number(spanRecord.end_index);
           if (!isHighlightType(spanRecord.type)) continue;
           const type = spanRecord.type;
+          const color = isFreeHighlightColor(spanRecord.color) ? spanRecord.color : undefined;
           if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) continue;
           parsedSpans.push({
-            id: buildSpanId({ startIndex, endIndex, type }),
+            id: buildSpanId({ startIndex, endIndex, type, color }),
             startIndex,
             endIndex,
             type,
+            ...(color ? { color } : {}),
           });
         }
         cloudByKey.set(key, mergeUniqueHighlights(cloudByKey.get(key), parsedSpans));
@@ -1579,12 +1601,14 @@ export const getAllUserStudyData = async (): Promise<UserStudyLibraryData> => {
             const startIndex = Number(spanRecord.start_index);
             const endIndex = Number(spanRecord.end_index);
             if (!isHighlightType(spanRecord.type)) continue;
+            const color = isFreeHighlightColor(spanRecord.color) ? spanRecord.color : undefined;
             if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) continue;
             parsedSpans.push({
-              id: buildSpanId({ startIndex, endIndex, type: spanRecord.type }),
+              id: buildSpanId({ startIndex, endIndex, type: spanRecord.type, color }),
               startIndex,
               endIndex,
               type: spanRecord.type,
+              ...(color ? { color } : {}),
             });
           }
           const merged = mergeUniqueHighlights(highlights[key], parsedSpans);
@@ -1691,6 +1715,7 @@ export const saveStudyData = async (
         start_index: h.startIndex,
         end_index: h.endIndex,
         type: h.type,
+        ...(h.color ? { color: h.color } : {}),
       }));
 
       const delRes = await supabase
