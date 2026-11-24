@@ -11,6 +11,12 @@ const case1: PracticalCase = {id:'c1',case_number:1,curriculum_key:'org',title:'
 const case2: PracticalCase = {...case1,id:'c2',case_number:2,title:'KIROLAK',statement:'Segundo enunciado'};
 beforeEach(() => { vi.resetAllMocks(); api.getCaseAssets.mockResolvedValue([]); });
 describe('practical cases UI', () => {
+  it('leaves official questions available without a practical-case lookup, even with a numeric ID', () => {
+    const question={id:'5608',number:460,text:'Pregunta oficial independiente',practiceSource:'official' as const,options:[{id:'a' as const,text:'Respuesta oficial'}],correctAnswer:'a' as const,explanation:'Explicación',syllabus:'specific' as const,category:'Ley',questionScope:'specific' as const};
+    render(<TestInterface questions={[question]} mode="standard" onFinish={vi.fn()} onCancel={vi.fn()} activityContext={{userId:'learner',curriculum:'official',sessionId:'s2'}} />);
+    expect(screen.getByRole('button',{name:/Respuesta oficial/})).toBeEnabled();
+    expect(api.getQuestionCase).not.toHaveBeenCalled();
+  });
   it('shows the mode only when the assigned curriculum has cases', async () => {
     api.getPracticalCases.mockResolvedValueOnce([case1]).mockResolvedValueOnce([]);
     const props={lawOptions:[],onStart:vi.fn(),onStartChallenge:vi.fn(),onStartLawTest:vi.fn(),onStartCustomTest:vi.fn(),onStartCustomPractice:vi.fn(),initialSyllabus:null,userId:'learner'};

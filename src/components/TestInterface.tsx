@@ -115,7 +115,8 @@ export default function TestInterface({
   const onCaseStatus = useCallback((id: string, ready: boolean) => {
     setCaseReadyQuestionId(ready ? id : null);
   }, []);
-  const waitingForCase = Boolean(activityUserId) && caseReadyQuestionId !== currentQuestion?.id;
+  const needsCaseContext = Boolean(activityUserId) && currentQuestion?.practiceSource !== 'official';
+  const waitingForCase = needsCaseContext && caseReadyQuestionId !== currentQuestion?.id;
   const canActiveStudyCurrent =
     !isSimulacro && (selectedAnswer !== null || isMistakeReview);
 
@@ -853,7 +854,7 @@ export default function TestInterface({
       <div className={`mx-2 flex flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all duration-500 sm:mx-0 sm:rounded-[2.25rem] ${isFocusMode ? 'gap-2 p-4 shadow-xl sm:p-5' : 'pb-4 sm:gap-4 sm:p-6 sm:pb-6'}`}>
         {closingSession ? null : (
           <>
-            {activityUserId && <PracticalCaseContext questionId={currentQuestion.id} onStatusChange={onCaseStatus} />}
+            {needsCaseContext && <PracticalCaseContext questionId={currentQuestion.id} onStatusChange={onCaseStatus} />}
             <div className={`px-4 sm:px-0 ${isFocusMode ? 'pb-2 pt-0' : 'sticky top-0 z-30 border-b border-slate-100 bg-white/95 pb-4 pt-4 shadow-sm backdrop-blur-xl transition-all sm:border-transparent sm:shadow-none'}`}>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <div className="min-w-0">

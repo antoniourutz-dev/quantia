@@ -13,6 +13,10 @@ function query(data: unknown, error: unknown = null) {
 }
 beforeEach(() => { vi.resetAllMocks(); });
 describe('practical cases API', () => {
+  it.each(['official:5608','c2512fd4-cc6f-42c6-a215-cfe4f3cb728e','q1'])('skips IDs from unrelated banks: %s', async id => {
+    expect(await getQuestionCase(id)).toBeNull();
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
   it('filters the published catalog by active curriculum and leaves assignment enforcement to RLS', async () => {
     const q=query(cases); mocks.from.mockReturnValue(q);
     expect(await getPracticalCases('org')).toEqual(cases);

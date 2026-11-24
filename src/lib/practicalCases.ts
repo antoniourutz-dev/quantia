@@ -45,6 +45,8 @@ export async function startCaseQuestions(curriculum: string, cases: PracticalCas
 }
 
 export async function getQuestionCase(questionId: string): Promise<PracticalCase | null> {
+  // Other banks can use UUIDs or prefixed IDs; they cannot match a preguntas bigint.
+  if (!/^[1-9]\d*$/.test(questionId)) return null;
   // Link by primary key, never by the question number shared by other banks.
   const { data: link, error: linkError } = await supabase.from('practical_case_questions')
     .select('case_id').eq('question_id', questionId).maybeSingle();
