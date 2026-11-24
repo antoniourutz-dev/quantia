@@ -19,6 +19,30 @@ type Props = {
 type Topic = { scope: SyllabusType; label: string; questions: Question[] };
 const topicKey = (topic: Topic) => `${topic.scope}:${topic.label}`;
 
+// Scope colors identify the syllabus, not the student's mastery.
+const scopeStyles = {
+  common: {
+    selected: 'border-teal-600 bg-teal-50 text-teal-950 shadow-sm',
+    idle: 'border-teal-200 bg-teal-50/30 text-teal-900 hover:bg-teal-50',
+    dot: 'bg-teal-600',
+    focus: 'focus-visible:outline-teal-600',
+    card: 'border-teal-200 border-l-4 border-l-teal-500 bg-white',
+    hover: 'hover:bg-teal-50/40',
+    accent: 'text-teal-700',
+    info: 'border-teal-200 text-teal-700 hover:bg-teal-50',
+  },
+  specific: {
+    selected: 'border-indigo-600 bg-indigo-50 text-indigo-950 shadow-sm',
+    idle: 'border-indigo-200 bg-indigo-50/30 text-indigo-900 hover:bg-indigo-50',
+    dot: 'bg-indigo-600',
+    focus: 'focus-visible:outline-indigo-600',
+    card: 'border-indigo-100 border-l-4 border-l-indigo-500 bg-white',
+    hover: 'hover:bg-indigo-50/40',
+    accent: 'text-indigo-700',
+    info: 'border-indigo-200 text-indigo-700 hover:bg-indigo-50',
+  },
+} as const;
+
 export default function ChallengeTopics({ curriculum, userId, syncing, isBasque, randomize, onRandomizeChange, onStart }: Props) {
   const [topics, setTopics] = useState<Topic[] | null>(null);
   const [bankError, setBankError] = useState(false);
@@ -115,10 +139,11 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
         {availableScopes.map(scope => {
           const entries = topics.filter(topic => topic.scope === scope);
           const count = entries.reduce((sum, topic) => sum + topic.questions.length, 0);
+          const styles = scopeStyles[scope];
           return <button key={scope} type="button" aria-pressed={activeScope === scope}
             onClick={() => { setSelectedScope(scope); setOpenTopic(null); }}
-            className={`min-h-11 rounded-xl border-2 px-3 py-3 text-left text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${activeScope === scope ? 'border-indigo-600 bg-indigo-50 text-indigo-900' : 'border-slate-200 bg-white text-slate-700'}`}>
-            <span className="block">{scopeLabel(scope)}</span>
+            className={`min-h-11 rounded-xl border-2 px-3 py-3 text-left text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 ${styles.focus} ${activeScope === scope ? styles.selected : styles.idle}`}>
+            <span className="flex items-center gap-2"><span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${styles.dot}`} />{scopeLabel(scope)}</span>
             <span className="block text-xs font-medium">{entries.length} {isBasque ? 'gai' : 'temas'} · {count} {isBasque ? 'galdera' : 'preguntas'}</span>
           </button>;
         })}
@@ -126,6 +151,7 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
       <ul className="grid gap-3 lg:grid-cols-2">
         {scopeTopics.map((entry, index) => {
           const { label, questions, scope } = entry;
+          const styles = scopeStyles[scope];
           const key = topicKey(entry);
           const detailId = `topic-details-${scope}-${index}`;
           const topic = { label, questions, randomize };
@@ -134,9 +160,9 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
           const status = rate != null ? `${rate}%` : (energyError || (!energy && userId)) ? '—' : isBasque ? 'Entrenatu gabe' : 'Sin entrenar';
           return (
             <li key={key} className={openTopic === key ? "lg:col-span-2" : undefined}>
-              <div className="relative rounded-2xl border border-indigo-100 bg-white shadow-sm">
+              <div className={`relative rounded-2xl border shadow-sm ${styles.card}`}>
               <button type="button" onClick={() => startTopic(questions, topic, scope)}
-                className="group flex h-full w-full items-center gap-3 rounded-2xl p-4 pr-16 text-left transition hover:bg-indigo-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 motion-reduce:transition-none">
+                className={`group flex h-full w-full items-center gap-3 rounded-2xl p-4 pr-16 text-left transition focus-visible:outline focus-visible:outline-2 motion-reduce:transition-none ${styles.hover} ${styles.focus}`}>
                 <span className="min-w-0 flex-1 space-y-2">
                   <span className="block text-sm font-bold text-slate-900 sm:text-base">{label}</span>
                   <span className="flex flex-wrap items-center justify-between gap-x-3 text-xs text-slate-600">
@@ -148,16 +174,16 @@ export default function ChallengeTopics({ curriculum, userId, syncing, isBasque,
                   </span>
                   <span className="block text-xs text-slate-600">
                     {progress && <>{progress.practiced}/{progress.gradable} {isBasque ? 'galdera landuta' : 'preguntas practicadas'} · </>}
-                    <span className="font-bold text-indigo-700">{isBasque ? 'Proba osoa hasi' : 'Hacer test completo'}</span>
+                    <span className={`font-bold ${styles.accent}`}>{isBasque ? 'Proba osoa hasi' : 'Hacer test completo'}</span>
                   </span>
                 </span>
-                <ChevronRight size={20} className="shrink-0 text-indigo-700" aria-hidden="true" />
+                <ChevronRight size={20} className={`shrink-0 ${styles.accent}`} aria-hidden="true" />
               </button>
                 <button type="button" aria-expanded={openTopic === key}
                   aria-controls={openTopic === key ? detailId : undefined}
                   aria-label={isBasque ? `${label}: galderen xehetasunak` : `${label}: detalle de las preguntas`}
                   onClick={() => setOpenTopic(current => current === key ? null : key)}
-                  className="absolute right-3 top-3 inline-flex size-10 items-center justify-center rounded-full border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600">
+                  className={`absolute right-3 top-3 inline-flex size-10 items-center justify-center rounded-full border bg-white focus-visible:outline focus-visible:outline-2 ${styles.info} ${styles.focus}`}>
                   <Info size={18} aria-hidden="true" />
                 </button>
               </div>
