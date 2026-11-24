@@ -40,7 +40,7 @@ export default function PracticalCaseContext({ questionId, onStatusChange }: {
     if (image && dialog.current && !dialog.current.open) dialog.current.showModal();
     else if (!image && dialog.current?.open) dialog.current.close();
   }, [image]);
-  if (state.questionId !== questionId || state.loading) return <p role="status" className="p-4 text-sm text-slate-500">Comprobando contexto de la pregunta…</p>;
+  if (state.questionId !== questionId || state.loading) return null;
   if (state.error) return <div role="alert" className="m-3 rounded-xl bg-amber-50 p-4 text-amber-900">No se ha podido comprobar el enunciado asociado. <button type="button" className="font-bold underline" onClick={() => setAttempt(v => v + 1)}>Reintentar</button></div>;
   if (!state.context) return null;
   const c = state.context;
