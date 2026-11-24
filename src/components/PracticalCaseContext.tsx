@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCaseAssets, getQuestionCase, type PracticalCase, type CaseAsset } from '../lib/practicalCases';
 import PracticalCaseImage from './PracticalCaseImage';
+import HighlightableText, { type TextHighlight } from './HighlightableText';
+import { createId } from '../lib/id';
 
 export default function PracticalCaseContext({ questionId, onStatusChange }: {
   questionId: string; onStatusChange?: (questionId: string, ready: boolean) => void;
@@ -12,6 +14,8 @@ export default function PracticalCaseContext({ questionId, onStatusChange }: {
   const dialog = useRef<HTMLDialogElement>(null);
   const section = useRef<HTMLElement>(null);
   const assetCache = useRef(new Map<string, Array<CaseAsset & { url: string }>>());
+  // Drafts belong to this mounted test only, independently for each case.
+  const [drafts, setDrafts] = useState<Record<string, { text: string; highlights: TextHighlight[] }>>({});
   useEffect(() => {
     let active = true;
     setState({questionId,loading:true,error:false,context:null,assets:[]});
@@ -40,6 +44,8 @@ export default function PracticalCaseContext({ questionId, onStatusChange }: {
   if (state.error) return <div role="alert" className="m-3 rounded-xl bg-amber-50 p-4 text-amber-900">No se ha podido comprobar el enunciado asociado. <button type="button" className="font-bold underline" onClick={() => setAttempt(v => v + 1)}>Reintentar</button></div>;
   if (!state.context) return null;
   const c = state.context;
+  const statement = c.statement.split(/\n\s*\n/).map(paragraph => paragraph.replace(/\s+/g, ' ').trim()).join('\n\n');
+  const highlights = drafts[c.id]?.text === statement ? drafts[c.id].highlights : [];
   return <section ref={section} aria-label="Enunciado del caso práctico" className="m-3 rounded-2xl border border-indigo-200 bg-indigo-50/40 sm:mx-0">
     <button type="button" onClick={() => { setExpanded(true); section.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] right-3 z-40 rounded-full bg-indigo-700 px-4 py-3 text-sm font-bold text-white shadow-lg lg:hidden">Consultar caso</button>
     <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 rounded-t-2xl bg-indigo-50 p-4">
@@ -47,8 +53,18 @@ export default function PracticalCaseContext({ questionId, onStatusChange }: {
       <button type="button" aria-expanded={expanded} className="rounded-lg bg-white px-3 py-2 text-sm font-bold text-indigo-700" onClick={() => setExpanded(v => !v)}>{expanded ? 'Reducir enunciado' : 'Leer enunciado completo'}</button>
     </div>
     <div className={`overflow-y-auto p-4 ${expanded ? 'max-h-[65dvh]' : 'max-h-56'}`} tabIndex={0} aria-label="Texto y recursos del caso">
-      <div className="space-y-3 text-sm leading-relaxed text-slate-800 sm:text-base">
-        {c.statement.split(/\n\s*\n/).map((paragraph, index) => <p key={index} className={paragraph.startsWith('• ') ? 'pl-5 -indent-4' : undefined}>{paragraph.replace(/\s+/g, ' ').trim()}</p>)}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span>{highlights.length ? 'Subrayado temporal · se borra al salir del test' : 'Selecciona texto para subrayar mientras analizas el caso.'}</span>
+        {highlights.length > 0 && <button type="button" aria-label="Limpiar subrayado del enunciado" className="rounded-lg border border-slate-200 bg-white px-3 py-1 font-bold text-slate-600" onClick={() => setDrafts(prev => ({ ...prev, [c.id]: { text: statement, highlights: [] } }))}>Limpiar</button>}
+      </div>
+      <div className="text-sm leading-relaxed text-slate-800 sm:text-base">
+        <HighlightableText key={c.id} text={statement} highlights={highlights} ephemeral
+          onAddHighlight={highlight => setDrafts(prev => ({
+            ...prev,
+            [c.id]: { text: statement, highlights: [...(prev[c.id]?.text === statement ? prev[c.id].highlights : []), { ...highlight, id: createId() }] },
+          }))}
+          onRemoveHighlight={id => setDrafts(prev => ({ ...prev, [c.id]: { text: statement, highlights: (prev[c.id]?.text === statement ? prev[c.id].highlights : []).filter(highlight => highlight.id !== id) } }))}
+        />
       </div>
       <div className="mt-4 grid gap-4">
         {state.assets.map(a => <figure key={a.id}>

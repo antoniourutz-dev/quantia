@@ -15,6 +15,14 @@ aspect ratio. The OSANEBI map is displayed rotated clockwise by 90 degrees for
 reading, with a 520 px preview and a 900 px enlarged view; its stored PNG bytes
 and integrity hash are unchanged.
 
+The case statement reuses `HighlightableText` in ephemeral mode with the same
+color toolbar as questions. Draft marks are isolated by case and remain available
+across that case's questions (including a return to it during the same test).
+Clicking a mark removes it; the case's Clear button removes all of its marks.
+Drafts live only in the mounted test component and disappear on exit/reload;
+no annotation API or browser storage persists them. Source text changes invalidate
+old draft offsets without modifying the source or the original paragraph breaks.
+
 ## Data and access
 
 - `practical_cases`: opposition, curriculum, ordered case, statement and source.

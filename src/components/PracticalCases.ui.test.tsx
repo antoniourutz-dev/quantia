@@ -11,6 +11,42 @@ const case1: PracticalCase = {id:'c1',case_number:1,curriculum_key:'org',title:'
 const case2: PracticalCase = {...case1,id:'c2',case_number:2,title:'KIROLAK',statement:'Segundo enunciado'};
 beforeEach(() => { vi.resetAllMocks(); api.getCaseAssets.mockResolvedValue([]); });
 describe('practical cases UI', () => {
+  it('keeps draft statement marks across questions, isolates cases, supports clearing and forgets them on exit', async () => {
+    api.getQuestionCase.mockImplementation(async (id: string) => id === '5614' ? case2 : case1);
+    const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
+    const { container, rerender, unmount } = render(<PracticalCaseContext questionId="5608" />);
+    await screen.findByText(case1.statement);
+    const highlight = () => {
+      const textNode = container.querySelector('.highlightable-text')!.firstChild!.firstChild;
+      const selection = vi.spyOn(window, 'getSelection').mockReturnValue({
+        isCollapsed: false, anchorNode: textNode, focusNode: textNode, anchorOffset: 0, focusOffset: 9,
+        getRangeAt: () => ({ getBoundingClientRect: () => ({ top: 100, left: 100, width: 70, height: 20 }) }),
+        removeAllRanges: vi.fn(),
+      } as unknown as Selection);
+      fireEvent(document, new Event('selectionchange'));
+      fireEvent.click(screen.getByRole('button', { name: 'Borrador · Amarillo' }));
+      selection.mockRestore();
+    };
+    highlight();
+    expect(container.querySelectorAll('.border-dashed')).toHaveLength(1);
+    rerender(<PracticalCaseContext questionId="5609" />);
+    await screen.findByRole('button', { name: 'Limpiar subrayado del enunciado' });
+    expect(container.querySelectorAll('.border-dashed')).toHaveLength(1);
+    rerender(<PracticalCaseContext questionId="5614" />);
+    await screen.findByText(case2.statement);
+    expect(container.querySelector('.border-dashed')).toBeNull();
+    rerender(<PracticalCaseContext questionId="5608" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Limpiar subrayado del enunciado' }));
+    expect(container.querySelector('.border-dashed')).toBeNull();
+    highlight();
+    expect(container.querySelectorAll('.border-dashed')).toHaveLength(1);
+    expect(storageWrite).not.toHaveBeenCalled();
+    unmount();
+    const next = render(<PracticalCaseContext questionId="5608" />);
+    await screen.findByText(case1.statement);
+    expect(next.container.querySelector('.border-dashed')).toBeNull();
+    storageWrite.mockRestore();
+  });
   it('leaves official questions available without a practical-case lookup, even with a numeric ID', () => {
     const question={id:'5608',number:460,text:'Pregunta oficial independiente',practiceSource:'official' as const,options:[{id:'a' as const,text:'Respuesta oficial'}],correctAnswer:'a' as const,explanation:'Explicación',syllabus:'specific' as const,category:'Ley',questionScope:'specific' as const};
     render(<TestInterface questions={[question]} mode="standard" onFinish={vi.fn()} onCancel={vi.fn()} activityContext={{userId:'learner',curriculum:'official',sessionId:'s2'}} />);
