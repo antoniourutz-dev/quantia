@@ -239,14 +239,16 @@ export default function StudyInterface({
             </button>
           </div>
 
-          <div className="text-[17px] sm:text-[19px] font-extrabold leading-relaxed text-slate-800 pr-1 select-text">
-            {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="mr-1 font-black text-amber-600">*</span>}
-            <HighlightableText
-              text={currentQuestion.text}
-              highlights={highlightsMap[currentQuestion.id] || []}
-              onAddHighlight={handleAddHighlight}
-              onRemoveHighlight={handleRemoveHighlight}
-            />
+          <div className="flex items-start gap-1.5 text-[17px] sm:text-[19px] font-extrabold leading-relaxed text-slate-800 pr-1 select-text">
+            {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="shrink-0 font-black text-amber-600">*</span>}
+            <div className="min-w-0 flex-1">
+              <HighlightableText
+                text={currentQuestion.text}
+                highlights={highlightsMap[currentQuestion.id] || []}
+                onAddHighlight={handleAddHighlight}
+                onRemoveHighlight={handleRemoveHighlight}
+              />
+            </div>
           </div>
           {currentQuestion.auditIncident && <p className="mt-2 text-sm font-medium text-amber-800">{isBasque ? 'Galderak auditoria-gorabehera du: gordetako gakoa mantendu da. Ikusi araudiari buruzko azalpena.' : 'Pregunta con incidencia: se conserva la clave registrada. Consulta la explicación normativa.'}</p>}
         </div>

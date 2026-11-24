@@ -955,8 +955,9 @@ export default function TestInterface({
                 </div>
               </div>
 
-              <h2 className={`${questionTextSizeClass} max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
-                {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="mr-1 font-black text-amber-600">*</span>}
+              <h2 className={`${questionTextSizeClass} flex items-start gap-1.5 max-h-[35vh] overflow-y-auto pr-1 font-extrabold leading-[1.35] text-slate-800`}>
+                {currentQuestion.auditIncident && <span role="img" aria-label={isBasque ? 'Gorabehera duen galdera' : 'Pregunta con incidencia'} className="shrink-0 font-black text-amber-600">*</span>}
+                <div className="min-w-0 flex-1">
                 {canActiveStudyCurrent ? (
                   <HighlightableText
                     text={currentQuestion.text}
@@ -1011,6 +1012,7 @@ export default function TestInterface({
                 ) : (
                   currentQuestion.text
                 )}
+                </div>
               </h2>
               {selectedAnswer === null && !isMistakeReview && ephemeralHighlights.length > 0 ? (
                 <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-500">
