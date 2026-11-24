@@ -5,6 +5,7 @@ import {
   ChevronRight,
   FileText,
   Flag,
+  Highlighter,
   LayoutGrid,
   RotateCcw,
   Info,
@@ -76,6 +77,7 @@ export default function TestInterface({
   const [showExplanation, setShowExplanation] = useState(false);
   const [manualExplanationOpen, setManualExplanationOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [isAnalysisMode, setIsAnalysisMode] = useState(false);
   const [focusTextSize, setFocusTextSize] = useState<FocusTextSize>('normal');
   const [timeLeft, setTimeLeft] = useState(() => (mode === 'simulacro' ? questions.length * 90 : questions.length * 60));
   const [questionStartAt, setQuestionStartAt] = useState(() => Date.now());
@@ -135,6 +137,9 @@ export default function TestInterface({
 
   const [noteDrawerOpen, setNoteDrawerOpen] = useState(false);
   const [ephemeralHighlights, setEphemeralHighlights] = useState<TextHighlight[]>([]);
+  const [ephemeralOptionHighlights, setEphemeralOptionHighlights] = useState<
+    Record<number, TextHighlight[]>
+  >({});
   const [errataReportsMap, setErrataReportsMap] = useState<
     Record<string, QuestionErrataReport[]>
   >({});
@@ -142,6 +147,7 @@ export default function TestInterface({
   useEffect(() => {
     setNoteDrawerOpen(false);
     setEphemeralHighlights([]);
+    setEphemeralOptionHighlights({});
   }, [currentIndex, currentQuestion?.id, isMistakeReview]);
 
   useEffect(() => {
@@ -404,6 +410,7 @@ export default function TestInterface({
         setAnswerDetails(nextDetails);
       }
       setEphemeralHighlights([]);
+      setEphemeralOptionHighlights({});
       setShowExplanation(!isSimulacro);
       setManualExplanationOpen(false);
 
@@ -703,8 +710,9 @@ export default function TestInterface({
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <button
+                  type="button"
                   onClick={() => setIsFocusMode(true)}
                   disabled={closingSession}
                   className={`hidden sm:flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[10px] font-bold transition-all ${
@@ -715,6 +723,27 @@ export default function TestInterface({
                 >
                   <Zap size={12} />
                   Focus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAnalysisMode((prev) => !prev)}
+                  disabled={closingSession}
+                  aria-pressed={isAnalysisMode}
+                  title={
+                    isBasque
+                      ? 'Analisi modua: azpimarratu aukerak zirriborro gisa eta sakatu A, B, C edo D erantzuteko'
+                      : 'Modo Análisis: subraya también las opciones en borrador y pulsa A, B, C o D para responder'
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-bold transition-all ${
+                    closingSession
+                      ? 'cursor-not-allowed border-transparent bg-slate-50 text-slate-300'
+                      : isAnalysisMode
+                        ? 'border-amber-300 bg-amber-50 text-amber-800 shadow-2xs'
+                        : 'border-transparent bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-700'
+                  }`}
+                >
+                  <Highlighter size={12} />
+                  {isBasque ? 'Analisia' : 'Análisis'}
                 </button>
                 {isMistakeReview ? (
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -1038,18 +1067,45 @@ export default function TestInterface({
               </div>
             ) : null}
 
+            {isAnalysisMode && (selectedAnswer === null || isSimulacro) && !isMistakeReview ? (
+              <div className="mx-4 mb-2.5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2 text-[11px] font-bold text-amber-900 sm:mx-0">
+                <span className="inline-flex items-center gap-1.5">
+                  <Highlighter size={13} className="shrink-0 text-amber-700" />
+                  {isBasque
+                    ? 'Analisi modua: azpimarratu enuntziatua eta aukerak zirriborro gisa · Sakatu A, B, C edo D erantzuteko'
+                    : 'Modo Análisis: subraya enunciado y opciones en borrador · Pulsa A, B, C o D para responder'}
+                </span>
+                {ephemeralHighlights.length > 0 ||
+                Object.values(ephemeralOptionHighlights).some((list) => list.length > 0) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEphemeralHighlights([]);
+                      setEphemeralOptionHighlights({});
+                    }}
+                    className="rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-black text-amber-800 hover:bg-amber-100"
+                  >
+                    {isBasque ? 'Garbitu zirriborroa' : 'Limpiar borrador'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="flex flex-col flex-1 divide-y divide-slate-100 bg-slate-50/30 sm:rounded-2xl sm:border sm:border-slate-100 overflow-hidden">
               {currentQuestion.options.map((option, optionIndex) => {
                 const isSelected = selectedAnswer === option.id;
                 const isAnswerCorrect = option.id === currentQuestion.correctAnswer;
                 const isLockedAnswered = !isSimulacro && selectedAnswer !== null;
+                const isAnalysisInteractive = isAnalysisMode && !isLockedAnswered && !isMistakeReview;
 
                 let itemClass = `relative flex w-full items-center justify-between overflow-hidden text-left transition-all duration-300 group ${
                   isFocusMode ? 'p-3 sm:p-3.5' : 'p-4 sm:p-5'
                 } `;
 
                 if (selectedAnswer === null) {
-                  itemClass += 'hover:bg-white hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-0.5 cursor-pointer border-transparent';
+                  itemClass += isAnalysisInteractive
+                    ? 'bg-white/70 hover:bg-white border-transparent'
+                    : 'hover:bg-white hover:shadow-xl hover:shadow-indigo-500/10 hover:-translate-y-0.5 cursor-pointer border-transparent';
                 } else if (isSimulacro) {
                   itemClass += isSelected
                     ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
@@ -1065,6 +1121,23 @@ export default function TestInterface({
                 }
 
                 const answerKey = `${currentQuestion.id}_ans_${optionIndex}`;
+                const optionEphemeralList = ephemeralOptionHighlights[optionIndex] ?? [];
+                const letterBadgeClass = `flex flex-shrink-0 items-center justify-center rounded-xl text-sm font-black transition-all duration-300 ${isFocusMode ? 'h-8 w-8' : 'h-9 w-9'} ${
+                  isSimulacro && isSelected
+                    ? 'bg-indigo-600 text-white scale-110 shadow-lg shadow-indigo-200'
+                    : isSelected
+                      ? isAnswerCorrect
+                        ? 'bg-emerald-500 text-white scale-110 rotate-[360deg] shadow-lg shadow-emerald-200'
+                        : 'bg-rose-500 text-white scale-110 shadow-lg shadow-rose-200'
+                      : !isSimulacro && isAnswerCorrect && selectedAnswer !== null
+                        ? 'bg-emerald-500 text-white scale-105 shadow-md shadow-emerald-100'
+                        : isAnalysisInteractive
+                          ? 'bg-white text-indigo-700 border-2 border-indigo-300 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 hover:scale-105 cursor-pointer shadow-xs'
+                          : selectedAnswer === null
+                            ? 'bg-white text-slate-400 border border-slate-200 group-hover:border-indigo-400 group-hover:text-indigo-600 group-hover:scale-110 group-hover:shadow-md'
+                            : 'bg-slate-50 text-slate-300'
+                }`;
+
                 const optionInner = (
                   <>
                     {isSelected && (
@@ -1076,35 +1149,33 @@ export default function TestInterface({
                     )}
 
                     <div className={`relative z-10 flex items-center ${isFocusMode ? 'gap-3' : 'gap-4 sm:gap-5'}`}>
-                      <span
-                        className={`flex flex-shrink-0 items-center justify-center rounded-xl text-sm font-black transition-all duration-500 ${isFocusMode ? 'h-8 w-8' : 'h-9 w-9'} ${
-                          isSimulacro && isSelected
-                            ? 'bg-indigo-600 text-white scale-110 shadow-lg shadow-indigo-200'
-                            : isSelected
-                              ? isAnswerCorrect
-                                ? 'bg-emerald-500 text-white scale-110 rotate-[360deg] shadow-lg shadow-emerald-200'
-                                : 'bg-rose-500 text-white scale-110 shadow-lg shadow-rose-200'
-                              : !isSimulacro && isAnswerCorrect && selectedAnswer !== null
-                                ? 'bg-emerald-500 text-white scale-105 shadow-md shadow-emerald-100'
-                                : selectedAnswer === null
-                                  ? 'bg-white text-slate-400 border border-slate-200 group-hover:border-indigo-400 group-hover:text-indigo-600 group-hover:scale-110 group-hover:shadow-md'
-                                  : 'bg-slate-50 text-slate-300'
-                        }`}
-                      >
-                        {option.id.toUpperCase()}
-                      </span>
+                      {isAnalysisInteractive ? (
+                        <button
+                          type="button"
+                          onClick={() => handleAnswer(option.id)}
+                          disabled={closingSession}
+                          aria-label={`${isBasque ? 'Erantzun aukera' : 'Responder opción'} ${option.id.toUpperCase()}`}
+                          className={letterBadgeClass}
+                        >
+                          {option.id.toUpperCase()}
+                        </button>
+                      ) : (
+                        <span className={letterBadgeClass}>
+                          {option.id.toUpperCase()}
+                        </span>
+                      )}
                       <span
                         onMouseDown={(event) => {
-                          if (canActiveStudyCurrent) event.stopPropagation();
+                          if (canActiveStudyCurrent || isAnalysisInteractive) event.stopPropagation();
                         }}
                         onClick={(event) => {
-                          if (canActiveStudyCurrent) event.stopPropagation();
+                          if (canActiveStudyCurrent || isAnalysisInteractive) event.stopPropagation();
                         }}
                         className={`select-text font-bold leading-snug transition-colors duration-300 ${answerTextSizeClass} ${
                           isSelected || (!isSimulacro && isAnswerCorrect && selectedAnswer !== null) ? 'text-inherit' : 'text-slate-600'
                         }`}
                       >
-                        {canActiveStudyCurrent || showMarks ? (
+                        {canActiveStudyCurrent ? (
                           <HighlightableText
                             text={option.text}
                             highlights={highlightsMap[answerKey] ?? []}
@@ -1122,7 +1193,47 @@ export default function TestInterface({
                                 category: currentQuestion.category ?? null,
                               })
                             }
-                            readOnly={!canActiveStudyCurrent}
+                            readOnly={false}
+                            maxSelectionChars={90}
+                          />
+                        ) : isAnalysisInteractive ? (
+                          <HighlightableText
+                            text={option.text}
+                            highlights={
+                              showMarks
+                                ? [...(highlightsMap[answerKey] ?? []), ...optionEphemeralList]
+                                : optionEphemeralList
+                            }
+                            onAddHighlight={(hl) =>
+                              setEphemeralOptionHighlights((prev) => ({
+                                ...prev,
+                                [optionIndex]: [
+                                  ...(prev[optionIndex] ?? []),
+                                  {
+                                    ...hl,
+                                    id: `ephemeral-opt-${optionIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                                  },
+                                ],
+                              }))
+                            }
+                            onRemoveHighlight={(id) =>
+                              setEphemeralOptionHighlights((prev) => ({
+                                ...prev,
+                                [optionIndex]: (prev[optionIndex] ?? []).filter(
+                                  (item) => item.id !== id,
+                                ),
+                              }))
+                            }
+                            ephemeral={true}
+                            maxSelectionChars={90}
+                          />
+                        ) : showMarks ? (
+                          <HighlightableText
+                            text={option.text}
+                            highlights={highlightsMap[answerKey] ?? []}
+                            onAddHighlight={() => {}}
+                            onRemoveHighlight={() => {}}
+                            readOnly={true}
                             maxSelectionChars={90}
                           />
                         ) : (
@@ -1146,8 +1257,8 @@ export default function TestInterface({
                   </>
                 );
 
-                // When answered in non-simulacro mode, render as a non-disabled div container so browsers allow text selection for highlighting
-                if (isLockedAnswered) {
+                // When answered in non-simulacro mode OR in Analysis mode, render as a non-button container so browsers allow text selection for highlighting
+                if (isLockedAnswered || isAnalysisInteractive) {
                   return (
                     <div
                       key={option.id}
@@ -1345,6 +1456,22 @@ export default function TestInterface({
                 >
                   <XCircle size={15} />
                   <span>{isBasque ? 'Irten Focus modutik' : 'Salir de Focus'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAnalysisMode((prev) => !prev)}
+                  disabled={closingSession}
+                  aria-pressed={isAnalysisMode}
+                  className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-bold transition-all ${
+                    closingSession
+                      ? 'cursor-not-allowed border-transparent text-slate-300'
+                      : isAnalysisMode
+                        ? 'border-amber-300 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-white/70 text-slate-600 hover:bg-amber-50 hover:text-amber-700'
+                  }`}
+                >
+                  <Highlighter size={13} />
+                  <span>{isBasque ? 'Analisia' : 'Análisis'}</span>
                 </button>
                 {!isMistakeReview ? (
                   <button

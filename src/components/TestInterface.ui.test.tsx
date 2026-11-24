@@ -205,4 +205,61 @@ describe('TestInterface', () => {
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
     expect(screen.getByText('Primera pregunta del examen')).toBeInTheDocument();
   });
+
+  it('en Modo Análisis permite subrayado efímero en opciones y exige pulsar la letra A/B/C/D para responder', async () => {
+    window.scrollTo = vi.fn();
+    window.localStorage.clear();
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <TestInterface
+        questions={sampleQuestions}
+        mode="standard"
+        onFinish={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+
+    const analysisBtn = screen.getByRole('button', { name: /^Análisis$/i });
+    expect(analysisBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(analysisBtn);
+    expect(analysisBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/Modo Análisis:/i)).toBeInTheDocument();
+
+    // Clicking the option text in Analysis mode must NOT answer the question
+    await user.click(screen.getByText('Opción A1'));
+    expect(screen.queryByText('✓ Correcto')).not.toBeInTheDocument();
+
+    // Select text inside Option A to apply an ephemeral draft highlight
+    const highlightables = container.querySelectorAll('.highlightable-text');
+    // index 0 is stem, index 1 is Option A
+    expect(highlightables.length).toBeGreaterThanOrEqual(5);
+    const optionATextNode = highlightables[1].firstChild?.firstChild;
+    expect(optionATextNode).toBeTruthy();
+
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      anchorNode: optionATextNode,
+      focusNode: optionATextNode,
+      anchorOffset: 0,
+      focusOffset: 6,
+      getRangeAt: () => ({
+        getBoundingClientRect: () => ({ top: 120, left: 120, width: 50, height: 20 }),
+      }),
+      removeAllRanges: vi.fn(),
+    } as unknown as Selection);
+    fireEvent(document, new Event('selectionchange'));
+
+    await user.click(screen.getByRole('button', { name: 'Borrador · Amarillo' }));
+    expect(screen.getByRole('button', { name: /Limpiar borrador/i })).toBeInTheDocument();
+    // Ephemeral marks must never be written to quantia_study_state
+    expect(window.localStorage.getItem('quantia_study_state')).toBeNull();
+
+    // Clicking the letter button A answers the question and clears the ephemeral draft
+    await user.click(screen.getByRole('button', { name: /Responder opción A/i }));
+    expect(screen.getByText('✓ Correcto')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Limpiar borrador/i })).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
 });
+
