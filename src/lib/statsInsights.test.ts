@@ -215,7 +215,7 @@ describe('buildEvolutionChartData & mergeTopicInsights', () => {
       { eventId: 's3-2', questionId: 's3', questionNumber: 3, scope: 'specific' as const, answeredAt: '2026-11-12T10:00:00.000Z', isCorrect: false },
     ];
 
-    const telemetry = buildStatsAttemptTelemetry(bank, attempts);
+    const telemetry = buildStatsAttemptTelemetry(bank, attempts, undefined, { referenceDate: new Date('2026-11-13T10:00:00Z') });
     expect(telemetry.memorySummary).toEqual({
       mastered: 1,
       solid: 1,

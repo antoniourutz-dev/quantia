@@ -29,10 +29,10 @@ describe('mapPracticeMode', () => {
 });
 
 describe('mapQuestion', () => {
-  it('marks only the targeted curriculum and prefix without changing the statement', () => {
+  it('marks the explicit audit prefix in any curriculum without changing the statement', () => {
     const row = { id: 1, pregunta: 'Pregunta original', opcion_a: 'A', opcion_b: 'B', opcion_c: 'C', opcion_d: 'D', curriculum_key: 'osakidetza_tecnico_superior_mantenimiento_instalaciones', explicacion_editorial: '[INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI] Detalle' };
     expect(mapQuestion(row)).toMatchObject({ text: 'Pregunta original', auditIncident: true });
-    expect(mapQuestion({ ...row, curriculum_key: 'otro' })?.auditIncident).toBe(false);
+    expect(mapQuestion({ ...row, curriculum_key: 'otro' })?.auditIncident).toBe(true);
     expect(mapQuestion({ ...row, explicacion_editorial: 'Texto [INCIDENCIA_AUDITADA: MOSTRAR_ASTERISCO_EN_UI]' })?.auditIncident).toBe(false);
     expect(mapQuestion({ ...row, explicacion_editorial: null })?.auditIncident).toBe(false);
   });

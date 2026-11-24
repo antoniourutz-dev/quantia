@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 // Execute the actual Edge handler with an in-memory Auth/Data API boundary.
 // No production credentials, accounts or learning data are used.
-const source = readFileSync('supabase/functions/admin-users/index.ts', 'utf8').replace(/^import .*;\n/gm, '');
+const source = readFileSync('supabase/functions/admin-users/index.ts', 'utf8').replace(/^import .*;\r?\n/gm, '');
 const compiled = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
 function harness(actor = 'manager', banned = false, invalid = false) {
   const updateUserById = vi.fn(async () => ({ error: null }));

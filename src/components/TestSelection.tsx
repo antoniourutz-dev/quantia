@@ -40,8 +40,10 @@ import ChallengePanel from './ChallengePanel';
 import ChallengeTopics from './ChallengeTopics';
 import type { ChallengeScope } from '../lib/challenge';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
+import PracticalCaseSelector from './PracticalCaseSelector';
+import { getPracticalCases, type PracticalCase } from '../lib/practicalCases';
 
-type SelectionMode = PracticeModeVisibilityId;
+type SelectionMode = PracticeModeVisibilityId | 'cases';
 type LegacySelectionMode = SelectionMode | 'quick';
 type StandardSyllabusSelection = 'mixed' | SyllabusType;
 type ReviewSource = 'all' | 'recent_tests' | 'last_day';
@@ -172,6 +174,17 @@ export default function TestSelection({
 }: TestSelectionProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
+  const [practicalCases, setPracticalCases] = useState<PracticalCase[]>([]);
+  const [caseLoadError, setCaseLoadError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setPracticalCases([]); setCaseLoadError(false);
+    if (!userId) return;
+    void getPracticalCases(curriculum).then(cases => {
+      if (active) setPracticalCases(cases);
+    }).catch(() => { if (active) setCaseLoadError(true); });
+    return () => { active = false; };
+  }, [curriculum, userId]);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(() => {
     if (initialState?.selectionMode === 'challenge' && initialState.challengeScope === 'topics') {
       return 'topics';
@@ -226,11 +239,12 @@ export default function TestSelection({
     const available = (id: PracticeModeVisibilityId) =>
       Boolean(onStartChallenge) || (id !== 'challenge' && id !== 'topics');
     const normalized = normalizePracticeModeIds(visiblePracticeModeIds).filter(available);
-    return normalized.length > 0 ? normalized : PRACTICE_MODE_IDS.filter(available);
-  }, [onStartChallenge, visiblePracticeModeIds]);
+    const modes: SelectionMode[] = normalized.length > 0 ? normalized : PRACTICE_MODE_IDS.filter(available);
+    return practicalCases.length && onStartChallenge ? [...modes, 'cases' as const] : modes;
+  }, [onStartChallenge, visiblePracticeModeIds, practicalCases]);
 
   const visiblePracticeModeSet = useMemo(
-    () => new Set<PracticeModeVisibilityId>(normalizedVisiblePracticeModeIds),
+    () => new Set<SelectionMode>(normalizedVisiblePracticeModeIds),
     [normalizedVisiblePracticeModeIds],
   );
 
@@ -257,7 +271,8 @@ export default function TestSelection({
     simulacro: { Icon: Timer, label: isBasque ? 'Simulakroa' : 'Simulacro' },
     challenge: { Icon: Trophy, label: isBasque ? 'Erronka' : 'Desafío' },
     custom: { Icon: SlidersHorizontal, label: isBasque ? 'Zure neurrira' : 'A tu medida' },
-  } satisfies Record<PracticeModeVisibilityId, { Icon: typeof Zap; label: string }>;
+    cases: { Icon: BookOpen, label: 'Casos prácticos' },
+  } satisfies Record<SelectionMode, { Icon: typeof Zap; label: string }>;
 
   const modeNeedsConfig =
     selectionMode === 'standard' ||
@@ -1256,6 +1271,10 @@ export default function TestSelection({
         </div>
       </div>
 
+      {caseLoadError && <p role="alert" className="text-sm text-amber-800">No se ha podido comprobar la disponibilidad de casos prácticos. Vuelve a entrar en Modo práctica para reintentar.</p>}
+      {selectionMode === 'cases' && practicalCases.length > 0 && onStartChallenge && (
+        <PracticalCaseSelector key={curriculum} curriculum={curriculum} cases={practicalCases} onStart={onStartChallenge} syncing={syncingChallenge} />
+      )}
       {selectionMode === 'challenge' && visiblePracticeModeSet.has('challenge') && onStartChallenge && (
         <ChallengePanel
           key={curriculum}
@@ -1293,7 +1312,7 @@ export default function TestSelection({
         </div>
       ) : null}
 
-      {selectionMode !== 'challenge' && selectionMode !== 'topics' && (
+      {selectionMode !== 'challenge' && selectionMode !== 'topics' && selectionMode !== 'cases' && (
         <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
           <button
             type="button"
