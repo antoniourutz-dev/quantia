@@ -101,6 +101,24 @@ export const pickMicroReward = (ctx: MicroRewardContext, seed: string): MicroRew
       detail: isBasque ? 'Orain jarraitutasuna da giltza.' : 'Ahora la clave es repetirlo con orden.',
     });
   }
+  if (ctx.sessionState === 'memory_instability') {
+    candidates.push({
+      id: 'steady_climb',
+      title: isBasque ? 'Jarraitutasunak batzen du' : 'Constancia que suma',
+      detail: isBasque
+        ? 'Errepaso labur batek gorakada handia ematen du.'
+        : 'Un repaso breve hoy consolida el salto en el siguiente test.',
+    });
+  }
+  if (ctx.sessionState === 'recovery_needed') {
+    candidates.push({
+      id: 'tough_session_credit',
+      title: isBasque ? 'Saio gogorra osatuta' : 'Sesión exigente completada',
+      detail: isBasque
+        ? 'Gaur detektatutako akats bakoitza bihar puntu seguru bat da.'
+        : 'Cada fallo detectado hoy es un punto que ya no pierdes el día del examen.',
+    });
+  }
 
   const reward = candidates[0] ?? null;
   if (!reward) return null;
