@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   XCircle,
   BarChart3,
   RotateCcw,
@@ -257,6 +258,44 @@ export default function PostTestStats({
       })
       .sort((a, b) => b.total - a.total || b.accuracy - a.accuracy);
   }, [analysisHydrated, answerMap, curriculum, isBasque, penaltyRule, scorableQuestions]);
+
+  const [showTopicBreakdown, setShowTopicBreakdown] = useState(false);
+  const [topicBreakdownFilter, setTopicBreakdownFilter] = useState<'all' | 'weak' | 'strong'>('all');
+  const [topicBreakdownSort, setTopicBreakdownSort] = useState<'weakest' | 'volume'>('weakest');
+
+  const topicBreakdownSummary = useMemo(() => {
+    let weak = 0;
+    let mid = 0;
+    let strong = 0;
+    for (const law of lawData) {
+      const isWeak = hasPenalty ? law.netScoreBase10 < 5 : law.accuracy < 60;
+      const isStrong = hasPenalty ? law.netScoreBase10 >= 7 : law.accuracy >= 80;
+      if (isWeak) weak += 1;
+      else if (isStrong) strong += 1;
+      else mid += 1;
+    }
+    return { weak, mid, strong };
+  }, [hasPenalty, lawData]);
+
+  const visibleLawData = useMemo(() => {
+    const filtered = lawData.filter((law) => {
+      if (topicBreakdownFilter === 'all') return true;
+      const isWeak = hasPenalty ? law.netScoreBase10 < 5 : law.accuracy < 60;
+      const isStrong = hasPenalty ? law.netScoreBase10 >= 7 : law.accuracy >= 80;
+      return topicBreakdownFilter === 'weak' ? isWeak : isStrong;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (topicBreakdownSort === 'volume') {
+        return b.total - a.total || a.accuracy - b.accuracy;
+      }
+      if (hasPenalty && a.netScoreBase10 !== b.netScoreBase10) {
+        return a.netScoreBase10 - b.netScoreBase10;
+      }
+      return a.accuracy - b.accuracy || b.incorrect - a.incorrect || b.total - a.total;
+    });
+  }, [hasPenalty, lawData, topicBreakdownFilter, topicBreakdownSort]);
+
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
 
   const reviewItems = useMemo(() => {
@@ -672,55 +711,254 @@ export default function PostTestStats({
         </div>
       </div>
 
-      {/* Show breakdown only when the test actually covered >= 2 topics/laws */}
+      {/* Collapsible visual breakdown (hidden by default to keep long tests clean) */}
       {analysisHydrated && lawData.length >= 2 ? (
-        <div className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-              <BarChart3 size={20} />
-            </div>
-            <h3 className="text-lg font-black text-slate-800 tracking-tight">
-              {isBasque ? 'Gaika / Legez lege' : 'Por tema / ley'}
-            </h3>
-          </div>
-          <div className="rounded-xl bg-slate-50 overflow-hidden text-sm">
-            <div className="divide-y divide-slate-100">
-              {lawData.slice(0, 12).map((law) => (
-                <div key={law.fullName} className="px-4 py-3 flex items-center justify-between gap-4 bg-white">
-                  <div className="truncate font-bold text-slate-700 text-xs sm:text-sm">{law.fullName}</div>
-                  <div className="flex shrink-0 items-center gap-2.5">
-                    <span className="text-xs font-bold text-slate-500 tabular-nums">
-                      {law.correct}/{law.total}
+        <div className="rounded-[1.75rem] border border-slate-100 bg-white shadow-sm sm:rounded-[2rem] overflow-hidden">
+          <button
+            type="button"
+            aria-expanded={showTopicBreakdown}
+            aria-controls="post-test-topic-breakdown"
+            onClick={() => setShowTopicBreakdown((prev) => !prev)}
+            className="flex w-full flex-wrap items-center justify-between gap-3 p-5 text-left transition-colors hover:bg-slate-50/70 sm:px-7 sm:py-5"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                <BarChart3 size={20} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-black text-slate-900 tracking-tight sm:text-lg">
+                    {isBasque ? 'Gaika / Legez lege' : 'Por tema / ley'}
+                  </h3>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-black text-slate-600 tabular-nums">
+                    {lawData.length} {isBasque ? 'gai' : 'temas'}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                  {topicBreakdownSummary.weak > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-rose-700">
+                      <span className="h-2 w-2 rounded-full bg-rose-500" />
+                      {topicBreakdownSummary.weak} {isBasque ? 'indartzeko' : 'a reforzar'}
                     </span>
-                    <span
-                      className={`font-black text-sm lg:text-base tabular-nums ${
-                        law.accuracy >= 80
-                          ? 'text-emerald-600'
-                          : law.accuracy >= 60
-                            ? 'text-amber-600'
-                            : 'text-rose-600'
+                  ) : null}
+                  {topicBreakdownSummary.mid > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-amber-700">
+                      <span className="h-2 w-2 rounded-full bg-amber-400" />
+                      {topicBreakdownSummary.mid} {isBasque ? 'bidean' : 'en progreso'}
+                    </span>
+                  ) : null}
+                  {topicBreakdownSummary.strong > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-700">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      {topicBreakdownSummary.strong} {isBasque ? 'menderatuta' : 'dominados'}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-xs">
+              {showTopicBreakdown
+                ? isBasque
+                  ? 'Ezkutatu'
+                  : 'Ocultar'
+                : isBasque
+                  ? 'Ikusi banaketa'
+                  : 'Ver desglose'}
+              <ChevronDown
+                size={15}
+                className={`transition-transform duration-200 ${showTopicBreakdown ? 'rotate-180' : ''}`}
+              />
+            </span>
+          </button>
+
+          {showTopicBreakdown ? (
+            <div
+              id="post-test-topic-breakdown"
+              className="border-t border-slate-100 bg-slate-50/50 p-4 sm:p-6 space-y-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                <div
+                  className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1"
+                  role="group"
+                  aria-label={isBasque ? 'Iragazi gaiak' : 'Filtrar temas'}
+                >
+                  {(
+                    [
+                      {
+                        id: 'all',
+                        label: isBasque ? `Denak (${lawData.length})` : `Todos (${lawData.length})`,
+                      },
+                      {
+                        id: 'weak',
+                        label: isBasque
+                          ? `Indartzeko (${topicBreakdownSummary.weak})`
+                          : `A reforzar (${topicBreakdownSummary.weak})`,
+                      },
+                      {
+                        id: 'strong',
+                        label: isBasque
+                          ? `Menderatuak (${topicBreakdownSummary.strong})`
+                          : `Dominados (${topicBreakdownSummary.strong})`,
+                      },
+                    ] as Array<{ id: 'all' | 'weak' | 'strong'; label: string }>
+                  ).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={topicBreakdownFilter === option.id}
+                      onClick={() => setTopicBreakdownFilter(option.id)}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-black transition ${
+                        topicBreakdownFilter === option.id
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-50'
                       }`}
                     >
-                      {law.accuracy}%
-                    </span>
-                    {hasPenalty ? (
-                      <span
-                        className={`rounded-lg border px-2 py-0.5 text-xs font-black tabular-nums ${
-                          law.netScoreBase10 >= 7
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : law.netScoreBase10 >= 5
-                              ? 'border-amber-200 bg-amber-50 text-amber-700'
-                              : 'border-rose-200 bg-rose-50 text-rose-700'
-                        }`}
-                      >
-                        {formatNetScore(law.netScoreBase10)}/10
-                      </span>
-                    ) : null}
-                  </div>
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
-              ))}
+
+                <div className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
+                  <button
+                    type="button"
+                    aria-pressed={topicBreakdownSort === 'weakest'}
+                    onClick={() => setTopicBreakdownSort('weakest')}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-black transition ${
+                      topicBreakdownSort === 'weakest'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {isBasque ? 'Okerrenak lehenik' : 'Peor primero'}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={topicBreakdownSort === 'volume'}
+                    onClick={() => setTopicBreakdownSort('volume')}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-black transition ${
+                      topicBreakdownSort === 'volume'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {isBasque ? 'Galdera gehien' : 'Más preguntas'}
+                  </button>
+                </div>
+              </div>
+
+              {visibleLawData.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-xs font-bold text-slate-500">
+                  {isBasque
+                    ? 'Ez dago iragazki honekin bat datorren gairik.'
+                    : 'No hay temas en esta categoría.'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {visibleLawData.map((law) => {
+                    const isWeak = hasPenalty ? law.netScoreBase10 < 5 : law.accuracy < 60;
+                    const isStrong = hasPenalty ? law.netScoreBase10 >= 7 : law.accuracy >= 80;
+                    const correctPct = (law.correct / Math.max(1, law.total)) * 100;
+                    const incorrectPct = (law.incorrect / Math.max(1, law.total)) * 100;
+                    const unansweredPct = (law.unanswered / Math.max(1, law.total)) * 100;
+
+                    const accentClass = isStrong
+                      ? 'border-l-emerald-500'
+                      : isWeak
+                        ? 'border-l-rose-500'
+                        : 'border-l-amber-400';
+
+                    const pctTextClass = isStrong
+                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                      : isWeak
+                        ? 'text-rose-700 bg-rose-50 border-rose-200'
+                        : 'text-amber-700 bg-amber-50 border-amber-200';
+
+                    return (
+                      <div
+                        key={law.fullName}
+                        className={`rounded-2xl border border-slate-200/80 border-l-4 ${accentClass} bg-white p-4 shadow-2xs transition hover:shadow-sm space-y-3`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="line-clamp-2 text-xs sm:text-sm font-black leading-snug text-slate-800">
+                              {law.fullName}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <span
+                              className={`rounded-lg border px-2 py-0.5 text-xs font-black tabular-nums ${pctTextClass}`}
+                            >
+                              {law.accuracy}%
+                            </span>
+                            {hasPenalty ? (
+                              <span
+                                className={`rounded-lg border px-2 py-0.5 text-xs font-black tabular-nums ${
+                                  law.netScoreBase10 >= 7
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : law.netScoreBase10 >= 5
+                                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                      : 'border-rose-200 bg-rose-50 text-rose-700'
+                                }`}
+                              >
+                                {formatNetScore(law.netScoreBase10)}/10
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* Segmented bar: correct / incorrect / blank */}
+                        <div
+                          className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100"
+                          aria-hidden="true"
+                        >
+                          {correctPct > 0 ? (
+                            <div
+                              className="h-full bg-emerald-500 transition-all"
+                              style={{ width: `${correctPct}%` }}
+                            />
+                          ) : null}
+                          {incorrectPct > 0 ? (
+                            <div
+                              className="h-full bg-rose-500 transition-all"
+                              style={{ width: `${incorrectPct}%` }}
+                            />
+                          ) : null}
+                          {unansweredPct > 0 ? (
+                            <div
+                              className="h-full bg-slate-300 transition-all"
+                              style={{ width: `${unansweredPct}%` }}
+                            />
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold tabular-nums">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <span className="text-emerald-700">
+                              {law.correct} {isBasque ? 'zuzen' : law.correct === 1 ? 'acierto' : 'aciertos'}
+                            </span>
+                            {law.incorrect > 0 ? (
+                              <span className="text-rose-600">
+                                {law.incorrect} {isBasque ? 'huts' : law.incorrect === 1 ? 'fallo' : 'fallos'}
+                              </span>
+                            ) : null}
+                            {law.unanswered > 0 ? (
+                              <span className="text-slate-500">
+                                {law.unanswered} {isBasque ? 'zuri' : 'en blanco'}
+                              </span>
+                            ) : null}
+                          </div>
+                          <span className="text-slate-400">
+                            {law.correct}/{law.total}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
 

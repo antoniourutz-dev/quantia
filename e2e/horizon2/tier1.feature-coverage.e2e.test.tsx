@@ -185,10 +185,18 @@ describe('Horizonte 2 — Tier 1: Isolated Feature Coverage (F1–F17)', () => {
       'es',
     );
 
+    const user = userEvent.setup();
     expect(screen.getAllByText(/nota neta/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/4,38/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/-0,25/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/en blanco|penaliz/i).length).toBeGreaterThan(0);
+
+    // Per-topic/law breakdown starts collapsed and expands on click
+    const breakdownToggle = screen.getByRole('button', { name: /por tema \/ ley/i });
+    expect(breakdownToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/Ley 39\/2015/i)).not.toBeInTheDocument();
+    await user.click(breakdownToggle);
+    expect(breakdownToggle).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getAllByText(/Ley 39\/2015/i).length).toBeGreaterThan(0);
 
     unmount();

@@ -359,7 +359,8 @@ describe('PostTestStats', () => {
     expect(screen.getByText('DUDA')).toBeInTheDocument();
   });
 
-  it('muestra Nota Neta /10, pérdida por penalización frente a blancos y nota neta por ley con -0,25', () => {
+  it('muestra Nota Neta /10, pérdida por penalización frente a blancos y nota neta por ley con -0,25', async () => {
+    const user = userEvent.setup();
     const questions: Question[] = Array.from({ length: 10 }, (_, idx) => ({
       id: `q${idx + 1}`,
       number: idx + 1,
@@ -418,9 +419,23 @@ describe('PostTestStats', () => {
     expect(screen.getByText('4,00/10')).toBeInTheDocument();
     expect(screen.getByText(/-1,00 pts \(-1,00\/10\) por 4 fallos/i)).toBeInTheDocument();
     expect(screen.getByText(/1 en blanco sin penalización \(0 pts\)/i)).toBeInTheDocument();
+
+    // Per-law breakdown starts collapsed
+    const breakdownToggle = screen.getByRole('button', { name: /Por tema \/ ley/i });
+    expect(breakdownToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('7,50/10')).not.toBeInTheDocument();
+
+    // Expand breakdown -> shows both laws with their net scores
+    await user.click(breakdownToggle);
+    expect(breakdownToggle).toHaveAttribute('aria-expanded', 'true');
     // Per-law net scores: Ley 39 (4 - 0.25 = 3.75/5 = 7,50/10), Ley 40 (1 - 0.75 = 0.25/5 = 0,50/10)
     expect(screen.getByText('7,50/10')).toBeInTheDocument();
     expect(screen.getByText('0,50/10')).toBeInTheDocument();
+
+    // Filter to "A reforzar (1)" -> only Ley 40 remains visible
+    await user.click(screen.getByRole('button', { name: /A reforzar \(1\)/i }));
+    expect(screen.getByText('0,50/10')).toBeInTheDocument();
+    expect(screen.queryByText('7,50/10')).not.toBeInTheDocument();
   });
 
   it('calcula exactamente -1,00 pt por 3 fallos con regla -0,33 (1/3 exacto)', () => {
