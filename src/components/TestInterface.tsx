@@ -906,6 +906,7 @@ export default function TestInterface({
                     {' · '}
                     {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
                   </span>
+                  {(currentQuestion.originLabel || officialMetadata) && <span className="block text-xs font-medium text-slate-500">{currentQuestion.originLabel ?? 'Externo'}</span>}
                   {officialMetadata ? (
                     <span className="mt-1 block truncate text-xs font-bold text-slate-500">
                       {[officialMetadata.lawShortTitle, officialMetadata.articleLabels?.join(', ')].filter(Boolean).join(' · ')}
