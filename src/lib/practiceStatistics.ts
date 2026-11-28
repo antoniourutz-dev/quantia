@@ -1,7 +1,7 @@
 import type { PracticeMode, PracticeSessionSummary } from '../types';
 
 const PRACTICE_MODES = new Set<PracticeMode>([
-  'standard', 'quick_five', 'weakest', 'random', 'review', 'mixed', 'simulacro', 'anti_trap', 'custom',
+  'standard', 'quick_five', 'weakest', 'random', 'review', 'mixed', 'simulacro', 'anti_trap', 'custom', 'concept_mastery',
 ]);
 
 export type PracticeActivitySummaryRow = {

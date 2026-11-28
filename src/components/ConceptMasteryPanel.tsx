@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { toOptionKey } from '../lib/questionContracts';
+import { syncQuestionActivity } from '../lib/questionActivity';
 import type { Question } from '../types';
 import { STAGES, eligibleConceptQuestions, assessStage, selectConceptSession, type ConceptQuestion, type ConceptAttempt, type OriginFilter, type Stage } from '../lib/conceptMastery';
 
@@ -40,6 +41,7 @@ export default function ConceptMasteryPanel({curriculum,userId,onStart}:{curricu
           for(const row of q.data??[]){const mapped=asQuestion(row as Record<string,unknown>);if(mapped)all.push(mapped);}
           if((q.data?.length??0)<500)break;
         }
+        await syncQuestionActivity({userId,curriculum});
         const history:ConceptAttempt[]=[];
         for(let from=0;;from+=500){
           const h=await supabase.from('user_question_activity').select('question_id,session_id,answered_at,is_correct').eq('user_id',userId).eq('curriculum',curriculum).eq('mode','concept_mastery').eq('surface','test').not('answered_at','is',null).not('is_correct','is',null).order('answered_at').order('event_id').range(from,from+499);
