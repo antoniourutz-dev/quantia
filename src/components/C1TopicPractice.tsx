@@ -30,10 +30,10 @@ export default function C1TopicPractice({ userId, randomize, onRandomizeChange, 
       setExternalError(Boolean(external.error));
       const mapped = (own.data ?? []).map(row => ({ topicId: row.study_topic_id, question: mapQuestion(row) }));
       const externalRows = (external.data ?? []) as ExternalRow[];
-      setTopics(((catalog.data ?? []) as OfficialTopic[]).map(t => ({
+      setTopics(((catalog.data ?? []) as OfficialTopic[]).map<Topic>(t => ({
         ...t,
         own: mapped.filter(q => q.topicId === t.id && q.question?.correctAnswer != null).map(q => ({ ...q.question!, category: 'Tema ' + t.topic_number + '. ' + t.title, originLabel: 'Kuantia' as const })),
-        external: externalRows.filter(q => q.topic_number === t.topic_number).map(q => ({
+        external: externalRows.filter(q => q.topic_number === t.topic_number).map<Question>(q => ({
           id: 'external-preview:' + q.origin_item_key, number: q.original_number, text: q.question_text,
           options: [{id:'a',text:q.option_a},{id:'b',text:q.option_b},{id:'c',text:q.option_c},{id:'d',text:q.option_d}],
           correctAnswer: q.answer.toLowerCase() as OptionKey, explanation: [q.explanation,q.law_reference].filter(Boolean).join('\n\n'),
