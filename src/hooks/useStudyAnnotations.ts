@@ -21,8 +21,9 @@ export function useStudyAnnotations(params: {
   questionIds: string[];
   initialData?: StudyQuestionData | null;
   enabled?: boolean;
+  localOnly?: boolean;
 }) {
-  const { questionIds, initialData = null, enabled = true } = params;
+  const { questionIds, initialData = null, enabled = true, localOnly = false } = params;
   const [highlightsMap, setHighlightsMap] = useState<Record<string, TextHighlight[]>>(
     () => initialData?.highlights ?? {},
   );
@@ -42,7 +43,7 @@ export function useStudyAnnotations(params: {
 
   useEffect(() => {
     const ids = idsSignature ? idsSignature.split('|') : [];
-    if (!enabled || ids.length === 0) return;
+    if (!enabled || localOnly || ids.length === 0) return;
     let cancelled = false;
     setLoading(true);
     getStudyData(ids)
@@ -60,7 +61,7 @@ export function useStudyAnnotations(params: {
     return () => {
       cancelled = true;
     };
-  }, [enabled, idsSignature]);
+  }, [enabled, idsSignature, localOnly]);
 
   const addHighlight = useCallback(
     async (
@@ -91,6 +92,7 @@ export function useStudyAnnotations(params: {
         nextList = [...current, created];
         return { ...prev, [key]: nextList };
       });
+      if (localOnly) return;
       await saveStudyData(
         key,
         { highlights: nextList },
@@ -104,7 +106,7 @@ export function useStudyAnnotations(params: {
           : { baseQuestionId: questionId },
       );
     },
-    [],
+    [localOnly],
   );
 
   const removeHighlight = useCallback(
@@ -116,6 +118,7 @@ export function useStudyAnnotations(params: {
         nextList = current.filter((item) => item.id !== highlightId);
         return { ...prev, [key]: nextList };
       });
+      if (localOnly) return;
       await saveStudyData(
         key,
         { highlights: nextList },
@@ -129,7 +132,7 @@ export function useStudyAnnotations(params: {
           : { baseQuestionId: questionId },
       );
     },
-    [],
+    [localOnly],
   );
 
   const saveNote = useCallback(async (questionId: string, note: string) => {
@@ -143,8 +146,8 @@ export function useStudyAnnotations(params: {
       }
       return next;
     });
-    await saveStudyData(questionId, { notes: trimmed ? note : '' });
-  }, []);
+    if (!localOnly) await saveStudyData(questionId, { notes: trimmed ? note : '' });
+  }, [localOnly]);
 
   return {
     highlightsMap,
