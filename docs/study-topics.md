@@ -20,7 +20,8 @@ Migración `20261128070000_study_topics_reader.sql`.
 
 Acceso (RLS): el alumno solo lee lo publicado de las oposiciones que tiene asignadas en
 `student_opposition_access`; el personal con `quality.manage` o `questions.manage` ve también
-los borradores para revisarlos. Cada alumno solo ve y edita sus propias anotaciones y progreso.
+los borradores para revisarlos, igual que las cuentas dadas de alta en
+`private.study_content_reviewers` (revisores del temario sin permisos de administración). Cada alumno solo ve y edita sus propias anotaciones y progreso.
 Sin acceso anónimo.
 
 El texto docente **no** está en este repositorio público. Se importa aparte por un canal
