@@ -4,6 +4,7 @@ import { supabaseAnonKey, supabaseUrl } from './supabaseConfig';
 import { createId } from './id';
 import {
   QUESTION_BANK_LIST_SELECT,
+  toQuestionOriginLabel,
   parseSyllabusType,
   toDbGrupo,
   toOptionKey,
@@ -100,6 +101,7 @@ const missingCurriculumRpcs = new Set<string>();
 const questionBankDetailCache = new Map<string, Question>();
 
 type QuestionBankCacheRow = {
+  originLabel?: QuestionBankListItem['originLabel'];
   id: string;
   number: number | null;
   correctAnswer: OptionKey | null;
@@ -792,6 +794,7 @@ const mapQuestionBankCacheRow = (row: Record<string, unknown>): QuestionBankCach
     correctAnswer,
     syllabus,
     text: audit.text,
+    originLabel: toQuestionOriginLabel(row.question_origin),
     category,
     topic,
     auditIncident: audit.incident,
@@ -3533,6 +3536,7 @@ export const getQuestionBankPage = async (params: {
         number: row.number,
         correctAnswer: row.correctAnswer,
         syllabus: row.syllabus,
+        originLabel: row.originLabel,
         auditIncident: row.auditIncident,
         auditSeverity: row.auditSeverity,
       }),
