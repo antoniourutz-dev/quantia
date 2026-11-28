@@ -11,7 +11,8 @@ export type PracticeMode =
   | 'mixed'
   | 'simulacro'
   | 'anti_trap'
-  | 'custom';
+  | 'custom'
+  | 'concept_mastery';
 
 export type CoachPrimaryAction =
   | 'review'
@@ -70,6 +71,7 @@ export interface Question {
   generalLawId?: string | null;
   generalLawBlockId?: string | null;
   practiceSource?: 'editorial' | 'official';
+  conceptMetadata?: { origin: 'own' | 'academy' | 'official'; family: string; stage: 'memorizar' | 'comprender' | 'aplicar'; section: string };
   officialMetadata?: {
     sourceInstitution: string;
     sourceYear: number | null;
@@ -460,6 +462,8 @@ export const formatSyllabusLabel = (
 
 export const formatModeLabel = (mode: PracticeMode, locale: AppLocale = 'es') => {
   switch (mode) {
+    case 'concept_mastery':
+      return locale === 'eu' ? 'Gaia menperatu' : 'Domina el tema';
     case 'mixed':
       return locale === 'eu' ? 'Egokitzailea' : 'Adaptativo';
     case 'simulacro':

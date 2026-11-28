@@ -1569,6 +1569,16 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     setTestReturnTarget({ view: 'dashboard' });
   }, [activeSession, currentView, lastTestPayload, selectedLawFilter, selectedSyllabus, testSelectionState]);
 
+  const handleStartConceptPractice = useCallback((questions: Question[], title: string) => {
+    if (curriculum !== 'gv_adm_c1_2026' || !questions.length) return;
+    captureTestReturnTarget();
+    setDataError(null);
+    setPracticeEmptyState(null);
+    setActiveTestSupport(null);
+    setActiveSession({ id: createId(), mode: 'concept_mastery', title, startedAt: new Date().toISOString(), questions, batchNumber: 1, totalBatches: 1, batchStartIndex: null, nextStandardBatchStartIndex: null, source: 'manual' });
+    setCurrentView('test-active');
+  }, [captureTestReturnTarget, curriculum]);
+
   const handleStartChallenge = useCallback((questions: Question[], title: string, topicPractice?: TopicPracticeContext) => {
     if (currentView !== 'test-results' || !topicPractice) captureTestReturnTarget();
     setDataError(null);
@@ -3369,6 +3379,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 customSupportMode={customPracticeSupport}
                 onStart={handleStartTest}
                 onStartChallenge={handleStartChallenge}
+                onStartConceptPractice={handleStartConceptPractice}
                 syncingChallenge={syncingSession}
                 onStartLawTest={(law, count) =>
                   handleStartLawTest(

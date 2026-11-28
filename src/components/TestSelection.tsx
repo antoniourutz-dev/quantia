@@ -41,9 +41,10 @@ import ChallengeTopics from './ChallengeTopics';
 import type { ChallengeScope } from '../lib/challenge';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
 import PracticalCaseSelector from './PracticalCaseSelector';
+import ConceptMasteryPanel from './ConceptMasteryPanel';
 import { getPracticalCases, type PracticalCase } from '../lib/practicalCases';
 
-type SelectionMode = PracticeModeVisibilityId | 'cases';
+type SelectionMode = PracticeModeVisibilityId | 'cases' | 'concept_mastery';
 type LegacySelectionMode = SelectionMode | 'quick';
 type StandardSyllabusSelection = 'mixed' | SyllabusType;
 type ReviewSource = 'all' | 'recent_tests' | 'last_day';
@@ -87,6 +88,7 @@ interface TestSelectionProps {
       | { type: 'last_day' },
   ) => void;
   onStartChallenge?: (questions: Question[], title: string, topic?: TopicPracticeContext) => void;
+  onStartConceptPractice?: (questions: Question[], title: string) => void;
   syncingChallenge?: boolean;
   onStartLawTest: (law: string, count?: number) => void;
   onStartCustomTest: (params: { from: number; to: number; randomize: boolean; syllabus?: SyllabusType | null }) => void;
@@ -136,6 +138,7 @@ export default function TestSelection({
   onStart,
   onStartLawTest,
   onStartChallenge,
+  onStartConceptPractice,
   syncingChallenge = false,
   onStartCustomTest,
   onStartCustomPractice,
@@ -240,8 +243,12 @@ export default function TestSelection({
       Boolean(onStartChallenge) || (id !== 'challenge' && id !== 'topics');
     const normalized = normalizePracticeModeIds(visiblePracticeModeIds).filter(available);
     const modes: SelectionMode[] = normalized.length > 0 ? normalized : PRACTICE_MODE_IDS.filter(available);
+    if (curriculum === 'gv_adm_c1_2026' && onStartConceptPractice) {
+      const index = modes.indexOf('topics');
+      modes.splice(index < 0 ? 0 : index + 1, 0, 'concept_mastery');
+    }
     return practicalCases.length && onStartChallenge ? [...modes, 'cases' as const] : modes;
-  }, [onStartChallenge, visiblePracticeModeIds, practicalCases]);
+  }, [onStartChallenge, onStartConceptPractice, curriculum, visiblePracticeModeIds, practicalCases]);
 
   const visiblePracticeModeSet = useMemo(
     () => new Set<SelectionMode>(normalizedVisiblePracticeModeIds),
@@ -272,6 +279,7 @@ export default function TestSelection({
     challenge: { Icon: Trophy, label: isBasque ? 'Erronka' : 'Desafío' },
     custom: { Icon: SlidersHorizontal, label: isBasque ? 'Zure neurrira' : 'A tu medida' },
     cases: { Icon: BookOpen, label: 'Casos prácticos' },
+    concept_mastery: { Icon: BookOpen, label: 'Domina el tema' },
   } satisfies Record<SelectionMode, { Icon: typeof Zap; label: string }>;
 
   const modeNeedsConfig =
@@ -1303,6 +1311,10 @@ export default function TestSelection({
         />
       )}
 
+      {selectionMode === 'concept_mastery' && curriculum === 'gv_adm_c1_2026' && onStartConceptPractice && userId && (
+        <ConceptMasteryPanel key={JSON.stringify([curriculum,userId])} curriculum={curriculum} userId={userId} onStart={onStartConceptPractice} />
+      )}
+
       {modeNeedsConfig ? (
         <div className="rounded-[2.25rem] border border-slate-100 bg-white p-5 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500 sm:rounded-[2.5rem] sm:p-8 lg:rounded-[1.75rem] lg:p-5">
           {selectionMode === 'standard' ? renderStandardConfiguration() : null}
@@ -1312,7 +1324,7 @@ export default function TestSelection({
         </div>
       ) : null}
 
-      {selectionMode !== 'challenge' && selectionMode !== 'topics' && selectionMode !== 'cases' && (
+      {selectionMode !== 'challenge' && selectionMode !== 'topics' && selectionMode !== 'cases' && selectionMode !== 'concept_mastery' && (
         <div className="fixed left-0 right-0 bottom-[calc(5.9rem+env(safe-area-inset-bottom))] z-50 px-4 sm:px-6 lg:static lg:mx-auto lg:max-w-xl">
           <button
             type="button"

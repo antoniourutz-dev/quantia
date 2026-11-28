@@ -906,6 +906,11 @@ export default function TestInterface({
                     {' · '}
                     {currentQuestion.category || (isBasque ? 'Praktika' : 'Practica')}
                   </span>
+                  {mode === 'concept_mastery' && currentQuestion.conceptMetadata ? (
+                    <span className="mt-1 block text-xs font-bold text-indigo-700">
+                      {currentQuestion.conceptMetadata.stage === 'memorizar' ? 'Memorizar' : currentQuestion.conceptMetadata.stage === 'comprender' ? 'Comprender' : 'Aplicar'} · {currentQuestion.conceptMetadata.origin === 'own' ? 'GOLD' : currentQuestion.conceptMetadata.origin === 'academy' ? 'Academia' : 'Oficial'}
+                    </span>
+                  ) : null}
                   {officialMetadata ? (
                     <span className="mt-1 block truncate text-xs font-bold text-slate-500">
                       {[officialMetadata.lawShortTitle, officialMetadata.articleLabels?.join(', ')].filter(Boolean).join(' · ')}

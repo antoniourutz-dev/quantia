@@ -18,7 +18,8 @@ export type PracticeModalityKind =
   | 'standard'
   | 'mixed'
   | 'anti_trap'
-  | 'simulacro';
+  | 'simulacro'
+  | 'concept_mastery';
 
 export type MemoryCounts = {
   mastered: number;
@@ -223,6 +224,8 @@ export const classifyPracticeSessionKind = (
 export const formatModalityKindLabel = (kind: PracticeModalityKind, locale: AppLocale = 'es') => {
   const eu = locale === 'eu';
   switch (kind) {
+    case 'concept_mastery':
+      return eu ? 'Gaia menderatu' : 'Domina el tema';
     case 'topics':
       return eu ? 'Gaiak (fokua)' : 'Temas (en foco)';
     case 'challenge':
@@ -252,7 +255,7 @@ export const isMixedOrLongSession = (session: PracticeSessionSummary) => {
   if (kind === 'challenge' || kind === 'simulacro' || kind === 'mixed' || kind === 'anti_trap' || kind === 'random') {
     return true;
   }
-  if (kind === 'topics' || kind === 'quick_five' || kind === 'review') return false;
+  if (kind === 'topics' || kind === 'quick_five' || kind === 'review' || kind === 'concept_mastery') return false;
   const title = normalizeSearchText(session.title);
   if (title.includes('mixto') || title.includes('mistoa') || title.includes('comun + especifico')) {
     return true;
