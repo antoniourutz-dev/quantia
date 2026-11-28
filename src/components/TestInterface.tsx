@@ -47,6 +47,7 @@ interface TestInterfaceProps {
   onFinish: (payload: FinishedTestPayload) => void | Promise<void>;
   onCancel: () => void;
   isFinishing?: boolean;
+  localOnly?: boolean;
   activityContext?: { userId: string; curriculum: string; sessionId: string } | null;
 }
 
@@ -63,6 +64,7 @@ export default function TestInterface({
   onFinish,
   onCancel,
   isFinishing = false,
+  localOnly = false,
   activityContext = null,
 }: TestInterfaceProps) {
   const locale = useAppLocale();
@@ -110,7 +112,7 @@ export default function TestInterface({
   const closingSession = finishRequested || isFinishing;
   const showMarks = Boolean(supportMode?.showMarks);
   const showNotes = Boolean(supportMode?.showNotes);
-  const activityUserId = activityContext?.userId ?? null;
+  const activityUserId = localOnly ? null : activityContext?.userId ?? null;
   const activityCurriculum = activityContext?.curriculum ?? null;
   const activitySessionId = activityContext?.sessionId ?? null;
   const [caseReadyQuestionId, setCaseReadyQuestionId] = useState<string | null>(null);
@@ -133,6 +135,7 @@ export default function TestInterface({
     questionIds: allQuestionIds,
     initialData: studyData,
     enabled: !isSimulacro || showMarks || showNotes,
+    localOnly,
   });
 
   const [noteDrawerOpen, setNoteDrawerOpen] = useState(false);
@@ -151,7 +154,7 @@ export default function TestInterface({
   }, [currentIndex, currentQuestion?.id, isMistakeReview]);
 
   useEffect(() => {
-    if (allQuestionIds.length === 0) return;
+    if (localOnly || allQuestionIds.length === 0) return;
     let cancelled = false;
     getUserErrataReportsForQuestions(allQuestionIds, activityUserId)
       .then((reports) => {
@@ -163,7 +166,7 @@ export default function TestInterface({
     return () => {
       cancelled = true;
     };
-  }, [activityUserId, allQuestionIds]);
+  }, [activityUserId, allQuestionIds, localOnly]);
   const questionTextSizeClass = isFocusMode
     ? focusTextSize === 'large'
       ? 'text-lg sm:text-xl'
@@ -1310,7 +1313,7 @@ export default function TestInterface({
                           ? 'Oharra gehitu'
                           : 'Añadir nota'}
                     </button>
-                    <QuestionErrataPanel
+                    {!localOnly && <QuestionErrataPanel
                       key={currentQuestion.id}
                       questionId={currentQuestion.id}
                       curriculum={activityCurriculum ?? 'osakidetza_admin'}
@@ -1322,7 +1325,7 @@ export default function TestInterface({
                           [currentQuestion.id]: [report, ...(prev[currentQuestion.id] ?? [])],
                         }))
                       }
-                    />
+                    />}
                   </div>
                   <span className="text-[11px] font-bold text-slate-400">
                     {isBasque
