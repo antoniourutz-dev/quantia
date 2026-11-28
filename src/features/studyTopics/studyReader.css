@@ -9,6 +9,7 @@
   --sr-quote: #f1f5f9;
   --sr-code: #f1f5f9;
   --sr-font-size: 18px;
+  --sr-scale: 1;
   --sr-font: 'Charter', 'Iowan Old Style', 'Georgia', 'Cambria', serif;
   background: var(--sr-bg);
   color: var(--sr-text);
@@ -37,9 +38,38 @@
   --sr-font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* En pantallas grandes la letra crece un poco para que el texto ocupe el ancho sin verse diminuto. */
+@media (min-width: 1600px) {
+  .study-reader {
+    --sr-scale: 1.06;
+  }
+}
+@media (min-width: 2200px) {
+  .study-reader {
+    --sr-scale: 1.14;
+  }
+}
+@media (min-width: 3000px) {
+  .study-reader {
+    --sr-scale: 1.26;
+  }
+}
+
+/* Ancho de la columna de texto: medido en em para que siga al tamaño de letra. */
+.study-column {
+  max-width: 46em;
+  font-size: calc(var(--sr-font-size) * var(--sr-scale));
+}
+.study-reader[data-width='amplio'] .study-column {
+  max-width: 68em;
+}
+.study-reader[data-width='completo'] .study-column {
+  max-width: none;
+}
+
 .study-prose {
   font-family: var(--sr-font);
-  font-size: var(--sr-font-size);
+  font-size: calc(var(--sr-font-size) * var(--sr-scale));
   line-height: 1.7;
   overflow-wrap: anywhere;
   hyphens: auto;

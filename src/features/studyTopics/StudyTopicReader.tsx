@@ -694,6 +694,28 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
         </div>
       </div>
       <div>
+        <p className="mb-2 text-xs font-black uppercase tracking-wide text-[color:var(--sr-muted)]">Ancho del texto</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(
+            [
+              ['normal', 'Normal'],
+              ['amplio', 'Amplio'],
+              ['completo', 'Completo'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={prefs.width === id}
+              onClick={() => setPrefs({ ...prefs, width: id })}
+              className={`rounded-xl border px-2 py-2 ${prefs.width === id ? 'border-[color:var(--sr-accent)] font-bold text-[color:var(--sr-accent)]' : 'border-[color:var(--sr-border)]'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
         <p className="mb-2 text-xs font-black uppercase tracking-wide text-[color:var(--sr-muted)]">Fondo</p>
         <div className="grid grid-cols-3 gap-2">
           {(
@@ -731,6 +753,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
       className="study-reader fixed inset-0 z-[60] flex flex-col"
       data-theme={prefs.theme}
       data-font={prefs.font}
+      data-width={prefs.width}
       style={{ ['--sr-font-size' as string]: `${FONT_SIZES[prefs.size]}px` }}
       role="dialog"
       aria-modal="true"
@@ -742,7 +765,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
         style={{ background: 'var(--sr-bg)' }}
       >
         <div
-          className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 pt-2 sm:px-5"
+          className="flex w-full items-center gap-2 px-3 pt-2 sm:px-5"
           style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
         >
           <button
@@ -797,7 +820,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
           </button>
         </div>
         <div
-          className="mx-auto flex max-w-[1400px] gap-1 overflow-x-auto px-3 pb-2 pt-1.5 sm:px-5"
+          className="flex w-full gap-1 overflow-x-auto px-3 pb-2 pt-1.5 sm:px-5"
           role="tablist"
           aria-label="Partes del tema"
         >
@@ -833,7 +856,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
 
       <div className="relative flex min-h-0 flex-1">
         {/* Índice lateral (escritorio) */}
-        <aside className="study-reader-chrome hidden w-[280px] shrink-0 overflow-y-auto border-r border-[color:var(--sr-border)] px-3 py-5 lg:block">
+        <aside className="study-reader-chrome hidden w-[280px] shrink-0 overflow-y-auto xl:w-[320px] 2xl:w-[360px] border-r border-[color:var(--sr-border)] px-3 py-5 lg:block">
           <p className="mb-2 px-2 text-xs font-black uppercase tracking-wide text-[color:var(--sr-muted)]">
             {DOCUMENT_KIND_LABEL[document.kind]}
           </p>
@@ -841,7 +864,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
         </aside>
 
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto w-full max-w-[760px] px-4 pb-28 pt-6 sm:px-8 sm:pt-10">
+          <div className="study-column mx-auto w-full px-4 pb-28 pt-6 sm:px-8 sm:pt-10 lg:px-12 2xl:px-16">
             {resumeBlock ? (
               <div className="study-reader-chrome mb-6 flex items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
                 <span>Lo dejaste a medias. ¿Sigues por donde ibas?</span>

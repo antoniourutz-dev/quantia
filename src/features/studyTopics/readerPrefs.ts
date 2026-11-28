@@ -6,10 +6,15 @@ export interface ReaderPrefs {
   size: number;
   font: 'serif' | 'sans';
   theme: 'light' | 'sepia' | 'dark';
+  /** Text column width: comfortable measure, wide, or the whole available width. */
+  width: ReaderWidth;
 }
 
+export type ReaderWidth = 'normal' | 'amplio' | 'completo';
+export const READER_WIDTHS: ReaderWidth[] = ['normal', 'amplio', 'completo'];
+
 const KEY = 'quantia.studyReader.prefs.v1';
-const DEFAULTS: ReaderPrefs = { size: 3, font: 'serif', theme: 'light' };
+const DEFAULTS: ReaderPrefs = { size: 3, font: 'serif', theme: 'light', width: 'completo' };
 
 export const readPrefs = (): ReaderPrefs => {
   try {
@@ -23,6 +28,7 @@ export const readPrefs = (): ReaderPrefs => {
           : DEFAULTS.size,
       font: parsed.font === 'sans' ? 'sans' : 'serif',
       theme: parsed.theme === 'sepia' || parsed.theme === 'dark' ? parsed.theme : 'light',
+      width: READER_WIDTHS.includes(parsed.width as ReaderWidth) ? (parsed.width as ReaderWidth) : DEFAULTS.width,
     };
   } catch {
     return DEFAULTS;
