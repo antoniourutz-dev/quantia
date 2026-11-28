@@ -15,6 +15,7 @@ import { isLawSelectionCurriculum, isSingleScopeCurriculum, useAppLocale } from 
 import { getCurriculumCategoryGroupLabel, getQuestionBankPage, getQuestionBankQuestionDetail, getQuestionBankTopicOptions, type CurriculumTopicOption } from '../lib/quantiaApi';
 import EditorialExplanation from './EditorialExplanation';
 import GeneralLawStudySelector from './general-laws/GeneralLawStudySelector';
+import ExternalQuestionPreview from './ExternalQuestionPreview';
 import StudySubNav, { type StudySubView } from './StudySubNav';
 import { createId } from '../lib/id';
 import { recordQuestionView } from '../lib/questionActivity';
@@ -328,6 +329,8 @@ export default function StudyQuestionBank({
           </button>
         ) : null}
       </div>
+
+      {['gv-adm-c1-2026', 'gv-administrativo-c1-2026'].includes(curriculum.toLowerCase().replace(/_/g, '-')) && <ExternalQuestionPreview />}
 
       {isLawSelectionCurriculum(curriculum) && generalLaw ? (
         <div className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm">
