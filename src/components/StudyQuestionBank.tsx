@@ -456,6 +456,7 @@ export default function StudyQuestionBank({
                         <div className={`text-[11px] font-semibold tabular-nums ${question.auditIncident ? 'text-amber-800' : 'text-slate-400'}`}>
                           {displayNumber}
                         </div>
+                        {question.originLabel && <span className="text-[10px] font-medium text-slate-500">{question.originLabel}</span>}
                         {question.auditIncident ? (
                           <span className="absolute right-1 top-0.5 text-sm font-black text-amber-600" aria-hidden="true">*</span>
                         ) : null}
@@ -520,7 +521,7 @@ export default function StudyQuestionBank({
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="min-w-0">
                       <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                        {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}
+                        {t('Pregunta', 'Galdera')} {selectedQuestion.number ?? '—'}{selectedQuestion.originLabel ? ` · ${selectedQuestion.originLabel}` : ''}
                       </div>
                       <h2 className="mt-2 text-[15px] font-extrabold leading-[1.35] text-slate-800 sm:text-lg">
                         {selectedQuestion.auditIncident && <span role="img" aria-label={t('Pregunta con incidencia', 'Gorabehera duen galdera')} className="mr-1 font-black text-amber-600">*</span>}
