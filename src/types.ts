@@ -55,7 +55,10 @@ export interface Option {
   text: string;
 }
 
+export type QuestionOriginLabel = 'Kuantia' | 'Externo';
+
 export interface Question {
+  originLabel?: QuestionOriginLabel;
   id: string;
   number: number | null;
   text: string;
@@ -179,6 +182,7 @@ export interface AdminUserDetail extends AdminUserListItem {
 }
 
 export interface QuestionBankListItem {
+  originLabel?: QuestionOriginLabel;
   id: string;
   number: number | null;
   correctAnswer: OptionKey | null;
