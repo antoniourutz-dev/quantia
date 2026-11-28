@@ -37,6 +37,7 @@ import { startOfDay } from '../../features/authenticatedShell/shellDateUtils';
 import type { ShellView as View, TestReturnTarget } from '../../features/authenticatedShell/shellTypes';
 import StudySubNav from '../StudySubNav';
 import { fetchStudyTopicsAvailable, setStudyTopicsAvailable } from '../../features/studyTopics/availability';
+import { isStudyHash } from '../../features/studyTopics/route';
 import MobileTabBar from '../MobileTabBar';
 import MobileTopBar from '../MobileTopBar';
 import Dashboard from '../dashboard/Dashboard';
@@ -142,6 +143,7 @@ const StatsDashboard = lazy(loadStatsDashboard);
 const StudyQuestionBank = lazy(loadStudyQuestionBank);
 const MyNotesAndHighlights = lazy(loadMyNotesAndHighlights);
 const StudyTopicsLibrary = lazy(loadStudyTopicsLibrary);
+const StudyTopicNotes = lazy(() => import('../../features/studyTopics/StudyTopicNotes'));
 const TelemetryDebugPanel = lazy(loadTelemetryDebugPanel);
 const AdminQuestions = lazy(loadAdminQuestions);
 const AdminDashboard = lazy(loadAdminDashboard);
@@ -429,11 +431,22 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
       setHasStudyTopics(value);
       setStudyTopicsAvailable(value);
       if (!value) setCurrentView((view) => (view === 'study-topics' ? 'study-bank' : view));
+      // Enlace directo a un tema (#temario/28/manual): abre el Temario.
+      else if (isStudyHash(window.location.hash)) setCurrentView('study-topics');
     });
     return () => {
       cancelled = true;
     };
   }, [curriculum]);
+
+  useEffect(() => {
+    if (!hasStudyTopics) return;
+    const onHash = () => {
+      if (isStudyHash(window.location.hash)) setCurrentView('study-topics');
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [hasStudyTopics]);
 
   useEffect(() => {
     if (currentView === 'test-active' || currentView === 'study-active') {
@@ -3034,7 +3047,9 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                   ? 'pt-[calc(5.15rem+env(safe-area-inset-top))]'
                   : isTestSelectionView
                     ? 'pt-5 sm:pt-7 lg:pt-8 [@media(max-height:800px)]:lg:pt-5'
-                    : 'pt-5 sm:pt-8 lg:pt-12 [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10'
+                    : isStudyView
+                      ? 'pt-5 sm:pt-6 lg:pt-7 [@media(max-height:800px)]:lg:pt-5'
+                      : 'pt-5 sm:pt-8 lg:pt-12 [@media(max-height:800px)]:pt-4 [@media(max-height:800px)]:sm:pt-6 [@media(max-height:800px)]:lg:pt-10'
               }`
         } ${
           showMobileBottomNav
@@ -3047,7 +3062,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         {!isTesting && (
           <header
             className={`hidden lg:flex flex-col lg:flex-row lg:items-start justify-between gap-8 animate-in fade-in slide-in-from-top-4 duration-1000 ${
-              isTestSelectionView || currentView === 'study-bank' ? 'mb-5 [@media(max-height:800px)]:mb-3' : 'mb-10 lg:mb-16'
+              isTestSelectionView || isStudyView ? 'mb-5 [@media(max-height:800px)]:mb-3' : 'mb-10 lg:mb-16'
             }`}
           >
             <div className="flex items-start gap-4 animate-in fade-in slide-in-from-left-4 duration-1000">
@@ -3475,6 +3490,11 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         {currentView === 'study-notes' ? (
           <Suspense fallback={screenLoader}>
             <MyNotesAndHighlights
+              topSlot={
+                hasStudyTopics ? (
+                  <StudyTopicNotes curriculum={curriculum} onOpenTemario={() => setCurrentView('study-topics')} />
+                ) : null
+              }
               curriculum={curriculum}
               userId={session.user.id}
               onOpenStudyBank={() => setCurrentView('study-bank')}

@@ -72,3 +72,24 @@ export const DOCUMENT_KIND_LABEL: Record<StudyDocumentKind, string> = {
   soluciones: 'Solucionario',
   errores: 'Errores típicos',
 };
+
+/** Etiquetas cortas para pantallas estrechas. */
+export const DOCUMENT_KIND_SHORT: Record<StudyDocumentKind, string> = {
+  manual: 'Manual',
+  repaso: 'Repaso',
+  cuaderno: 'Ejercicios',
+  soluciones: 'Soluciones',
+  errores: 'Errores',
+};
+
+/** Ritmo de estudio (más lento que leer por ocio): palabras por minuto. */
+export const STUDY_WORDS_PER_MINUTE = 170;
+
+export const readingMinutes = (words: number) => Math.max(1, Math.round(words / STUDY_WORDS_PER_MINUTE));
+
+export const formatMinutes = (minutes: number) => {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+};
