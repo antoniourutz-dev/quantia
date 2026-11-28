@@ -67,22 +67,6 @@
   max-width: none;
 }
 
-/*
- * Pantallas muy anchas: aunque el alumno elija «Completo», la línea no pasa de unas 95 letras
- * (más larga cansa y hace perder el renglón). El espacio que sobra lo ocupa el panel de notas.
- */
-@media (min-width: 1800px) {
-  .study-column {
-    max-width: 38em;
-  }
-  .study-reader[data-width='amplio'] .study-column {
-    max-width: 42em;
-  }
-  .study-reader[data-width='completo'] .study-column {
-    max-width: 50em;
-  }
-}
-
 .study-prose {
   font-family: var(--sr-font);
   font-size: calc(var(--sr-font-size) * var(--sr-scale));
