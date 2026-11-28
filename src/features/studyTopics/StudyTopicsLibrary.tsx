@@ -88,7 +88,6 @@ export default function StudyTopicsLibrary({ curriculum, userId }: Props) {
 
   const activeTopic = location && topics ? (topics.find((t) => t.code === location.code) ?? null) : null;
   const lastTopic = last && topics ? (topics.find((t) => t.code === last.code) ?? null) : null;
-  const hasDrafts = Boolean(topics?.some((t) => t.documents.some((d) => d.current?.status === 'draft')));
   const studied = topics ? topics.filter((t) => topicProgress(t) >= 0.999).length : 0;
   const overall = topics && topics.length ? topics.reduce((sum, t) => sum + topicProgress(t), 0) / topics.length : 0;
 
@@ -146,11 +145,6 @@ export default function StudyTopicsLibrary({ curriculum, userId }: Props) {
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
           <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.round(overall * 100)}%` }} />
         </div>
-        {hasDrafts ? (
-          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-            Estás viendo borradores pendientes de publicar. Los alumnos todavía no los ven.
-          </p>
-        ) : null}
       </section>
 
       <label className="relative block">

@@ -790,11 +790,6 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-black uppercase tracking-wider text-[color:var(--sr-accent)]">
               Tema {topic.topicNumber}
-              {version.status === 'draft' ? (
-                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
-                  Borrador · solo revisión
-                </span>
-              ) : null}
             </p>
             <p className="truncate text-sm font-bold sm:text-[15px]" title={topic.title}>
               {topic.title}
