@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, Info, Zap } from 'lucide-react';
+import C1TopicPractice from './C1TopicPractice';
 import TopicQuestionBattery from './TopicQuestionBattery';
 import { orderTopicQuestions } from '../lib/challenge';
 import type { Question, SyllabusType, TopicPracticeContext } from '../types';
@@ -43,7 +44,14 @@ const scopeStyles = {
   },
 } as const;
 
-export default function ChallengeTopics({ curriculum, userId, syncing, isBasque, randomize, onRandomizeChange, onStart }: Props) {
+export default function ChallengeTopics(props: Props) {
+  if (['gv-adm-c1-2026', 'gv-administrativo-c1-2026'].includes(props.curriculum.toLowerCase().replace(/_/g, '-'))) {
+    return <C1TopicPractice userId={props.userId} randomize={props.randomize} onRandomizeChange={props.onRandomizeChange} onStart={props.onStart} />;
+  }
+  return <StandardChallengeTopics {...props} />;
+}
+
+function StandardChallengeTopics({ curriculum, userId, syncing, isBasque, randomize, onRandomizeChange, onStart }: Props) {
   const [topics, setTopics] = useState<Topic[] | null>(null);
   const [bankError, setBankError] = useState(false);
   const [partialError, setPartialError] = useState(false);
