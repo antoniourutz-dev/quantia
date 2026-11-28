@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Check, ChevronRight, Loader2, RotateCcw, Search } from 'lucide-react';
+import { BookOpen, Check, Loader2, RotateCcw, Search } from 'lucide-react';
 import StudyTopicReader, { type ReaderLocation } from './StudyTopicReader';
 import { listStudyProgress, listStudyTopics } from './studyTopicsApi';
 import { topicState, type TopicState } from './progress';
 import { formatStudyHash, parseStudyHash } from './route';
 import {
   DOCUMENT_KIND_LABEL,
-  DOCUMENT_KIND_SHORT,
   STUDY_WORDS_PER_MINUTE,
   formatMinutes,
   readingMinutes,
@@ -344,47 +343,47 @@ export default function StudyTopicsLibrary({ curriculum, userId }: Props) {
         </div>
       </div>
 
-      <ul className="grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm min-[1800px]:grid-cols-2">
+      <ul className="grid gap-3 md:grid-cols-2">
         {filtered.map((topic) => {
           const st = states[topic.id];
-          const pct = Math.round((st?.read ?? 0) * 100);
-          const minutes = readingMinutes(st?.totalWords ?? 0);
+          const pct = st?.done ? 100 : Math.round((st?.read ?? 0) * 100);
           const resume =
-            last?.code === topic.code ? last.kind : (topic.documents.find((d) => !progress[d.id]?.completedAt)?.kind ?? topic.documents[0].kind);
+            last?.code === topic.code
+              ? last.kind
+              : (topic.documents.find((d) => !progress[d.id]?.completedAt)?.kind ?? topic.documents[0].kind);
           return (
-            <li key={topic.id} className="group flex items-center gap-3 bg-white px-3 py-3 hover:bg-slate-50 sm:px-4">
+            <li key={topic.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <button
                 type="button"
                 onClick={() => open({ code: topic.code, kind: resume, anchor: null })}
-                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                className="flex flex-1 items-start gap-3 text-left"
               >
                 <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black ${
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-black ${
                     st?.done ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-50 text-indigo-700'
                   }`}
                 >
                   {st?.done ? <Check size={18} aria-label="Estudiado" /> : topic.topicNumber}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-bold leading-snug text-slate-900 line-clamp-2 sm:text-[15px]">
-                    {st?.done ? `${topic.topicNumber}. ` : ''}
-                    {topic.title}
+                  <span className="block text-[11px] font-black uppercase tracking-wider text-slate-400">
+                    Tema {topic.topicNumber} · {formatMinutes(readingMinutes(st?.totalWords ?? 0))}
                   </span>
-                  <span className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                    <span className="h-1 w-16 overflow-hidden rounded-full bg-slate-100 sm:w-24" aria-hidden="true">
-                      <span className={`block h-full rounded-full ${st?.done ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
-                    </span>
-                    <span className="font-semibold">{st?.done ? 'Estudiado' : `${pct} %`}</span>
-                    <span>· {formatMinutes(minutes)}</span>
-                    {st && st.doneCount > 0 && !st.done ? (
-                      <span className="hidden sm:inline">
-                        · {st.doneCount} de {topic.documents.length} partes estudiadas
-                      </span>
-                    ) : null}
+                  <span className="mt-0.5 block text-[15px] font-bold leading-snug text-slate-900 line-clamp-3">
+                    {topic.title}
                   </span>
                 </span>
               </button>
-              <div className="hidden shrink-0 flex-wrap justify-end gap-1 md:flex md:max-w-[22rem]">
+              <div className="mt-3 flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                  <div
+                    className={`h-full rounded-full ${st?.done ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="w-10 text-right text-xs font-bold text-slate-500">{pct} %</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {topic.documents.map((doc) => {
                   const done = Boolean(progress[doc.id]?.completedAt && progress[doc.id]?.versionId === doc.current?.id);
                   return (
@@ -392,18 +391,16 @@ export default function StudyTopicsLibrary({ curriculum, userId }: Props) {
                       key={doc.id}
                       type="button"
                       onClick={() => open({ code: topic.code, kind: doc.kind, anchor: null })}
-                      title={DOCUMENT_KIND_LABEL[doc.kind]}
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
                         done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
                       {done ? '✓ ' : ''}
-                      {DOCUMENT_KIND_SHORT[doc.kind]}
+                      {DOCUMENT_KIND_LABEL[doc.kind]}
                     </button>
                   );
                 })}
               </div>
-              <ChevronRight size={18} className="shrink-0 text-slate-300 md:hidden" aria-hidden="true" />
             </li>
           );
         })}
