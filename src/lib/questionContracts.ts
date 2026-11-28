@@ -1,7 +1,13 @@
-import type { OptionKey, SyllabusType } from '../types';
+import type { OptionKey, QuestionOriginLabel, SyllabusType } from '../types';
 
 export const QUESTION_BANK_LIST_SELECT =
-  'id, numero, pregunta, respuesta_correcta, explicacion_editorial, curriculum_key, grupo, ley_referencia, temario_pregunta, question_scope_key, general_law_id, general_law_block_id' as const;
+  'id, numero, pregunta, respuesta_correcta, explicacion_editorial, curriculum_key, grupo, ley_referencia, temario_pregunta, question_scope_key, general_law_id, general_law_block_id, question_origin' as const;
+
+export const toQuestionOriginLabel = (origin: unknown): QuestionOriginLabel | undefined => {
+  if (origin === 'own') return 'Kuantia';
+  if (origin === 'academy' || origin === 'official') return 'Externo';
+  return undefined;
+};
 
 const OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
 
