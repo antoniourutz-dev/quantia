@@ -17,6 +17,7 @@ import {
 import MarkdownBody from './MarkdownBody';
 import { applyMarks, BLOCK_ATTR, clearMarks, findQuote, MARK_ATTR, rangeToSpans, spansText } from './annotationDom';
 import { readToc, resolveStudyLink, type TocEntry } from './markdown';
+import { buildStudentViewContext, toStudentView } from './studentView';
 import {
   createStudyAnnotation,
   deleteStudyAnnotation,
@@ -143,8 +144,17 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
     maxRatioRef.current = 0;
     lastBlockRef.current = null;
     dirtyRef.current = false;
-    getStudyVersionBody(version.id)
-      .then((value) => !cancelled && setBody(value))
+    // Los códigos internos (R001, E01, PLAZO) se traducen para el alumno con el manual y los errores del tema.
+    const bodyOf = (k: StudyDocumentKind) => {
+      const v = topic.documents.find((d) => d.kind === k)?.current;
+      return v ? getStudyVersionBody(v.id).catch(() => null) : Promise.resolve(null);
+    };
+    Promise.all([getStudyVersionBody(version.id), bodyOf('manual'), bodyOf('errores')])
+      .then(([value, manualMd, erroresMd]) => {
+        if (cancelled) return;
+        const context = buildStudentViewContext(topic.code, manualMd, erroresMd);
+        setBody(toStudentView(value, context, document.kind));
+      })
       .catch((error: Error) => !cancelled && setLoadError(error.message));
     const ids = topic.documents.map((d) => d.id);
     listStudyAnnotations(ids)

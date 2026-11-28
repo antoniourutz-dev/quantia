@@ -38,4 +38,8 @@ administrativo y se comprueba con huellas SHA-256 contra los ficheros aprobados.
   estudiado», enlaces entre reglas y partes, y ajustes (tamaño, letra, fondo claro/sepia/oscuro).
 - `StudyTopicsLibrary`: lista de temas con progreso, buscador y «continuar».
 
+Los textos aprobados llevan identificadores internos del equipo (reglas `R001`, bloques `E01`,
+códigos de error `PLAZO`). `studentView.ts` los traduce solo al mostrarlos: número de apartado del
+manual con enlace, «bloque 2» y nombre del error típico. El texto guardado no cambia.
+
 La pestaña «Temario» aparece en Estudio solo si la oposición activa tiene temas.
