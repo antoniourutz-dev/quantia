@@ -6,7 +6,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
+  Layers,
   List,
+  Search,
   MessageSquarePlus,
   NotebookPen,
   StickyNote,
@@ -17,7 +20,10 @@ import {
 import MarkdownBody from './MarkdownBody';
 import { applyMarks, BLOCK_ATTR, clearMarks, findQuote, MARK_ATTR, rangeToSpans, spansText } from './annotationDom';
 import { readToc, resolveStudyLink, type TocEntry } from './markdown';
-import { buildStudentViewContext, toStudentView } from './studentView';
+import { attachSolutions, buildStudentViewContext, splitSolutions, toStudentView } from './studentView';
+import { docState } from './progress';
+import { findInText, markdownToPlainText, snippetAround } from './search';
+import RepasoCards, { parseRepasoCards } from './RepasoCards';
 import {
   createStudyAnnotation,
   deleteStudyAnnotation,
@@ -29,6 +35,9 @@ import {
 } from './studyTopicsApi';
 import {
   DOCUMENT_KIND_LABEL,
+  DOCUMENT_KIND_SHORT,
+  formatMinutes,
+  readingMinutes,
   type AnnotationColor,
   type AnnotationSpan,
   type StudyAnnotation,
@@ -59,6 +68,10 @@ export interface ReaderLocation {
   code: string;
   kind: StudyDocumentKind;
   anchor: string | null;
+  /** Subrayado o nota al que saltar al abrir. */
+  annotationId?: string | null;
+  /** Resultado de búsqueda: texto y número de aparición en el documento. */
+  find?: { q: string; n: number } | null;
 }
 
 interface Props {
@@ -66,6 +79,8 @@ interface Props {
   topics: StudyTopicSummary[];
   kind: StudyDocumentKind;
   anchor: string | null;
+  annotationId?: string | null;
+  find?: { q: string; n: number } | null;
   userId: string;
   onNavigate: (location: ReaderLocation) => void;
   onClose: () => void;
@@ -82,13 +97,29 @@ type OpenAnnotation = {
   editingNote: boolean;
 } | null;
 
+const WIDE_QUERY = '(min-width: 1800px)';
+const isWide = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.(WIDE_QUERY).matches);
+const isTouch = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(pointer: coarse)').matches);
+
+type SearchHit = { kind: StudyDocumentKind; n: number; before: string; match: string; after: string };
+
 const formatDate = (iso: string | null) => {
   if (!iso) return '';
   const [y, m, d] = iso.slice(0, 10).split('-');
   return d && m && y ? `${d}-${m}-${y}` : iso;
 };
 
-export default function StudyTopicReader({ topic, topics, kind, anchor, userId, onNavigate, onClose }: Props) {
+export default function StudyTopicReader({
+  topic,
+  topics,
+  kind,
+  anchor,
+  annotationId = null,
+  find = null,
+  userId,
+  onNavigate,
+  onClose,
+}: Props) {
   const document = topic.documents.find((doc) => doc.kind === kind) ?? topic.documents[0];
   const version = document.current!;
   const [prefs, setPrefs] = useReaderPrefs();
@@ -100,7 +131,14 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
   const [progress, setProgress] = useState<Record<string, StudyProgress>>({});
   const [toc, setToc] = useState<TocEntry[]>([]);
   const [activeHeading, setActiveHeading] = useState<string | null>(null);
-  const [panel, setPanel] = useState<'toc' | 'notes' | 'settings' | null>(null);
+  // En pantallas muy anchas el panel de notas queda abierto al lado del texto.
+  const [panel, setPanel] = useState<'toc' | 'notes' | 'settings' | 'search' | null>(() =>
+    isWide() ? 'notes' : null,
+  );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchHits, setSearchHits] = useState<SearchHit[] | null>(null);
+  const [cardsOpen, setCardsOpen] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<SelectionState>(null);
   const [openAnnotation, setOpenAnnotation] = useState<OpenAnnotation>(null);
   const [noteDraft, setNoteDraft] = useState('');
@@ -149,11 +187,15 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
       const v = topic.documents.find((d) => d.kind === k)?.current;
       return v ? getStudyVersionBody(v.id).catch(() => null) : Promise.resolve(null);
     };
-    Promise.all([getStudyVersionBody(version.id), bodyOf('manual'), bodyOf('errores')])
-      .then(([value, manualMd, erroresMd]) => {
+    // En el cuaderno, cada ejercicio lleva su solución plegada («Ver solución»).
+    const solucionesBody = document.kind === 'cuaderno' ? bodyOf('soluciones') : Promise.resolve(null);
+    Promise.all([getStudyVersionBody(version.id), bodyOf('manual'), bodyOf('errores'), solucionesBody])
+      .then(([value, manualMd, erroresMd, solucionesMd]) => {
         if (cancelled) return;
         const context = buildStudentViewContext(topic.code, manualMd, erroresMd);
-        setBody(toStudentView(value, context, document.kind));
+        let view = toStudentView(value, context, document.kind);
+        if (solucionesMd) view = attachSolutions(view, splitSolutions(toStudentView(solucionesMd, context, 'soluciones')));
+        setBody(view);
       })
       .catch((error: Error) => !cancelled && setLoadError(error.message));
     const ids = topic.documents.map((d) => d.id);
@@ -303,6 +345,23 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
     setOrphanIds(orphans);
   }, [documentAnnotations, body, version.id]);
 
+  // Abrir en un subrayado (desde «Mis notas y subrayados») o en un resultado de búsqueda.
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    if (body === null || jumpedRef.current) return;
+    const root = articleRef.current;
+    if (!root) return;
+    if (annotationId) {
+      const target = annotations.find((a) => a.id === annotationId);
+      if (!target) return; // espera a que lleguen los subrayados
+      jumpedRef.current = true;
+      window.setTimeout(() => scrollToBlock(target.anchorBlock ?? target.spans[0]?.b ?? null, target.id), 80);
+    } else if (find?.q) {
+      jumpedRef.current = true;
+      window.setTimeout(() => revealMatch(find.q, find.n), 80);
+    }
+  }, [body, annotations, annotationId, find]);
+
   // Text selection → floating toolbar.
   useEffect(() => {
     const onSelectionChange = () => {
@@ -338,19 +397,160 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
     };
   }, []);
 
+  // Teclado (escritorio): ← → cambia de documento, J/K salta de apartado, / busca, Esc cierra.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (openAnnotation) setOpenAnnotation(null);
-      else if (panel) setPanel(null);
-      else if (selection) {
-        window.getSelection()?.removeAllRanges();
-        setSelection(null);
+      if (cardsOpen) return;
+      const target = event.target as HTMLElement | null;
+      const typing = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
+      if (event.key === 'Escape') {
+        if (openAnnotation) setOpenAnnotation(null);
+        else if (selection) {
+          window.getSelection()?.removeAllRanges();
+          setSelection(null);
+        } else if (panel && !(panel === 'notes' && isWide())) setPanel(null);
+        else if (!typing) onClose();
+        return;
+      }
+      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        const step = event.key === 'ArrowRight' ? 1 : -1;
+        const next = topic.documents[documentIndex + step];
+        if (next) {
+          event.preventDefault();
+          onNavigate({ code: topic.code, kind: next.kind, anchor: null });
+        }
+      } else if (event.key === 'j' || event.key === 'k') {
+        const container = scrollRef.current;
+        const root = articleRef.current;
+        if (!container || !root) return;
+        const top = container.getBoundingClientRect().top;
+        const headings = Array.from(root.querySelectorAll<HTMLElement>('h2[id], h3[id]'));
+        const offsets = headings.map((h) => h.getBoundingClientRect().top - top);
+        const target =
+          event.key === 'j'
+            ? headings[offsets.findIndex((o) => o > 100)]
+            : headings[offsets.map((o, i) => (o < -10 ? i : -1)).filter((i) => i >= 0).pop() ?? -1];
+        target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      } else if (event.key === '/') {
+        event.preventDefault();
+        setPanel('search');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openAnnotation, panel, selection]);
+  }, [openAnnotation, panel, selection, cardsOpen, documentIndex, topic, onNavigate, onClose]);
+
+  // Que la pestaña del documento abierto se vea en el móvil aunque la fila no quepa.
+  useEffect(() => {
+    tabsRef.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [document.id]);
+
+  /** Lleva al alumno a la aparición número `n` de `query` en el documento abierto. */
+  const revealMatch = useCallback((query: string, n: number) => {
+    const root = articleRef.current;
+    if (!root) return;
+    const walker = window.document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) =>
+        (node.parentElement?.closest('details') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    const nodes: Text[] = [];
+    let text = '';
+    const starts: number[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      starts.push(text.length);
+      nodes.push(node as Text);
+      text += node.nodeValue ?? '';
+    }
+    const hits = findInText(text, query);
+    const hit = hits[n] ?? hits[0];
+    if (!hit) return;
+    let idx = 0;
+    while (idx + 1 < starts.length && starts[idx + 1] <= hit.start) idx += 1;
+    const block = (nodes[idx]?.parentElement?.closest(`[${BLOCK_ATTR}]`) as HTMLElement | null) ?? nodes[idx]?.parentElement;
+    if (!block) return;
+    block.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    block.classList.add('sr-find-flash');
+    window.setTimeout(() => block.classList.remove('sr-find-flash'), 1800);
+  }, []);
+
+  // Búsqueda en los cinco documentos del tema.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchHits(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      Promise.all(
+        topic.documents.map((doc) =>
+          doc.current
+            ? getStudyVersionBody(doc.current.id)
+                .then((md) => ({ kind: doc.kind, text: markdownToPlainText(md) }))
+                .catch(() => null)
+            : Promise.resolve(null),
+        ),
+      ).then((docs) => {
+        if (cancelled) return;
+        const hits: SearchHit[] = [];
+        for (const doc of docs) {
+          if (!doc) continue;
+          findInText(doc.text, q)
+            .slice(0, 30)
+            .forEach((m, n) => hits.push({ kind: doc.kind, n, ...snippetAround(doc.text, m.start, m.end) }));
+        }
+        setSearchHits(hits);
+      });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, topic]);
+
+  const openHit = (hit: SearchHit) => {
+    if (!isWide() || panel !== 'notes') setPanel(isWide() ? 'notes' : null);
+    if (hit.kind === document.kind) revealMatch(searchQuery.trim(), hit.n);
+    else onNavigate({ code: topic.code, kind: hit.kind, anchor: null, find: { q: searchQuery.trim(), n: hit.n } });
+  };
+
+  /** Hoja imprimible (o PDF) con los subrayados y notas del tema. */
+  const exportAnnotations = () => {
+    const escape = (value: string) =>
+      value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+    const sections = topic.documents
+      .map((doc) => {
+        const items = annotations.filter((a) => a.documentId === doc.id);
+        if (!items.length) return '';
+        const rows = items
+          .map(
+            (a) =>
+              `<li class="${a.color ?? 'note'}">${a.quote ? `<q>${escape(a.quote)}</q>` : ''}${
+                a.note ? `<p>${escape(a.note).replace(/\n/g, '<br>')}</p>` : ''
+              }</li>`,
+          )
+          .join('');
+        return `<h2>${escape(DOCUMENT_KIND_LABEL[doc.kind])}</h2><ul>${rows}</ul>`;
+      })
+      .join('');
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Mis subrayados · Tema ${topic.topicNumber}</title>
+<style>body{font:15px/1.55 Georgia,serif;color:#1e293b;max-width:46em;margin:2em auto;padding:0 1.5em}h1{font:800 1.5em/1.2 system-ui,sans-serif}h2{font:700 1.1em system-ui,sans-serif;margin-top:1.8em;border-bottom:1px solid #cbd5e1}ul{list-style:none;padding:0}li{margin:.8em 0;padding-left:.8em;border-left:4px solid #facc15}li.green{border-color:#4ade80}li.blue{border-color:#60a5fa}li.pink{border-color:#f472b6}li.orange{border-color:#fb923c}li.note{border-color:#6366f1}q{quotes:'«' '»'}li p{margin:.3em 0 0;color:#475569;font-family:system-ui,sans-serif;font-size:.92em}</style></head>
+<body><h1>Tema ${topic.topicNumber}. ${escape(topic.title)}</h1><p>Mis subrayados y notas · ${new Date().toLocaleDateString('es-ES')}</p>${
+      sections || '<p>Todavía no hay subrayados en este tema.</p>'
+    }</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) {
+      showToast('Permite las ventanas emergentes para exportar.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    window.setTimeout(() => win.print(), 300);
+  };
 
   const addHighlight = async (color: AnnotationColor, withNote: boolean) => {
     if (!selection || busy) return;
@@ -506,7 +706,8 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
   const notesCount = topicAnnotations.length;
 
   const toolbarStyle = (rect: DOMRect | null): React.CSSProperties => {
-    if (!rect) return { left: '50%', bottom: 24, transform: 'translateX(-50%)' };
+    // Sin posición (o en pantallas táctiles): abajo, lejos del menú Copiar del propio teléfono.
+    if (!rect) return { left: '50%', bottom: 'calc(20px + env(safe-area-inset-bottom))', transform: 'translateX(-50%)' };
     const width = 300;
     const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left + rect.width / 2 - width / 2));
     const above = rect.top > 140;
@@ -591,6 +792,15 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
           </button>
         )}
       </div>
+      {notesCount > 0 ? (
+        <button
+          type="button"
+          onClick={exportAnnotations}
+          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-[color:var(--sr-muted)] hover:bg-[color:var(--sr-surface)] hover:text-[color:var(--sr-text)]"
+        >
+          <Download size={16} aria-hidden="true" /> Exportar o imprimir mis subrayados
+        </button>
+      ) : null}
       {notesCount === 0 ? (
         <p className="text-sm text-[color:var(--sr-muted)]">
           Selecciona texto para subrayarlo o añadir una nota. Aquí verás todo lo que marques en este tema.
@@ -703,7 +913,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
           ))}
         </div>
       </div>
-      <div>
+      <div className="hidden lg:block">
         <p className="mb-2 text-xs font-black uppercase tracking-wide text-[color:var(--sr-muted)]">Ancho del texto</p>
         <div className="grid grid-cols-3 gap-2">
           {(
@@ -751,12 +961,67 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
     </div>
   );
 
-  const progressFor = (docId: string) => {
-    const p = progress[docId];
-    if (!p) return 0;
-    if (p.completedAt) return 1;
-    return p.progress;
-  };
+  const searchPanel = (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="sr-only">Buscar en este tema</span>
+        <input
+          type="search"
+          autoFocus
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar en los cinco documentos del tema"
+          className="w-full rounded-xl border border-[color:var(--sr-border)] bg-[color:var(--sr-bg)] px-3 py-2.5 text-base text-[color:var(--sr-text)] outline-none focus:border-[color:var(--sr-accent)]"
+        />
+      </label>
+      {searchHits === null ? (
+        <p className="text-sm text-[color:var(--sr-muted)]">Escribe al menos dos letras. No distingue tildes ni mayúsculas.</p>
+      ) : searchHits.length === 0 ? (
+        <p className="text-sm text-[color:var(--sr-muted)]">Sin resultados en este tema.</p>
+      ) : (
+        topic.documents.map((doc) => {
+          const hits = searchHits.filter((h) => h.kind === doc.kind);
+          if (!hits.length) return null;
+          return (
+            <section key={doc.id}>
+              <h3 className="mb-1.5 text-xs font-black uppercase tracking-wide text-[color:var(--sr-muted)]">
+                {DOCUMENT_KIND_LABEL[doc.kind]} · {hits.length}
+                {hits.length >= 30 ? '+' : ''}
+              </h3>
+              <ul className="space-y-1.5">
+                {hits.map((hit) => (
+                  <li key={`${hit.kind}-${hit.n}`}>
+                    <button
+                      type="button"
+                      onClick={() => openHit(hit)}
+                      className="w-full rounded-xl border border-[color:var(--sr-border)] p-2.5 text-left text-[13px] leading-snug hover:bg-[color:var(--sr-surface)]"
+                    >
+                      {hit.before}
+                      <mark className="rounded bg-yellow-200 px-0.5 text-slate-900">{hit.match}</mark>
+                      {hit.after}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })
+      )}
+    </div>
+  );
+
+  const remainingMinutes = (() => {
+    const total = readingMinutes(version.wordCount || 0);
+    const state = docState(progress[document.id], version.id);
+    return state.done ? 0 : Math.max(0, Math.round(total * (1 - Math.max(state.read, readRatio))));
+  })();
+  const repasoCards = useMemo(() => (document.kind === 'repaso' && body ? parseRepasoCards(body) : []), [document.kind, body]);
+  const PANEL_TITLE = {
+    toc: 'Índice',
+    notes: 'Mis subrayados y notas',
+    settings: 'Ajustes de lectura',
+    search: 'Buscar en el tema',
+  } as const;
 
   return (
     <div
@@ -775,14 +1040,15 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
         style={{ background: 'var(--sr-bg)' }}
       >
         <div
-          className="flex w-full items-center gap-2 px-3 pt-2 sm:px-5"
-          style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+          className="flex w-full items-center gap-1 px-2 pt-1.5 sm:gap-2 sm:px-5 sm:pt-2"
+          style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top))' }}
         >
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl px-2 text-sm font-bold hover:bg-[color:var(--sr-surface)]"
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-2 text-sm font-bold hover:bg-[color:var(--sr-surface)]"
             aria-label="Volver al temario"
+            title="Volver al temario (Esc)"
           >
             <ArrowLeft size={18} aria-hidden="true" />
             <span className="hidden sm:inline">Temario</span>
@@ -790,66 +1056,81 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-black uppercase tracking-wider text-[color:var(--sr-accent)]">
               Tema {topic.topicNumber}
+              {remainingMinutes > 0 ? (
+                <span className="ml-2 hidden font-bold normal-case tracking-normal text-[color:var(--sr-muted)] sm:inline">
+                  · te quedan {formatMinutes(remainingMinutes)}
+                </span>
+              ) : null}
             </p>
             <p className="truncate text-sm font-bold sm:text-[15px]" title={topic.title}>
               {topic.title}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setPanel(panel === 'toc' ? null : 'toc')}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-[color:var(--sr-surface)] lg:hidden"
-            aria-label="Índice"
-          >
-            <List size={19} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setPanel(panel === 'notes' ? null : 'notes')}
-            className="relative inline-flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-sm font-bold hover:bg-[color:var(--sr-surface)]"
-            aria-label="Mis subrayados y notas"
-          >
-            <NotebookPen size={18} aria-hidden="true" />
-            <span className="hidden sm:inline">Mis notas</span>
-            {notesCount > 0 ? (
-              <span className="rounded-full bg-indigo-600 px-1.5 text-[10px] font-black text-white">{notesCount}</span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setPanel(panel === 'settings' ? null : 'settings')}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-[color:var(--sr-surface)]"
-            aria-label="Ajustes de lectura"
-          >
-            <Type size={18} aria-hidden="true" />
-          </button>
+          {(
+            [
+              ['search', 'Buscar', Search, 'Buscar en el tema (/)', ''],
+              ['toc', 'Índice', List, 'Índice', 'lg:hidden'],
+              ['notes', 'Notas', NotebookPen, 'Mis subrayados y notas', ''],
+              ['settings', 'Letra', Type, 'Ajustes de lectura', ''],
+            ] as const
+          ).map(([id, label, Icon, title, extra]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setPanel(panel === id ? null : id)}
+              aria-label={title}
+              aria-pressed={panel === id}
+              title={title}
+              className={`relative inline-flex h-11 min-w-[2.75rem] shrink-0 flex-col items-center justify-center rounded-xl px-1.5 sm:h-10 sm:flex-row sm:gap-1.5 sm:px-2.5 ${extra} ${
+                panel === id ? 'bg-[color:var(--sr-surface)] text-[color:var(--sr-accent)]' : 'hover:bg-[color:var(--sr-surface)]'
+              }`}
+            >
+              <Icon size={18} aria-hidden="true" />
+              <span className="text-[10px] font-bold leading-none sm:hidden">{label}</span>
+              {id === 'notes' ? <span className="hidden text-sm font-bold sm:inline">Mis notas</span> : null}
+              {id === 'notes' && notesCount > 0 ? (
+                <span className="absolute right-0.5 top-0.5 rounded-full bg-indigo-600 px-1.5 text-[10px] font-black text-white sm:static">
+                  {notesCount}
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
-        <div
-          className="flex w-full gap-1 overflow-x-auto px-3 pb-2 pt-1.5 sm:px-5"
-          role="tablist"
-          aria-label="Partes del tema"
-        >
-          {topic.documents.map((doc) => {
-            const selected = doc.id === document.id;
-            const pct = Math.round(progressFor(doc.id) * 100);
-            return (
-              <button
-                key={doc.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => !selected && onNavigate({ code: topic.code, kind: doc.kind, anchor: null })}
-                className={`relative shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-bold transition-colors ${
-                  selected
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-[color:var(--sr-surface)] text-[color:var(--sr-muted)] hover:text-[color:var(--sr-text)]'
-                }`}
-              >
-                {DOCUMENT_KIND_LABEL[doc.kind]}
-                {pct >= 100 ? <Check size={13} className="ml-1 inline" aria-label="estudiado" /> : null}
-              </button>
-            );
-          })}
+        <div className="relative">
+          <div
+            ref={tabsRef}
+            className="flex w-full gap-1 overflow-x-auto px-2 pb-2 pt-1 [scrollbar-width:none] sm:px-5 sm:pt-1.5 [&::-webkit-scrollbar]:hidden"
+            role="tablist"
+            aria-label="Partes del tema"
+          >
+            {topic.documents.map((doc) => {
+              const selected = doc.id === document.id;
+              const done = docState(progress[doc.id], doc.current?.id).done;
+              return (
+                <button
+                  key={doc.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => !selected && onNavigate({ code: topic.code, kind: doc.kind, anchor: null })}
+                  className={`relative shrink-0 rounded-full px-2.5 py-1.5 text-[12.5px] font-bold transition-colors sm:px-3.5 sm:text-[13px] ${
+                    selected
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-[color:var(--sr-surface)] text-[color:var(--sr-muted)] hover:text-[color:var(--sr-text)]'
+                  }`}
+                >
+                  <span className="sm:hidden">{DOCUMENT_KIND_SHORT[doc.kind]}</span>
+                  <span className="hidden sm:inline">{DOCUMENT_KIND_LABEL[doc.kind]}</span>
+                  {done ? <Check size={13} className="ml-1 inline" aria-label="estudiado" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 w-6 sm:hidden"
+            style={{ background: 'linear-gradient(to right, transparent, var(--sr-bg))' }}
+            aria-hidden="true"
+          />
         </div>
         <div className="h-0.5 w-full bg-transparent" aria-hidden="true">
           <div
@@ -891,28 +1172,48 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
               </div>
             ) : null}
 
-            <p className="study-reader-chrome text-xs font-black uppercase tracking-wider text-[color:var(--sr-muted)]">
-              {DOCUMENT_KIND_LABEL[document.kind]} · v{version.version}
-              {version.versionDate ? ` · ${formatDate(version.versionDate)}` : ''}
+            <p className="study-reader-chrome text-xs font-semibold text-[color:var(--sr-muted)]">
+              {DOCUMENT_KIND_LABEL[document.kind]}
+              {version.wordCount ? ` · ${formatMinutes(readingMinutes(version.wordCount))} de estudio` : ''}
+              {version.versionDate ? ` · Actualizado el ${formatDate(version.versionDate)}` : ''}
             </p>
-            <h1 className="mt-1 font-[Inter,system-ui,sans-serif] text-2xl font-black leading-tight tracking-tight sm:text-[2rem]">
+            <h1 className="mt-1 font-[Inter,system-ui,sans-serif] text-lg font-black leading-tight tracking-tight sm:text-[2rem]">
               Tema {topic.topicNumber}. {topic.title}
             </h1>
             {document.kind === 'manual' && (version.normativeNote || version.sourcesNote) ? (
-              <dl className="mt-5 grid gap-2 rounded-2xl border border-[color:var(--sr-border)] bg-[color:var(--sr-surface)] p-4 text-[13px] leading-relaxed">
-                {version.normativeNote ? (
-                  <div>
-                    <dt className="font-black text-[color:var(--sr-muted)]">Normativa de referencia</dt>
-                    <dd>{version.normativeNote}</dd>
-                  </div>
-                ) : null}
-                {version.sourcesNote ? (
-                  <div>
-                    <dt className="font-black text-[color:var(--sr-muted)]">Fuentes</dt>
-                    <dd>{version.sourcesNote}</dd>
-                  </div>
-                ) : null}
-              </dl>
+              <details className="study-reader-chrome group mt-4 rounded-2xl border border-[color:var(--sr-border)] bg-[color:var(--sr-surface)] text-[13px] leading-relaxed sm:mt-5">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 font-bold text-[color:var(--sr-muted)] [&::-webkit-details-marker]:hidden">
+                  <ChevronRight size={15} className="transition-transform group-open:rotate-90" aria-hidden="true" />
+                  Normativa y fuentes
+                </summary>
+                <dl className="grid gap-2 px-4 pb-4">
+                  {version.normativeNote ? (
+                    <div>
+                      <dt className="font-black text-[color:var(--sr-muted)]">Normativa de referencia</dt>
+                      <dd>{version.normativeNote}</dd>
+                    </div>
+                  ) : null}
+                  {version.sourcesNote ? (
+                    <div>
+                      <dt className="font-black text-[color:var(--sr-muted)]">Fuentes</dt>
+                      <dd>{version.sourcesNote}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </details>
+            ) : null}
+            {repasoCards.length >= 4 ? (
+              <button
+                type="button"
+                onClick={() => setCardsOpen(true)}
+                className="study-reader-chrome mt-5 flex w-full items-center gap-3 rounded-2xl border border-[color:var(--sr-accent)] bg-[color:var(--sr-surface)] px-4 py-3 text-left text-[color:var(--sr-accent)]"
+              >
+                <Layers size={20} className="shrink-0" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-black">Practicar las {repasoCards.length} reglas en tarjetas</span>
+                  <span className="block text-xs">Ves el nombre de la regla, la recuerdas y compruebas.</span>
+                </span>
+              </button>
             ) : null}
 
             {loadError ? (
@@ -943,7 +1244,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
                 ))}
               </div>
             ) : (
-              <article ref={articleRef} key={version.id} className="study-prose mt-8" onClick={onArticleClick}>
+              <article ref={articleRef} key={version.id} className="study-prose mt-6 sm:mt-8" onClick={onArticleClick}>
                 <MarkdownBody body={body} />
               </article>
             )}
@@ -1032,24 +1333,22 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
             <button
               type="button"
               aria-label="Cerrar panel"
-              className="study-reader-chrome fixed inset-0 z-30 bg-black/30 lg:hidden"
+              className={`study-reader-chrome fixed inset-0 z-30 lg:hidden ${panel === 'settings' ? 'bg-black/10' : 'bg-black/30'}`}
               onClick={() => setPanel(null)}
             />
             <aside
-              className={`study-reader-chrome fixed inset-y-0 right-0 z-40 flex w-[min(380px,92vw)] flex-col border-l border-[color:var(--sr-border)] bg-[color:var(--sr-bg)] shadow-2xl lg:static lg:z-auto lg:w-[340px] lg:shadow-none ${
-                panel === 'toc' ? 'lg:hidden' : ''
-              }`}
-              aria-label={
-                panel === 'toc' ? 'Índice' : panel === 'notes' ? 'Mis subrayados y notas' : 'Ajustes de lectura'
-              }
+              className={`study-reader-chrome fixed z-40 flex flex-col border-[color:var(--sr-border)] bg-[color:var(--sr-bg)] shadow-2xl lg:static lg:z-auto lg:w-[340px] lg:border-l lg:shadow-none 2xl:w-[380px] ${
+                panel === 'settings'
+                  ? 'inset-x-0 bottom-0 max-h-[62vh] rounded-t-3xl border-t lg:max-h-none lg:rounded-none lg:border-t-0'
+                  : 'inset-y-0 right-0 w-[min(380px,92vw)] border-l'
+              } ${panel === 'toc' ? 'lg:hidden' : ''}`}
+              aria-label={PANEL_TITLE[panel]}
             >
               <div
                 className="flex items-center justify-between border-b border-[color:var(--sr-border)] px-4 py-3"
                 style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
               >
-                <p className="text-sm font-black">
-                  {panel === 'toc' ? 'Índice' : panel === 'notes' ? 'Mis subrayados y notas' : 'Ajustes de lectura'}
-                </p>
+                <p className="text-sm font-black">{PANEL_TITLE[panel]}</p>
                 <button
                   type="button"
                   onClick={() => setPanel(null)}
@@ -1065,7 +1364,13 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
                   paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
                 }}
               >
-                {panel === 'toc' ? tocList : panel === 'notes' ? notesList : settingsPanel}
+                {panel === 'toc'
+                  ? tocList
+                  : panel === 'notes'
+                    ? notesList
+                    : panel === 'search'
+                      ? searchPanel
+                      : settingsPanel}
               </div>
             </aside>
           </>
@@ -1076,7 +1381,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
       {selection ? (
         <div
           className="study-reader-chrome fixed z-[70] flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 text-slate-800 shadow-xl"
-          style={toolbarStyle(selection.rect)}
+          style={isTouch() ? toolbarStyle(null) : toolbarStyle(selection.rect)}
           onMouseDown={(e) => e.preventDefault()}
           role="toolbar"
           aria-label="Subrayar selección"
@@ -1121,7 +1426,7 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
       {openAnnotation && openAnn ? (
         <div
           className="study-reader-chrome fixed z-[70] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-slate-200 bg-white p-3 text-slate-800 shadow-xl"
-          style={toolbarStyle(openAnnotation.rect)}
+          style={isTouch() ? toolbarStyle(null) : toolbarStyle(openAnnotation.rect)}
           role="dialog"
           aria-label="Subrayado"
         >
@@ -1208,6 +1513,14 @@ export default function StudyTopicReader({ topic, topics, kind, anchor, userId, 
             </button>
           )}
         </div>
+      ) : null}
+
+      {cardsOpen ? (
+        <RepasoCards
+          title={`Tema ${topic.topicNumber} · ${repasoCards.length} reglas`}
+          cards={repasoCards}
+          onClose={() => setCardsOpen(false)}
+        />
       ) : null}
 
       {toast ? (

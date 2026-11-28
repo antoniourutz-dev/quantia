@@ -136,6 +136,17 @@ export const listStudyAnnotations = async (documentIds: string[]): Promise<Study
   return ((data ?? []) as Row[]).map(mapAnnotation);
 };
 
+/** Todos los subrayados y notas del temario del alumno (las políticas RLS ya filtran por usuario). */
+export const listAllStudyAnnotations = async (): Promise<StudyAnnotation[]> => {
+  const { data, error } = await supabase
+    .from('user_study_annotations')
+    .select(ANNOTATION_SELECT)
+    .order('updated_at', { ascending: false })
+    .limit(2000);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Row[]).map(mapAnnotation);
+};
+
 export type NewAnnotation = {
   documentId: string;
   versionId: string;

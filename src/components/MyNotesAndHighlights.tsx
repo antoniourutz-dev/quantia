@@ -31,6 +31,8 @@ export interface MyNotesAndHighlightsProps {
   /** Opens a hydrated question in study mode. */
   onStudyQuestion?: (question: Question) => void;
   onNavigateStudyTab?: (tab: StudySubView) => void;
+  /** Bloque que se muestra bajo la cabecera (subrayados y notas del temario). */
+  topSlot?: React.ReactNode;
 }
 
 type ScopeFilter = 'current' | 'all';
@@ -82,6 +84,7 @@ export default function MyNotesAndHighlights({
   onOpenStudyBank,
   onStudyQuestion,
   onNavigateStudyTab,
+  topSlot,
 }: MyNotesAndHighlightsProps) {
   const locale = useAppLocale();
   const isBasque = locale === 'eu';
@@ -300,6 +303,8 @@ export default function MyNotesAndHighlights({
           <StudySubNav activeTab="study-notes" onChangeTab={onNavigateStudyTab} />
         ) : null}
       </div>
+
+      {topSlot}
 
       {/* Filter Bar */}
       <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm space-y-3">

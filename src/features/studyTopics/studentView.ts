@@ -155,6 +155,7 @@ export const toStudentView = (md: string, ctx: StudentViewContext, kind: StudyDo
         line = `| ${cells[0]?.trim() ?? ''} | ${cells[1]?.trim() ?? ''} |`;
       }
     }
+    if (kind === 'errores') line = rewriteUnusedErrors(line);
     if (kind === 'soluciones') {
       line = line.replace(/· Reglas: /, '· Repasa: ').replace(/· Error que evita: /, '· Error típico: ');
       // La respuesta empieza en la línea siguiente: salto de línea para que no se pegue a «Repasa».
@@ -163,6 +164,88 @@ export const toStudentView = (md: string, ctx: StudentViewContext, kind: StudyDo
     // Varias reglas pueden estar en el mismo apartado: «1.7, 1.7, 1.7» se queda en «1.7».
     out.push(proseLine(line, ctx, kind).replace(/(\[([^\]]+)\]\([^)\s]+\))(?:,\s*\[\2\]\([^)\s]+\))+/g, '$1'));
   }
+  return out.join('\n');
+};
+
+/** Nombres de las fichas de error que un tema puede no usar (frase «En este tema no se usa `CUANTIA`»). */
+const UNUSED_ERROR_NAMES: Record<string, string> = {
+  COMPUTO: 'cómputo de plazos',
+  CUANTIA: 'cuantías',
+  PLAZO: 'plazos',
+  ORGANO: 'órganos',
+  REQUISITO: 'requisitos',
+  EFECTO: 'efectos',
+  EXCEPCION: 'excepciones',
+  REGLA_GENERAL: 'reglas generales',
+  TERMINO: 'términos',
+};
+
+/** «En este tema no se usan `COMPUTO` ni `CUANTIA`» → «En este tema no hay fichas de error de cómputo de plazos ni de cuantías». */
+export const rewriteUnusedErrors = (line: string) =>
+  line.replace(/En este tema no se usan? ((?:`[A-Z_]+`(?:,\s*|\s+(?:ni|y)\s+)?)+)/, (_m, list: string) => {
+    const names = (list.match(/`[A-Z_]+`/g) ?? []).map((code) => {
+      const key = code.slice(1, -1);
+      return UNUSED_ERROR_NAMES[key] ?? key.toLowerCase().replace(/_/g, ' ');
+    });
+    const joined = names.length > 1 ? `${names.slice(0, -1).join(', de ')} ni de ${names[names.length - 1]}` : names[0];
+    return `En este tema no hay fichas de error de ${joined}`;
+  });
+
+const EXERCISE_START = /^\*\*((?:\d+|S)\.\d+)\b[^*]*\*\*/;
+const BLOCK_END = /^(#{1,6}\s|---\s*$)/;
+
+/** Soluciones del solucionario (ya en vista de alumno) por número de ejercicio: «1.1», «S.2». */
+export const splitSolutions = (solucionesMd: string): Map<string, string> => {
+  const map = new Map<string, string>();
+  let current: { id: string; lines: string[] } | null = null;
+  const flush = () => {
+    if (current) map.set(current.id, current.lines.join('\n').trim());
+    current = null;
+  };
+  for (const line of solucionesMd.split('\n')) {
+    const start = line.match(EXERCISE_START);
+    if (start) {
+      flush();
+      const body = line
+        .replace(/^\*\*S\.\d+\s*→\s*([a-d])\.?\*\*\s*/, '**Respuesta: $1.** ')
+        .replace(/^\*\*[\d.S]+\*\*\s*·\s*/, '')
+        .replace(/^\*\*[\d.S]+\.?\*\*\s*/, '');
+      current = { id: start[1], lines: [body] };
+      continue;
+    }
+    if (BLOCK_END.test(line)) {
+      flush();
+      continue;
+    }
+    if (current) current.lines.push(line);
+  }
+  flush();
+  return map;
+};
+
+/**
+ * Cuaderno con «Ver solución» debajo de cada ejercicio. Los bloques de la solución van dentro
+ * de `<details>` y no reciben número de bloque, así que los subrayados del cuaderno no se mueven.
+ */
+export const attachSolutions = (cuadernoMd: string, solutions: Map<string, string>): string => {
+  if (solutions.size === 0) return cuadernoMd;
+  const out: string[] = [];
+  let pending: string | null = null;
+  const close = () => {
+    if (!pending) return;
+    const solution = solutions.get(pending);
+    pending = null;
+    if (!solution) return;
+    while (out.length && out[out.length - 1].trim() === '') out.pop();
+    out.push('', '<details class="sr-solution">', '<summary>Ver solución</summary>', '', solution, '', '</details>', '');
+  };
+  for (const line of cuadernoMd.split('\n')) {
+    const start = line.match(EXERCISE_START);
+    if (start || BLOCK_END.test(line)) close();
+    if (start) pending = start[1];
+    out.push(line);
+  }
+  close();
   return out.join('\n');
 };
 

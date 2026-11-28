@@ -32,9 +32,10 @@ const HEADING_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 export const rehypeStudyBlocks = () => (tree: HastNode) => {
   let blockIndex = 0;
   let headingIndex = 0;
-  const visit = (node: HastNode) => {
+  const visit = (node: HastNode, inSolution: boolean) => {
     if (node.type === 'element' && node.tagName) {
-      if (BLOCK_TAGS.has(node.tagName)) {
+      if (node.tagName === 'table') labelTableCells(node);
+      if (BLOCK_TAGS.has(node.tagName) && !inSolution) {
         blockIndex += 1;
         node.properties = {
           ...(node.properties ?? {}),
@@ -61,9 +62,36 @@ export const rehypeStudyBlocks = () => (tree: HastNode) => {
         }
       }
     }
-    (node.children ?? []).forEach(visit);
+    const nested = inSolution || (node.type === 'element' && node.tagName === 'details');
+    (node.children ?? []).forEach((child) => visit(child, nested));
   };
-  visit(tree);
+  visit(tree, false);
+};
+
+const textOf = (node: HastNode): string =>
+  node.type === 'text' ? (node.value ?? '') : (node.children ?? []).map(textOf).join('');
+
+const childElements = (node: HastNode, tag: string) =>
+  (node.children ?? []).filter((child) => child.type === 'element' && child.tagName === tag);
+
+/**
+ * Tablas de tres o más columnas: cada celda lleva el título de su columna (`data-l`) para que,
+ * en el móvil, cada fila se muestre como una ficha en vez de columnas estrechas.
+ */
+const labelTableCells = (table: HastNode) => {
+  const sections = (table.children ?? []).filter((c) => c.type === 'element');
+  const head = sections.find((c) => c.tagName === 'thead');
+  const headerRow = head ? childElements(head, 'tr')[0] : undefined;
+  const labels = headerRow ? childElements(headerRow, 'th').map((th) => textOf(th).trim()) : [];
+  if (labels.length < 3) return;
+  table.properties = { ...(table.properties ?? {}), dataStack: 'true' };
+  for (const section of sections.filter((c) => c.tagName === 'tbody')) {
+    for (const row of childElements(section, 'tr')) {
+      childElements(row, 'td').forEach((cell, index) => {
+        cell.properties = { ...(cell.properties ?? {}), dataL: labels[index] ?? '' };
+      });
+    }
+  }
 };
 
 export type StudyLinkTarget =
