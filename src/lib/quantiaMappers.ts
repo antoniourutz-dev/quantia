@@ -9,7 +9,7 @@ import type {
   Question,
 } from '../types';
 import { createId } from './id';
-import { parseSyllabusType, toOptionKey } from './questionContracts';
+import { parseSyllabusType, toOptionKey, toQuestionOriginLabel } from './questionContracts';
 import { readQuestionAuditPresentation } from './questionAuditPresentation';
 
 const OPTION_KEYS = ['a', 'b', 'c', 'd'] as const;
@@ -217,6 +217,7 @@ export const mapQuestion = (row: Record<string, unknown>): Question | null => {
       row.numero ?? row.question_number ?? row.number ?? row.orden ?? row.order ?? row.position,
     ),
     text: normalizeYearDots(visibleStatement),
+    originLabel: toQuestionOriginLabel(row.question_origin),
     auditIncident: audit.incident,
     auditSeverity: audit.severity,
     options: OPTION_KEYS.map((key) => ({ id: key, text: normalizeYearDots(options[key]) })),
