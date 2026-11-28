@@ -35,6 +35,8 @@ import { readHomeFirstPaintCache, homeFirstPaintStorageKey, type HomeFirstPaintM
 import { cancelIdle, requestIdle, type IdleHandle } from '../../features/authenticatedShell/shellIdle';
 import { startOfDay } from '../../features/authenticatedShell/shellDateUtils';
 import type { ShellView as View, TestReturnTarget } from '../../features/authenticatedShell/shellTypes';
+import StudySubNav from '../StudySubNav';
+import { fetchStudyTopicsAvailable, setStudyTopicsAvailable } from '../../features/studyTopics/availability';
 import MobileTabBar from '../MobileTabBar';
 import MobileTopBar from '../MobileTopBar';
 import Dashboard from '../dashboard/Dashboard';
@@ -122,6 +124,7 @@ const loadSettingsPanel = () => import('../SettingsPanel');
 const loadStatsDashboard = () => import('../StatsDashboard');
 const loadStudyQuestionBank = () => import('../StudyQuestionBank');
 const loadMyNotesAndHighlights = () => import('../MyNotesAndHighlights');
+const loadStudyTopicsLibrary = () => import('../../features/studyTopics/StudyTopicsLibrary');
 const loadTelemetryDebugPanel = () => import('../TelemetryDebugPanel');
 const loadAdminQuestions = () => import('../admin/AdminQuestions');
 const loadAdminDashboard = () => import('../admin/AdminDashboard');
@@ -138,6 +141,7 @@ const SettingsPanel = lazy(loadSettingsPanel);
 const StatsDashboard = lazy(loadStatsDashboard);
 const StudyQuestionBank = lazy(loadStudyQuestionBank);
 const MyNotesAndHighlights = lazy(loadMyNotesAndHighlights);
+const StudyTopicsLibrary = lazy(loadStudyTopicsLibrary);
 const TelemetryDebugPanel = lazy(loadTelemetryDebugPanel);
 const AdminQuestions = lazy(loadAdminQuestions);
 const AdminDashboard = lazy(loadAdminDashboard);
@@ -258,6 +262,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
   } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>('dashboard');
+  const [hasStudyTopics, setHasStudyTopics] = useState(false);
   const [testSelectionState, setTestSelectionState] = useState<TestSelectionStateSnapshot | null>(null);
   const [testReturnTarget, setTestReturnTarget] = useState<TestReturnTarget | null>(null);
   const [selectedSyllabus, setSelectedSyllabus] = useState<SyllabusType | null>(null);
@@ -416,6 +421,19 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     const filtered = accessibleCurriculumOptions.filter((option) => selected.has(normalizeCurriculumId(option.id)));
     return filtered.length > 0 ? filtered : accessibleCurriculumOptions;
   }, [accessibleCurriculumOptions, selectedVisibleCurriculumIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchStudyTopicsAvailable(curriculum).then((value) => {
+      if (cancelled) return;
+      setHasStudyTopics(value);
+      setStudyTopicsAvailable(value);
+      if (!value) setCurrentView((view) => (view === 'study-topics' ? 'study-bank' : view));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [curriculum]);
 
   useEffect(() => {
     if (currentView === 'test-active' || currentView === 'study-active') {
@@ -2543,7 +2561,11 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     currentView === 'admin-catalogs' ||
     currentView === 'admin-quality';
   const isStudyView =
-    currentView === 'study' || currentView === 'study-bank' || currentView === 'study-notes';
+    currentView === 'study' ||
+    currentView === 'study-bank' ||
+    currentView === 'study-notes' ||
+    currentView === 'study-topics';
+  const studyHomeView: View = hasStudyTopics ? 'study-topics' : 'study-bank';
   const showMobileTopBar = !isTesting && !isAdminView && currentView !== 'telemetry';
   const showMobileBottomNav = showMobileTopBar && currentView !== 'test-results';
   const activeMobileTab = (() => {
@@ -2577,6 +2599,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
     if (currentView === 'study-bank') return t('Banco de preguntas', 'Galdera-bankua');
     if (currentView === 'study') return t('Sesiones de estudio', 'Ikasketa-saioak');
     if (currentView === 'study-notes') return t('Mis notas y subrayados', 'Nire oharrak eta azpimarrak');
+    if (currentView === 'study-topics') return t('Temario', 'Gai-zerrenda');
     if (currentView === 'test-selection') {
       return t('Prepara el bloque exacto que quieres hacer', 'Prestatu egin nahi duzun bloke zehatza');
     }
@@ -2919,7 +2942,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 </button>
                 <button
                   onClick={() => {
-                    setCurrentView('study-bank');
+                    setCurrentView(studyHomeView);
                     setSidebarOpen(false);
                   }}
                   className={`w-full flex items-center gap-4 [@media(max-height:800px)]:gap-3 px-6 [@media(max-height:800px)]:px-4 py-4 [@media(max-height:800px)]:py-3 [@media(max-height:700px)]:py-2.5 rounded-2xl transition-all duration-300 group ${
@@ -3041,6 +3064,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
                 {currentView === 'study-bank' && t('Estudio', 'Ikasketa')}
                 {currentView === 'study' && t('Estudio guiado', 'Ikasketa gidatua')}
                 {currentView === 'study-notes' && t('Mis notas y subrayados', 'Nire oharrak eta azpimarrak')}
+                {currentView === 'study-topics' && t('Temario', 'Gai-zerrenda')}
                 {currentView === 'test-selection' && t('Configuración de entrenamiento', 'Entrenamenduaren konfigurazioa')}
                 {currentView === 'stats' && t('Inteligencia de datos', 'Datuen adimena')}
                 {currentView === 'test-results' && t('Analisis de sesion', 'Saioaren analisia')}
@@ -3439,6 +3463,15 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
           </Suspense>
         ) : null}
 
+        {currentView === 'study-topics' ? (
+          <Suspense fallback={screenLoader}>
+            <div className="space-y-5">
+              <StudySubNav activeView="study-topics" onSelectView={(view) => setCurrentView(view)} />
+              <StudyTopicsLibrary curriculum={curriculum} userId={session.user.id} />
+            </div>
+          </Suspense>
+        ) : null}
+
         {currentView === 'study-notes' ? (
           <Suspense fallback={screenLoader}>
             <MyNotesAndHighlights
@@ -3742,7 +3775,7 @@ export default function AuthenticatedAppShell({ session, assignedKeys }: Authent
         <MobileTabBar
           active={activeMobileTab}
           onChange={(next) => {
-            setCurrentView(next === 'study' ? 'study-bank' : next);
+            setCurrentView(next === 'study' ? studyHomeView : next);
             setSidebarOpen(false);
           }}
           showDashboard={hasManagementAccess}

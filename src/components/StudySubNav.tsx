@@ -1,7 +1,8 @@
-import { BookOpen, Compass, Highlighter } from 'lucide-react';
+import { BookOpen, Compass, Highlighter, Library } from 'lucide-react';
+import { useStudyTopicsAvailable } from '../features/studyTopics/availability';
 import { useAppLocale } from '../lib/locale';
 
-export type StudySubView = 'study-bank' | 'study' | 'study-notes';
+export type StudySubView = 'study-bank' | 'study' | 'study-notes' | 'study-topics';
 export type StudySubNavTab = StudySubView;
 
 export interface StudySubNavProps {
@@ -31,7 +32,13 @@ export default function StudySubNav({
     else onChangeTab?.(view);
   };
 
-  const tabs: Array<{ id: StudySubView; label: string; Icon: typeof BookOpen }> = [
+  const hasStudyTopics = useStudyTopicsAvailable();
+  const allTabs: Array<{ id: StudySubView; label: string; Icon: typeof BookOpen }> = [
+    {
+      id: 'study-topics',
+      label: t('Temario', 'Gai-zerrenda'),
+      Icon: Library,
+    },
     {
       id: 'study-bank',
       label: t('Banco de preguntas', 'Galdera-bankua'),
@@ -48,6 +55,8 @@ export default function StudySubNav({
       Icon: Highlighter,
     },
   ];
+
+  const tabs = hasStudyTopics ? allTabs : allTabs.filter((tab) => tab.id !== 'study-topics');
 
   const safeCount =
     typeof notesCount === 'number' && Number.isFinite(notesCount) && notesCount > 0

@@ -6,6 +6,7 @@ export type ShellView =
   | 'study'
   | 'study-bank'
   | 'study-notes'
+  | 'study-topics'
   | 'study-active'
   | 'test-selection'
   | 'test-active'
